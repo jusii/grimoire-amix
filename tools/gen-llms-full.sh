@@ -41,6 +41,7 @@ order=(
   docs/boot-disks/anatomy-boot-adf.md
   docs/boot-disks/anatomy-root-adf.md
   docs/boot-disks/anatomy-patch-adf.md
+  docs/boot-disks/reverse-engineering-boot-adf.md
   docs/boot-disks/adding-drivers-to-boot-disk.md
   docs/boot-disks/build-pipeline.md
   docs/reference/versions.md

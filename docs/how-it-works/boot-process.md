@@ -44,18 +44,18 @@ The bootstrap's responsibilities:
 
 ## Kernel decompression and checksum verification
 
-The on-medium kernel is **compressed and checksummed**; the bootstrap decompresses it at boot time rather than loading a flat executable ✅. The diagnostic strings embedded in `amix_21_boot.adf` map the failure modes one-to-one:
+The on-medium kernel is **compressed and checksummed**; the bootstrap decompresses it at boot time rather than loading a flat executable ✅. We have since reverse-engineered the exact format: the kernel is a **standard Unix `compress` (`.Z`, LZW `-b16`) stream at offset `0x2800`** that decompresses to a **1,171,200-byte m68k ELF** ✅, and the checksum is a **16-bit folded sum whose mismatch is *non-fatal*** (the bootstrap warns and boots anyway) ✅. Full method, evidence, and the rebuild recipe: [Reverse-Engineering the Boot Floppy](../boot-disks/reverse-engineering-boot-adf.md). The diagnostic strings embedded in `amix_21_boot.adf` map the steps one-to-one:
 
 | Embedded string ✅ | Meaning |
 |---|---|
 | `Load boot volume %d` | Bootstrap is selecting/reading the boot volume |
-| `Decompression failed!` | The compressed kernel could not be unpacked |
+| `Decompression failed!` | The `compress`/LZW kernel could not be unpacked (fatal) |
 | `WARNING! Kernel decompression overrun.` | Decompressed image exceeded its expected size |
-| `WARNING! Kernel file checksum mismatch.` | Stored checksum != computed checksum |
+| `WARNING! Kernel file checksum mismatch.` | 16-bit folded checksum differs — **non-fatal; boots anyway** |
 | `Kernel may have been corrupted.` | Follow-up to a checksum/decompression failure |
 | `hat_vtokp_prot: user addr in kernel space` | An SVR4 **HAT/MMU** panic message (kernel is now running) |
 
-Because the kernel is compressed, a raw scan of the boot floppy finds **no clean ELF header** — only noise and false-positive matches — which is exactly what you expect from a compressed blob rather than a stored executable ✅. The presence of the `hat_vtokp_prot` HAT panic string confirms the decompressed payload is a real SVR4 kernel using the [68030 MMU / HAT layer](kernel-architecture.md).
+A raw `binwalk` scan finds **no clean ELF header** — only noise / false-positive hits — not because the format is opaque, but because binwalk doesn't flag a `.Z` stream; decode it in one step with [`tools/extract-kernel.sh`](../boot-disks/reverse-engineering-boot-adf.md) ✅. The `hat_vtokp_prot` HAT panic string (readable once decompressed) confirms the payload is a real SVR4 kernel using the [68030 MMU / HAT layer](kernel-architecture.md).
 
 ## On-disk layout: the RDB and the partition table
 
@@ -133,9 +133,9 @@ What it reports, and what each finding means:
 
 - **It is a valid AmigaDOS OFS bootblock.** The first bytes are `44 4f 53 00` = `DOS\0`, followed by the bootblock checksum and 68k bootstrap code — so the Superkickstart ROM is willing to boot it ✅.
 - **There is no AmigaDOS filesystem.** `xdftool list` fails with `Invalid Root Block @880`, because the disk is *bootblock + raw bootstrap + payload*, not an AmigaDOS directory tree ✅.
-- **The kernel is compressed and checksummed.** The embedded strings (`Decompression failed!`, `WARNING! Kernel file checksum mismatch.`, `unix.`, etc. — full table [above](#kernel-decompression-and-checksum-verification)) show the bootstrap decompresses and checksum-verifies the kernel ✅.
-- **It is an NFS/RPC install kernel.** A full NFS/RPC client string table and the `hat_vtokp_prot: user addr in kernel space` HAT/MMU panic string are present ✅.
-- **No clean ELF, only noise.** A binwalk scan finds no clean ELF header (only false-positive "JBOOT" hits) — exactly what a compressed kernel blob looks like ✅.
+- **The kernel is a Unix `compress` (`.Z`, LZW) stream at `0x2800`** that decompresses to a 1,171,200-byte m68k ELF; its 16-bit checksum is **non-fatal** (warns, boots anyway). Decode it with [`tools/extract-kernel.sh`](../boot-disks/reverse-engineering-boot-adf.md) ✅.
+- **It is an NFS/RPC install kernel.** A full NFS/RPC client string table and the `hat_vtokp_prot: user addr in kernel space` HAT/MMU panic string are present (readable once decompressed) ✅.
+- **`binwalk` shows only noise** — not because the format is opaque but because it doesn't flag `.Z`; the stream decodes cleanly to ELF ✅.
 
 For the full byte offsets, the equivalent root/patch-disk findings, and how to read the inspector output, see [the boot.adf anatomy page](../boot-disks/anatomy-boot-adf.md).
 

@@ -45,8 +45,9 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [Anatomy of the Boot Floppy](docs/boot-disks/anatomy-boot-adf.md): bootblock + compressed kernel.
 - [Anatomy of the Root (miniroot) Floppy](docs/boot-disks/anatomy-root-adf.md): UFS installer + scripts.
 - [Anatomy of the Patch Floppy](docs/boot-disks/anatomy-patch-adf.md): self-extracting sh + cpio.
-- [Adding Drivers to a Custom Boot Disk](docs/boot-disks/adding-drivers-to-boot-disk.md): what works, what's open.
-- [The Boot-Disk Tooling Pipeline](docs/boot-disks/build-pipeline.md): inspect / unpack / build scripts.
+- [Reverse-Engineering the Boot Floppy](docs/boot-disks/reverse-engineering-boot-adf.md): the kernel is Unix compress/LZW → m68k ELF; the checksum is non-fatal; how to extract and rebuild.
+- [Adding Drivers to a Custom Boot Disk](docs/boot-disks/adding-drivers-to-boot-disk.md): three delivery surfaces (boot partition, bootable floppy, add-on disk).
+- [The Boot-Disk Tooling Pipeline](docs/boot-disks/build-pipeline.md): inspect / extract-kernel / build-bootfloppy / unpack / build scripts.
 
 ## Reference
 - [Version Matrix](docs/reference/versions.md)

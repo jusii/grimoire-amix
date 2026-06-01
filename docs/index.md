@@ -33,7 +33,7 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 [Toolchain](drivers/toolchain.md) → the [case studies](drivers/case-studies/va2000.md).
 
 **I want to ship drivers to users** → [Boot floppy anatomy](boot-disks/anatomy-boot-adf.md) →
-[Patch disk anatomy](boot-disks/anatomy-patch-adf.md) →
+[Reverse-engineering the boot floppy](boot-disks/reverse-engineering-boot-adf.md) →
 [Adding drivers to a custom boot disk](boot-disks/adding-drivers-to-boot-disk.md) →
 [Tooling pipeline](boot-disks/build-pipeline.md).
 
@@ -75,6 +75,7 @@ Case studies: [va2000](drivers/case-studies/va2000.md) ·
 [Boot floppy](boot-disks/anatomy-boot-adf.md) ·
 [Root floppy](boot-disks/anatomy-root-adf.md) ·
 [Patch floppy](boot-disks/anatomy-patch-adf.md) ·
+[Reverse-engineering the boot floppy](boot-disks/reverse-engineering-boot-adf.md) ·
 [Adding drivers](boot-disks/adding-drivers-to-boot-disk.md) ·
 [Tooling pipeline](boot-disks/build-pipeline.md)
 

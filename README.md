@@ -36,7 +36,7 @@ docs/            the documentation (start at docs/index.md)
   boot-disks/    boot/root/patch floppy anatomy + building custom driver disks
   reference/     versions, device list, command cheat sheet, bibliography
   contributing/  style guide, writing for LLMs
-tools/           reproducible scripts: inspect-adf, unpack-root, build-custom-bootdisk, gen-llms-full
+tools/           reproducible scripts: inspect-adf, extract-kernel, build-bootfloppy, unpack-root, build-custom-bootdisk, gen-llms-full
 sources/         primary materials (gitignored binaries) + research-brief.md + checksums + provenance
 llms.txt         curated LLM index
 AGENTS.md        contributor contract

@@ -6,14 +6,17 @@ input** (except `build-custom-bootdisk.sh`, which writes a new image) and never 
 | Tool | Required | Optional |
 |---|---|---|
 | `inspect-adf.sh` | `bash`, `dd`, `xxd`, `strings` | `binwalk` (embedded-object scan), `xdftool` (amitools; AmigaDOS listing), `sha256sum` |
+| `extract-kernel.sh` | `bash`, `dd`, `od` (GNU), and one of `gzip`/`zcat`/`uncompress` | `file` (identify the ELF) |
+| `build-bootfloppy.sh` | `bash`, `dd`, `od` (GNU), `compress` (or `ncompress`), and `gzip`/`zcat` (self-test) | — |
 | `unpack-root.sh` | `bash`, `binwalk`, `dd`, `strings` | `tar` (unpack carved members) |
 | `build-custom-bootdisk.sh` | `bash`, `dd`, `printf`, and **`cpio`** *or* `bsdtar` | `cpio` (to list members in the self-test) |
 | `gen-llms-full.sh` | `bash`, `cat`, `wc` | — |
 
 ## Installing the dependencies
 
-- **Debian/Ubuntu:** `sudo apt install binwalk cpio libarchive-tools coreutils`
-  (`libarchive-tools` provides `bsdtar`; `xxd` ships with `vim-common`/`xxd`.)
+- **Debian/Ubuntu:** `sudo apt install binwalk cpio libarchive-tools coreutils ncompress gzip`
+  (`libarchive-tools` provides `bsdtar`; `xxd` ships with `vim-common`/`xxd`; `ncompress` provides
+  `compress`/`uncompress`; `gzip`/`zcat` decode `.Z` too.)
 - **amitools / `xdftool`** (Amiga disk handling): `pipx install amitools` or `pip install amitools`.
   Used only for the AmigaDOS bootblock/listing path; everything else degrades gracefully without it.
 

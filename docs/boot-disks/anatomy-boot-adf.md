@@ -1,7 +1,7 @@
 ---
 title: Anatomy of the Boot Floppy
-summary: What is inside amix boot.adf — an AmigaDOS OFS bootblock, a 68k secondary bootstrap, and a compressed, checksummed install kernel (no AmigaDOS filesystem).
-status: draft
+summary: What is inside amix boot.adf — an AmigaDOS OFS bootblock, a 68k secondary bootstrap, and the kernel stored as a Unix compress (.Z, LZW) stream that unpacks to an m68k ELF (no AmigaDOS filesystem).
+status: reviewed
 ---
 
 # Anatomy of the Boot Floppy
@@ -21,7 +21,8 @@ If you want the runtime story (Superkickstart → bootstrap → kernel → root 
 | SHA-256 | `0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65272` | ✅ |
 | Disk type id (first 4 bytes) | `44 4f 53 00` = `DOS\0` (OFS bootblock) | ✅ |
 | AmigaDOS filesystem? | **No** — `xdftool list` → "Invalid Root Block @880" | ✅ |
-| Payload | compressed, checksummed install kernel (NFS/RPC-capable) | ✅ |
+| Payload | kernel as a Unix `compress` `.Z` (LZW) stream at `0x2800` → **1,171,200-byte m68k ELF** (NFS/RPC-capable install kernel) | ✅ |
+| Kernel checksum | 16-bit folded sum; **mismatch is non-fatal (warning only)** | ✅ |
 
 ## The three layers
 
@@ -34,8 +35,8 @@ If you want the runtime story (Superkickstart → bootstrap → kernel → root 
 |           loads the payload, decompresses it, checksums it,   |  <- "Load boot volume %d", error strings
 |           then jumps into the kernel                          |
 +--------------------------------------------------------------+
-| Layer 2:  compressed, checksummed install kernel             |
-|           NFS/RPC client + SVR4 HAT/MMU panic strings inside  |  <- binwalk sees only compressed "noise"
+| Layer 2:  kernel as a Unix compress (.Z, LZW) stream @0x2800  |
+|           -> unpacks to a 1,171,200-byte m68k ELF kernel      |  <- decode with extract-kernel.sh
 +--------------------------------------------------------------+
 ```
 
@@ -69,32 +70,72 @@ The bootblock code is the **secondary bootstrap**: it locates the kernel payload
 | `Load boot volume %d` | the bootstrap prompts for / reports the boot volume it is reading from | ✅ |
 | `Decompression failed!` | the payload is compressed and the bootstrap decompresses it in place | ✅ |
 | `WARNING! Kernel decompression overrun.` | bounds check on the decompressed size | ✅ |
-| `WARNING! Kernel file checksum mismatch.` | the kernel image is checksummed and the bootstrap verifies it | ✅ |
+| `WARNING! Kernel file checksum mismatch.` | the bootstrap verifies a 16-bit folded checksum — but a mismatch is **non-fatal** (it warns and boots anyway; see [the RE writeup](reverse-engineering-boot-adf.md)) | ✅ |
 | `Kernel may have been corrupted.` | follow-on to a failed checksum / overrun | ✅ |
 | `unix.` | the kernel name fragment the bootstrap is loading | ✅ |
 
 So the load sequence is unambiguous from the strings alone: **read the boot volume → decompress the kernel → checksum it → run it**, with a guarded error path at every step. ✅
 
-### Layer 2 — the compressed install kernel ✅
+### Layer 2 — the kernel, as a Unix `compress` (`.Z`) stream ✅
 
-The payload is a UNIX kernel, but a *compressed* one, which is why nothing on the disk looks like a clean ELF file. Two independent observations confirm this:
+The payload starting at file offset **`0x2800`** is the kernel, stored as a **standard Unix `compress`
+(`.Z`, LZW) stream** — the same `compress(1)` format ubiquitous on SVR4. The header proves it:
 
-1. **`binwalk` finds no real executable** — only false-positive "JBOOT STAG header" hits at scattered offsets with absurd, self-contradictory sizes (e.g. "image size: 4110356480 bytes" inside an 880 KB disk). That is the signature of **high-entropy compressed data** tripping binwalk's heuristic scanner, not real headers. ✅
-2. **The decompressed kernel's strings leak through** anyway — the image carries a full **NFS/RPC client string table** and an SVR4 **HAT/MMU panic message**, which are kernel features, not bootstrap features. Examples pulled from the image:
+```text
+00002800: 1f 9d 90 ...
+          ^^^^^      = compress(.Z) magic
+                ^^   = 0x90 = block-mode (bit 7) + 16-bit maxbits (low 5 bits = 0x10)
+```
+
+Decompressing from `0x2800` with any standard decoder yields a **1,171,200-byte ELF**:
+
+```sh
+dd if=amix_21_boot.adf bs=1 skip=$((0x2800)) | gzip -dc | file -
+#   /dev/stdin: ELF 32-bit MSB processor-specific, Motorola m68k, 68020, version 1 (SYSV)
+```
+
+This is **fully reverse-engineered** — both that the decoder accepts it *and* that the bootstrap's own
+decompressor disassembles to the canonical `compress` reader (its `rmask[]` table and `1f`/`9d` magic
+check). The complete method, disassembly evidence, and the rebuild recipe are in
+[Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md). Extract it in one step:
+
+```sh
+tools/extract-kernel.sh amix_21_boot.adf unix.elf
+```
+
+> **About the earlier "binwalk noise".** `binwalk` does not flag a `.Z` stream and instead reports
+> false-positive "JBOOT STAG header" hits with absurd sizes — that is just high-entropy LZW data
+> tripping its heuristics, **not** evidence of a custom/opaque format. The format is plain `compress`.
+
+Once decompressed, the kernel's own strings are plainly readable — a full **NFS/RPC client string
+table** and an SVR4 **HAT/MMU panic message**, confirming this is the **install kernel** (it can mount a
+root filesystem and pull the distribution over the network):
 
 ```text
 hat_vtokp_prot: user addr in kernel space   <- SVR4 HAT (MMU) panic
-RPC: Success
-RPC: Authentication error
 RPC: Program/version mismatch
-RPC: Port mapper failure
 lock-manager: RPC error: %s
 ip_input: bad header checksum
 ```
 
-The presence of a complete RPC/NFS string table is the tell that this is the **install kernel**: it can mount a root filesystem and pull the distribution over the network (RPC/NFS), which is exactly what the installer needs. `hat_vtokp_prot` confirms the kernel drives the [68030 MMU via the SVR4 HAT layer](../how-it-works/kernel-architecture.md). ✅
+`hat_vtokp_prot` confirms the kernel drives the [68030 MMU via the SVR4 HAT layer](../how-it-works/kernel-architecture.md). ✅
 
-**Why does it have to be compressed?** An 880 KB floppy cannot hold a full uncompressed SVR4 kernel plus the bootstrap. Compressing the kernel and decompressing it at boot is how the whole thing fits on one disk — and it is why [the boot process](../how-it-works/boot-process.md) has a visible decompression step.
+**Why compressed?** An 880 KB floppy cannot hold a full uncompressed ~1.17 MB SVR4 kernel plus the
+bootstrap. Compressing it (~668 KB) and decompressing at boot is how it fits — which is why
+[the boot process](../how-it-works/boot-process.md) has a visible decompression step.
+
+### Building a custom boot floppy ✅🟡
+
+Because the format is `compress` → ELF and the checksum is non-fatal, you can build a bootable floppy
+carrying **your own** kernel — splice your `compress -b16`'d kernel onto a donor's bootblock+bootstrap:
+
+```sh
+tools/build-bootfloppy.sh --donor amix_21_boot.adf --kernel my-unix.elf --out custom_boot.adf
+```
+
+The donor's first `0x2800` bytes are copied verbatim (bootblock checksum stays valid); a differing
+kernel just produces the cosmetic checksum warning. ✅ host round-trip verified; 🟡 not yet booted on
+real Amix — test in an emulator. See [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 
 ## Inspecting it yourself
 
@@ -169,6 +210,7 @@ Expected SHA-256: `0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65
 
 ## See also
 
+- [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) — the full decode + rebuild method behind this page.
 - [How Amix boots](../how-it-works/boot-process.md) — the runtime sequence this floppy kicks off.
 - [The boot-disk build pipeline](build-pipeline.md) — producing bootable media + the `make bootpart` path.
 - [Anatomy of the root floppy](anatomy-root-adf.md) — the UFS miniroot installer the boot kernel hands off to.

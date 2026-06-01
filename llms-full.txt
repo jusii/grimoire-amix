@@ -355,18 +355,18 @@ The bootstrap's responsibilities:
 
 ## Kernel decompression and checksum verification
 
-The on-medium kernel is **compressed and checksummed**; the bootstrap decompresses it at boot time rather than loading a flat executable ✅. The diagnostic strings embedded in `amix_21_boot.adf` map the failure modes one-to-one:
+The on-medium kernel is **compressed and checksummed**; the bootstrap decompresses it at boot time rather than loading a flat executable ✅. We have since reverse-engineered the exact format: the kernel is a **standard Unix `compress` (`.Z`, LZW `-b16`) stream at offset `0x2800`** that decompresses to a **1,171,200-byte m68k ELF** ✅, and the checksum is a **16-bit folded sum whose mismatch is *non-fatal*** (the bootstrap warns and boots anyway) ✅. Full method, evidence, and the rebuild recipe: [Reverse-Engineering the Boot Floppy](../boot-disks/reverse-engineering-boot-adf.md). The diagnostic strings embedded in `amix_21_boot.adf` map the steps one-to-one:
 
 | Embedded string ✅ | Meaning |
 |---|---|
 | `Load boot volume %d` | Bootstrap is selecting/reading the boot volume |
-| `Decompression failed!` | The compressed kernel could not be unpacked |
+| `Decompression failed!` | The `compress`/LZW kernel could not be unpacked (fatal) |
 | `WARNING! Kernel decompression overrun.` | Decompressed image exceeded its expected size |
-| `WARNING! Kernel file checksum mismatch.` | Stored checksum != computed checksum |
+| `WARNING! Kernel file checksum mismatch.` | 16-bit folded checksum differs — **non-fatal; boots anyway** |
 | `Kernel may have been corrupted.` | Follow-up to a checksum/decompression failure |
 | `hat_vtokp_prot: user addr in kernel space` | An SVR4 **HAT/MMU** panic message (kernel is now running) |
 
-Because the kernel is compressed, a raw scan of the boot floppy finds **no clean ELF header** — only noise and false-positive matches — which is exactly what you expect from a compressed blob rather than a stored executable ✅. The presence of the `hat_vtokp_prot` HAT panic string confirms the decompressed payload is a real SVR4 kernel using the [68030 MMU / HAT layer](kernel-architecture.md).
+A raw `binwalk` scan finds **no clean ELF header** — only noise / false-positive hits — not because the format is opaque, but because binwalk doesn't flag a `.Z` stream; decode it in one step with [`tools/extract-kernel.sh`](../boot-disks/reverse-engineering-boot-adf.md) ✅. The `hat_vtokp_prot` HAT panic string (readable once decompressed) confirms the payload is a real SVR4 kernel using the [68030 MMU / HAT layer](kernel-architecture.md).
 
 ## On-disk layout: the RDB and the partition table
 
@@ -444,9 +444,9 @@ What it reports, and what each finding means:
 
 - **It is a valid AmigaDOS OFS bootblock.** The first bytes are `44 4f 53 00` = `DOS\0`, followed by the bootblock checksum and 68k bootstrap code — so the Superkickstart ROM is willing to boot it ✅.
 - **There is no AmigaDOS filesystem.** `xdftool list` fails with `Invalid Root Block @880`, because the disk is *bootblock + raw bootstrap + payload*, not an AmigaDOS directory tree ✅.
-- **The kernel is compressed and checksummed.** The embedded strings (`Decompression failed!`, `WARNING! Kernel file checksum mismatch.`, `unix.`, etc. — full table [above](#kernel-decompression-and-checksum-verification)) show the bootstrap decompresses and checksum-verifies the kernel ✅.
-- **It is an NFS/RPC install kernel.** A full NFS/RPC client string table and the `hat_vtokp_prot: user addr in kernel space` HAT/MMU panic string are present ✅.
-- **No clean ELF, only noise.** A binwalk scan finds no clean ELF header (only false-positive "JBOOT" hits) — exactly what a compressed kernel blob looks like ✅.
+- **The kernel is a Unix `compress` (`.Z`, LZW) stream at `0x2800`** that decompresses to a 1,171,200-byte m68k ELF; its 16-bit checksum is **non-fatal** (warns, boots anyway). Decode it with [`tools/extract-kernel.sh`](../boot-disks/reverse-engineering-boot-adf.md) ✅.
+- **It is an NFS/RPC install kernel.** A full NFS/RPC client string table and the `hat_vtokp_prot: user addr in kernel space` HAT/MMU panic string are present (readable once decompressed) ✅.
+- **`binwalk` shows only noise** — not because the format is opaque but because it doesn't flag `.Z`; the stream decodes cleanly to ELF ✅.
 
 For the full byte offsets, the equivalent root/patch-disk findings, and how to read the inspector output, see [the boot.adf anatomy page](../boot-disks/anatomy-boot-adf.md).
 
@@ -4527,8 +4527,8 @@ If you are writing another NE2000/DP8390-class or Zorro II network driver for Am
 
 ---
 title: Anatomy of the Boot Floppy
-summary: What is inside amix boot.adf — an AmigaDOS OFS bootblock, a 68k secondary bootstrap, and a compressed, checksummed install kernel (no AmigaDOS filesystem).
-status: draft
+summary: What is inside amix boot.adf — an AmigaDOS OFS bootblock, a 68k secondary bootstrap, and the kernel stored as a Unix compress (.Z, LZW) stream that unpacks to an m68k ELF (no AmigaDOS filesystem).
+status: reviewed
 ---
 
 # Anatomy of the Boot Floppy
@@ -4548,7 +4548,8 @@ If you want the runtime story (Superkickstart → bootstrap → kernel → root 
 | SHA-256 | `0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65272` | ✅ |
 | Disk type id (first 4 bytes) | `44 4f 53 00` = `DOS\0` (OFS bootblock) | ✅ |
 | AmigaDOS filesystem? | **No** — `xdftool list` → "Invalid Root Block @880" | ✅ |
-| Payload | compressed, checksummed install kernel (NFS/RPC-capable) | ✅ |
+| Payload | kernel as a Unix `compress` `.Z` (LZW) stream at `0x2800` → **1,171,200-byte m68k ELF** (NFS/RPC-capable install kernel) | ✅ |
+| Kernel checksum | 16-bit folded sum; **mismatch is non-fatal (warning only)** | ✅ |
 
 ## The three layers
 
@@ -4561,8 +4562,8 @@ If you want the runtime story (Superkickstart → bootstrap → kernel → root 
 |           loads the payload, decompresses it, checksums it,   |  <- "Load boot volume %d", error strings
 |           then jumps into the kernel                          |
 +--------------------------------------------------------------+
-| Layer 2:  compressed, checksummed install kernel             |
-|           NFS/RPC client + SVR4 HAT/MMU panic strings inside  |  <- binwalk sees only compressed "noise"
+| Layer 2:  kernel as a Unix compress (.Z, LZW) stream @0x2800  |
+|           -> unpacks to a 1,171,200-byte m68k ELF kernel      |  <- decode with extract-kernel.sh
 +--------------------------------------------------------------+
 ```
 
@@ -4596,32 +4597,72 @@ The bootblock code is the **secondary bootstrap**: it locates the kernel payload
 | `Load boot volume %d` | the bootstrap prompts for / reports the boot volume it is reading from | ✅ |
 | `Decompression failed!` | the payload is compressed and the bootstrap decompresses it in place | ✅ |
 | `WARNING! Kernel decompression overrun.` | bounds check on the decompressed size | ✅ |
-| `WARNING! Kernel file checksum mismatch.` | the kernel image is checksummed and the bootstrap verifies it | ✅ |
+| `WARNING! Kernel file checksum mismatch.` | the bootstrap verifies a 16-bit folded checksum — but a mismatch is **non-fatal** (it warns and boots anyway; see [the RE writeup](reverse-engineering-boot-adf.md)) | ✅ |
 | `Kernel may have been corrupted.` | follow-on to a failed checksum / overrun | ✅ |
 | `unix.` | the kernel name fragment the bootstrap is loading | ✅ |
 
 So the load sequence is unambiguous from the strings alone: **read the boot volume → decompress the kernel → checksum it → run it**, with a guarded error path at every step. ✅
 
-### Layer 2 — the compressed install kernel ✅
+### Layer 2 — the kernel, as a Unix `compress` (`.Z`) stream ✅
 
-The payload is a UNIX kernel, but a *compressed* one, which is why nothing on the disk looks like a clean ELF file. Two independent observations confirm this:
+The payload starting at file offset **`0x2800`** is the kernel, stored as a **standard Unix `compress`
+(`.Z`, LZW) stream** — the same `compress(1)` format ubiquitous on SVR4. The header proves it:
 
-1. **`binwalk` finds no real executable** — only false-positive "JBOOT STAG header" hits at scattered offsets with absurd, self-contradictory sizes (e.g. "image size: 4110356480 bytes" inside an 880 KB disk). That is the signature of **high-entropy compressed data** tripping binwalk's heuristic scanner, not real headers. ✅
-2. **The decompressed kernel's strings leak through** anyway — the image carries a full **NFS/RPC client string table** and an SVR4 **HAT/MMU panic message**, which are kernel features, not bootstrap features. Examples pulled from the image:
+```text
+00002800: 1f 9d 90 ...
+          ^^^^^      = compress(.Z) magic
+                ^^   = 0x90 = block-mode (bit 7) + 16-bit maxbits (low 5 bits = 0x10)
+```
+
+Decompressing from `0x2800` with any standard decoder yields a **1,171,200-byte ELF**:
+
+```sh
+dd if=amix_21_boot.adf bs=1 skip=$((0x2800)) | gzip -dc | file -
+#   /dev/stdin: ELF 32-bit MSB processor-specific, Motorola m68k, 68020, version 1 (SYSV)
+```
+
+This is **fully reverse-engineered** — both that the decoder accepts it *and* that the bootstrap's own
+decompressor disassembles to the canonical `compress` reader (its `rmask[]` table and `1f`/`9d` magic
+check). The complete method, disassembly evidence, and the rebuild recipe are in
+[Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md). Extract it in one step:
+
+```sh
+tools/extract-kernel.sh amix_21_boot.adf unix.elf
+```
+
+> **About the earlier "binwalk noise".** `binwalk` does not flag a `.Z` stream and instead reports
+> false-positive "JBOOT STAG header" hits with absurd sizes — that is just high-entropy LZW data
+> tripping its heuristics, **not** evidence of a custom/opaque format. The format is plain `compress`.
+
+Once decompressed, the kernel's own strings are plainly readable — a full **NFS/RPC client string
+table** and an SVR4 **HAT/MMU panic message**, confirming this is the **install kernel** (it can mount a
+root filesystem and pull the distribution over the network):
 
 ```text
 hat_vtokp_prot: user addr in kernel space   <- SVR4 HAT (MMU) panic
-RPC: Success
-RPC: Authentication error
 RPC: Program/version mismatch
-RPC: Port mapper failure
 lock-manager: RPC error: %s
 ip_input: bad header checksum
 ```
 
-The presence of a complete RPC/NFS string table is the tell that this is the **install kernel**: it can mount a root filesystem and pull the distribution over the network (RPC/NFS), which is exactly what the installer needs. `hat_vtokp_prot` confirms the kernel drives the [68030 MMU via the SVR4 HAT layer](../how-it-works/kernel-architecture.md). ✅
+`hat_vtokp_prot` confirms the kernel drives the [68030 MMU via the SVR4 HAT layer](../how-it-works/kernel-architecture.md). ✅
 
-**Why does it have to be compressed?** An 880 KB floppy cannot hold a full uncompressed SVR4 kernel plus the bootstrap. Compressing the kernel and decompressing it at boot is how the whole thing fits on one disk — and it is why [the boot process](../how-it-works/boot-process.md) has a visible decompression step.
+**Why compressed?** An 880 KB floppy cannot hold a full uncompressed ~1.17 MB SVR4 kernel plus the
+bootstrap. Compressing it (~668 KB) and decompressing at boot is how it fits — which is why
+[the boot process](../how-it-works/boot-process.md) has a visible decompression step.
+
+### Building a custom boot floppy ✅🟡
+
+Because the format is `compress` → ELF and the checksum is non-fatal, you can build a bootable floppy
+carrying **your own** kernel — splice your `compress -b16`'d kernel onto a donor's bootblock+bootstrap:
+
+```sh
+tools/build-bootfloppy.sh --donor amix_21_boot.adf --kernel my-unix.elf --out custom_boot.adf
+```
+
+The donor's first `0x2800` bytes are copied verbatim (bootblock checksum stays valid); a differing
+kernel just produces the cosmetic checksum warning. ✅ host round-trip verified; 🟡 not yet booted on
+real Amix — test in an emulator. See [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 
 ## Inspecting it yourself
 
@@ -4696,6 +4737,7 @@ Expected SHA-256: `0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65
 
 ## See also
 
+- [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) — the full decode + rebuild method behind this page.
 - [How Amix boots](../how-it-works/boot-process.md) — the runtime sequence this floppy kicks off.
 - [The boot-disk build pipeline](build-pipeline.md) — producing bootable media + the `make bootpart` path.
 - [Anatomy of the root floppy](anatomy-root-adf.md) — the UFS miniroot installer the boot kernel hands off to.
@@ -5232,157 +5274,276 @@ dd if=amix_21_patch.adf bs=1k skip=1 2>/dev/null | cpio -itv
 
 
 ================================================================================
+# FILE: docs/boot-disks/reverse-engineering-boot-adf.md
+================================================================================
+
+---
+title: Reverse-Engineering the Boot Floppy
+summary: How the Amix boot.adf kernel container was decoded — layout, the Unix-compress kernel, the non-fatal checksum — and how to rebuild a custom bootable floppy.
+status: reviewed
+---
+
+# Reverse-Engineering the Boot Floppy
+
+The Amix install/boot floppy (`boot.adf`) was, in this project's first draft, an open problem: its kernel
+was "compressed and checksummed in a raw bootstrap with no AmigaDOS filesystem," format unknown. **That
+is now solved.** This page documents the analysis, the evidence, and the practical upshot: you can build
+a custom bootable Amix floppy carrying your own kernel.
+
+All findings here were produced by analysing a real `amix_21_boot.adf` (SHA-256 in
+[`../../sources/CHECKSUMS.txt`](../../sources/CHECKSUMS.txt)) with `tools/inspect-adf.sh`, entropy
+mapping, LZW decompression, and capstone M68K disassembly of the bootstrap. They are reproducible with
+the tools in [`../../tools/`](../../tools/) on your own copy of the image.
+
+## TL;DR
+
+- The kernel is stored as a **standard Unix `compress` (`.Z`, LZW, 16-bit, block mode)** stream at file
+  offset **`0x2800`**. ✅ It decompresses to a **1,171,200-byte m68k ELF** kernel.
+- The "kernel file checksum" is a **16-bit folded ones-complement sum**, and a mismatch is
+  **non-fatal — the bootstrap prints a warning and boots anyway.** ✅
+- Therefore a custom bootable floppy = **`[donor bootblock+bootstrap] + [compress -b16 your-kernel.elf] + [zero pad to 880 KB]`**, built by [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ host-verified; 🟡 not yet booted on real Amix.
+
+## Disk layout (880 KB / 901,120-byte image) ✅
+
+| Range | Size | Contents |
+|---|---|---|
+| `0x000000`–`0x000400` | 1 KB | **AmigaDOS OFS bootblock** — `44 4f 53 00` (`DOS\0`) + checksum + start of bootstrap. The bootblock checksum **verifies to 0** (valid), so the Kickstart ROM boots it. |
+| `0x000400`–`0x002800` | ~9 KB | **Secondary bootstrap** — a4-relative compiled C using exec/DOS libraries; contains the LZW decompressor and the boot messages. |
+| `0x002800`–≈`0xa5c00` | ~668 KB | **Kernel**, as a Unix `compress` `.Z` stream (`1f 9d`, flags `0x90`). Decompresses to a 1,171,200-byte ELF. |
+| ≈`0xa5c00`–`0x0dc000` | ~220 KB | **Slack / free space** — fragments of the same kernel plus ~30% zeros. Not used by boot. |
+
+There is **no AmigaDOS filesystem** on the disk: `xdftool list` fails with `Invalid Root Block @880`.
+The disk is bootblock + raw bootstrap + raw payload, located by offset, not by file.
+
+## Step 1 — find the structure (entropy + magic)
+
+An entropy map (1 KB blocks) shows a low-entropy bootstrap (`0x0`–`0x2800`), then a long high-entropy
+region (compressed), then a lower-entropy tail (uncompressed slack). A magic-byte scan finds the Unix
+`compress` signature exactly at the bootstrap/payload boundary:
+
+```text
+offset 0x2800:  1f 9d 90 ...
+                ^^^^^      = compress(.Z) magic
+                      ^^   = 0x90 = block-mode (bit7) + 16-bit maxbits (0x10)
+```
+
+This was the key clue: `1f 9d` is **not** a custom format — it is `compress(1)`, ubiquitous on SVR4.
+
+## Step 2 — decompress the kernel ✅
+
+Feeding the bytes from `0x2800` to any standard `.Z` decoder yields an ELF:
+
+```sh
+dd if=amix_2.1_boot.adf bs=1 skip=$((0x2800)) | gzip -dc | head -c4 | xxd
+# 00000000: 7f45 4c46                                .ELF
+file <(dd if=amix_2.1_boot.adf bs=1 skip=$((0x2800)) | gzip -dc)
+#   ELF 32-bit MSB processor-specific, Motorola m68k, 68020, version 1 (SYSV)
+```
+
+The real ELF size is recovered from its own header (`e_shoff + e_shnum*e_shentsize` =
+`0x11de60 + 4*0x28` = **1,171,200**), which is how [`extract-kernel.sh`](../../tools/extract-kernel.sh)
+trims the trailing slack. Use it directly:
+
+```sh
+tools/extract-kernel.sh amix_2.1_boot.adf unix.elf
+```
+
+## Step 3 — confirm the decompressor in the bootstrap
+
+Disassembling the bootstrap (capstone, M68K, big-endian) shows the canonical `compress` reader, which
+removes any doubt that this is standard LZW:
+
+- A `rmask[]` table — `00 01 03 07 0f 1f 3f 7f ff` — written into the work struct at `$840(a2)`
+  (the exact bit-mask table from `compress.c`).
+- A `getcode` routine that reads the header and checks the first two bytes are `0x1f`, `0x9d`
+  (around file offset `0x1782`).
+
+## Step 4 — the checksum (and why it doesn't stop you) ✅
+
+After decompression the bootstrap verifies a checksum. The relevant code (file offsets):
+
+```text
+0bcc: move.l $c(a2),d2        ; d2 = 32-bit accumulator
+0bd0: lsr.l  #16,d2           ; d2 = acc >> 16
+0bd4: move.l $c(a0),d0
+0bd8: andi.l #$ffff,d0        ; d0 = acc & 0xffff
+0bde: add.l  d0,d2            ; fold: hi + lo
+0bec: move.l d2,d0 ; lsr #16  ; fold again -> 16-bit value
+0bf8: add.l  d2,d0
+0c0e: move.l $c(a0),d1
+0c12: cmp.l  $10(a3),d1       ; compare to EXPECTED (a disk descriptor field)
+0c16: beq.w  $c48             ; equal -> continue
+0c1a: ...print "WARNING! Kernel file checksum mismatch. / Expected %x, found %x."
+0c48: ...                     ; <-- the mismatch path FALLS THROUGH to here (== the match path)
+```
+
+So the checksum is a **16-bit folded ones-complement sum**, compared against an *expected* value carried
+in a disk descriptor. **Crucially, the mismatch branch only prints a warning and falls through to the
+same continuation (`0x0c48`) as the success path** — a checksum mismatch is **non-fatal**. A custom
+kernel boots even with a "wrong" checksum; you just see the warning.
+
+🟡 **Still open:** the exact byte-range summed and the on-disk location of the *expected* value are not
+pinned (candidate folds of the kernel and of the `.Z` did not match a value stored in the bootstrap).
+Pinning them would let a rebuilt floppy boot with no warning at all. This is a nice-to-have, not a blocker.
+
+## Step 5 — rebuild and round-trip ✅
+
+Re-compressing the extracted kernel with standard `compress -b 16` produces a `.Z` that decompresses to
+the **byte-identical** kernel (the encoder differs from the original by a handful of bytes, but `.Z`
+decoding is canonical, so the bootstrap will accept it). [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh)
+assembles a complete image and self-tests it:
+
+```sh
+# pull the kernel, (optionally relink it with your driver), then rebuild a floppy:
+tools/extract-kernel.sh   amix_2.1_boot.adf  unix.elf
+tools/build-bootfloppy.sh --donor amix_2.1_boot.adf --kernel unix.elf --out custom_boot.adf
+#   donor bootblock+bootstrap: 0x0..0x2800 (10240 bytes)
+#   kernel ... -> compress -b16 = ... bytes
+#   self-test: floppy decompresses to the IDENTICAL kernel ✅
+```
+
+The donor's first `0x2800` bytes are copied **verbatim**, so the AmigaDOS bootblock checksum stays valid.
+
+## What this unlocks — and the honest caveats
+
+- ✅ **Extract** the kernel from any `boot.adf` → ELF.
+- ✅ **Rebuild** a bootable floppy from a donor bootstrap + any (same-size-or-smaller) kernel ELF; the
+  whole pipeline round-trips on the host.
+- ✅ Custom **kernels boot despite the checksum** (cosmetic warning only).
+- 🟡 **Not yet booted on real Amix.** Verify any rebuilt floppy in
+  [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md)
+  before trusting it. The kernel must still fit (compressed) in `880 KB − 0x2800`.
+- 🟡 To boot with **no** checksum warning, the summed range + expected-value location need pinning
+  (see Step 4). Dynamic analysis under an emulator is the obvious next step.
+
+For the broader "add a driver to a boot disk" decision (this vs. relinking the on-HD boot partition),
+see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
+
+## See also
+- [Anatomy of the Boot Floppy](anatomy-boot-adf.md) — the byte-level breakdown this page is built on.
+- [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md) — the two delivery surfaces.
+- [The Boot-Disk Tooling Pipeline](build-pipeline.md) — all the `tools/` scripts.
+- [Building & installing a kernel](../drivers/kernel-build.md) — producing the kernel you compress.
+
+## Sources
+- Primary analysis of `amix_21_boot.adf` (2026-06): `tools/inspect-adf.sh`, entropy mapping, `gzip`/`zcat`
+  LZW decompression, capstone M68K disassembly; round-trip via `tools/extract-kernel.sh` +
+  `tools/build-bootfloppy.sh`. Recorded in the research brief §3, §10, §13 — [`../../sources/research-brief.md`](../../sources/research-brief.md).
+- Unix `compress`/`.Z` LZW format (magic `1f 9d`, flags byte = block-mode | maxbits).
+- ELF32 header fields for size recovery (`e_shoff`, `e_shnum`, `e_shentsize`).
+
+
+================================================================================
 # FILE: docs/boot-disks/adding-drivers-to-boot-disk.md
 ================================================================================
 
 ---
 title: Adding Drivers to a Custom Boot Disk
-summary: Strategies for shipping extra hardware drivers in a custom boot/install disk — what works today and what is still an open reverse-engineering problem.
+summary: Three ways to ship extra hardware drivers — relink the on-HD boot partition, rebuild a custom bootable floppy, or ship a self-extracting add-on disk — and exactly how tractable each is.
 status: draft
 ---
 
 # Adding Drivers to a Custom Boot Disk
 
-If you want an extra hardware driver available on an Amix machine, **there are two completely
-different surfaces** and they are not equally tractable:
+If you want an extra hardware driver available on an Amix machine, there are **three delivery surfaces**.
+All three are now tractable — an update from this project's first draft, where the bootable-floppy path
+was an open reverse-engineering problem. It is now solved (see
+[Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md)).
 
-1. **The on-HD boot partition** — *well understood.* You relink the driver into the kernel via
-   `/usr/sys` and write the result into the boot partition with `make bootpart`. This is the normal,
-   supported path and it works today. ✅
-2. **The boot/install *floppy* (`boot.adf`)** — *not fully reverse-engineered.* The kernel on that
-   floppy is **compressed and checksummed inside a raw bootstrap image with no AmigaDOS
-   filesystem**, so regenerating a custom boot floppy with your driver baked in is an open problem.
-   🔴
+| Surface | Use it for | Status |
+|---|---|---|
+| **(a) On-HD boot partition** | adding a driver to an already-installed system | ✅ supported, normal kernel rebuild |
+| **(b) Custom bootable floppy** | install/recovery media that boots *your* kernel | ✅ host-verified · 🟡 not yet booted on real Amix |
+| **(c) Self-extracting add-on disk** | *distributing* a driver to other users to install | ✅ host-verified · 🟡 not yet run on real Amix |
 
-Because of that asymmetry, the realistic way to *ship* an add-on driver to other users is **not** a
-modified boot floppy at all. It is a **self-extracting add-on disk** modeled on the real Amix 2.1
-patch disk: a small `/sbin/sh` header followed by a cpio archive that drops your driver `.o` and an
-installer onto a running system, then relinks the kernel. That model is described below and is what
-[`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh) implements.
+A driver in Amix is **statically linked into a monolithic kernel — there are no loadable modules** ✅, so
+every path below ultimately means "relink the kernel with your driver, then deliver that kernel." The
+relink is the same in all three; they differ only in packaging.
 
-This page is the strategy/decision page. For the mechanics it points to:
+This is the strategy/decision page. The mechanics live in:
 
-- [Building & installing a kernel](../drivers/kernel-build.md) — the `/usr/sys` relink + `make bootpart`.
-- [Anatomy of the boot ADF](anatomy-boot-adf.md) — why the floppy is hard.
-- [Anatomy of the patch ADF](anatomy-patch-adf.md) — the self-extracting model we copy.
-- [The build pipeline](build-pipeline.md) — end-to-end tooling.
+- [Building & installing a kernel](../drivers/kernel-build.md) — the `/usr/sys` relink (the shared core).
+- [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) — how the floppy format was decoded.
+- [Anatomy of the boot ADF](anatomy-boot-adf.md) / [patch ADF](anatomy-patch-adf.md) — the formats we build.
+- [The build pipeline](build-pipeline.md) — the `tools/` end-to-end.
 
-## Why "boot disk" is two different problems
+## The shared core: relink the kernel ✅
 
-Amix boots from one of two places ✅:
-
-- **A SCSI hard disk** with an Amiga [Rigid Disk Block (RDB)](../how-it-works/filesystems-and-disks.md)
-  layout that includes a dedicated **2 MB boot/bootstrap partition** (`BOOTSIZE=2` MB →
-  `BOOTLEN = BOOTSIZE*2048` blocks, from the root.adf install scripts). ✅
-- **A boot floppy** (`boot.adf`) used for installation and recovery. ✅
-
-The Superkickstart ROM boots from SCSI HD by default, or from a boot floppy in DF0; right-clicking
-at power-on loads AmigaOS instead ✅. See the [boot process](../how-it-works/boot-process.md) page
-for the full chain.
-
-The HD boot partition and the boot floppy carry *the same kind of payload* — a compressed,
-checksummed kernel plus a 68k bootstrap — but the HD path has a **supported tool to rewrite it**
-(`make bootpart`) and the floppy path does not. That is the entire reason this page exists.
-
-## Surface (a): the on-HD boot partition — supported, do this
-
-This is just the normal kernel rebuild. A driver in Amix is **statically linked into a monolithic
-kernel; there are no loadable modules** ✅, so "adding a driver to the boot partition" means
-"relink the kernel and write it to the boot partition."
-
-The full procedure is [Building & installing a kernel](../drivers/kernel-build.md); the short
-version, run on a live 2.1 system as root ✅:
+Run on a live 2.1 system as root ([full procedure](../drivers/kernel-build.md)):
 
 ```sh
 cd /usr/sys
-# 1. put your driver .o in its subdir, add it to that subdir's Makefile,
-#    and register it in master.d/kernel.c (cdevsw[]/bdevsw[], int2_tbl[], io_init[]).
-# 2. clean stale objects, then relink
-rm -f amiga/config/unix.o master.d/exp unix     # avoid linking a stale kernel
-make                                            # -> relocunix
-# 3. install the new kernel AND rewrite the boot partition
-cp relocunix /stand
-make bootpart KERNEL=relocunix
-# 4. create the device node, then reboot
-mknod /dev/<name> c <major> <minor>
-shutdown -i6
+# 1. put your driver .o in its subdir + that subdir's Makefile, and register it in
+#    master.d/kernel.c (cdevsw[]/bdevsw[], int2_tbl[], io_init[]).
+rm -f amiga/config/unix.o master.d/exp unix     # drop stale objects
+make                                            # -> relocunix (an m68k ELF)
 ```
 
-Notes that matter for getting it right:
+You now have a relinked kernel (`relocunix`). The three surfaces below each take it from here.
 
-- The kernel image is called **`relocunix`** on 2.1 systems and in the modern repos; the 1990 Ditto
-  paper calls the equivalent image **`rdbunix`** — a historical rename, so match what your version
-  produces. 🟡
-- `make bootpart KERNEL=relocunix` is what actually **writes the boot partition** from the staged
-  kernel ✅. This is the step that makes the driver "live in the boot disk."
-- **Always keep the old `/unix` / boot kernel as a fallback** — a bad relink can leave the machine
-  unbootable; the paper makes this explicit ✅.
-- Amix `/bin/sh` is **pre-POSIX** (no `$(...)`, no `grep -q`) ✅ — if you script the `kernel.c`
-  edits, use backticks and `>/dev/null`. This is a real install-script gotcha from the VA2000 work.
+> The kernel image is `relocunix` on 2.1 systems and in the modern repos; the 1990 Ditto paper calls it
+> `rdbunix` — a historical rename, match what your version produces. 🟡 Amix `/bin/sh` is **pre-POSIX**
+> (no `$(...)`, no `grep -q`) ✅ — script the `kernel.c` edits with backticks. The
+> [VA2000 case study](../drivers/case-studies/va2000.md) is a complete worked patch set.
 
-For a complete worked patch set that does exactly this — patching `amiga/driver/Makefile`,
-`master.d/kernel.c`, then `make install` / `cp relocunix /stand` / `make bootpart` — see the
-[VA2000 framebuffer case study](../drivers/case-studies/va2000.md) ✅. For a STREAMS/network driver
-the link step differs (cross-compiled ELF converted with `elf2brel`, then `make oldboot`); see the
-[Hydra network-driver case study](../drivers/case-studies/hydra.md) ✅.
+## Surface (a): the on-HD boot partition — for an installed system ✅
 
-**Bottom line:** if the machine already boots Amix, you do **not** need a custom floppy to add a
-driver. Relink and `make bootpart`. The floppy problem below only matters for the *install/recovery*
-media itself.
+If the machine already boots Amix, you do **not** need any custom floppy. Stage the relinked kernel and
+let `make bootpart` write it into the 2 MB boot partition:
 
-## Surface (b): the boot/install floppy — open RE problem 🔴
+```sh
+cp relocunix /stand
+make bootpart KERNEL=relocunix     # writes the boot partition from the staged kernel
+mknod /dev/<name> c <major> <minor>
+shutdown -i6                       # reboot
+```
 
-The boot floppy is genuinely hard, and we are honest about that here. From our own analysis of
-`amix_21_boot.adf` (via [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh)) ✅:
+`make bootpart` is the supported tool that emits the compressed+checksummed boot payload for you ✅.
+**Always keep the old `/unix` / boot kernel as a fallback** — a bad relink can leave the machine
+unbootable; the Ditto paper makes this explicit ✅. For a STREAMS/network driver the link step differs
+(cross-compiled ELF converted with `elf2brel`, then `make oldboot`); see the
+[Hydra case study](../drivers/case-studies/hydra.md).
 
-- It begins with a valid **AmigaDOS OFS bootblock**: bytes `44 4f 53 00` (`DOS\0`), a checksum,
-  then 68k bootstrap code — enough for the Kickstart ROM to boot it. ✅
-- **There is no AmigaDOS filesystem on it.** `xdftool list` fails with `Invalid Root Block @880`;
-  the disk is bootblock + raw bootstrap + payload, not a mountable AmigaDOS volume. ✅
-- The bootstrap **loads and decompresses a kernel with checksum verification.** The embedded strings
-  prove it: `"Decompression failed!"`, `"WARNING! Kernel decompression overrun."`,
-  `"WARNING! Kernel file checksum mismatch."`, `"Kernel may have been corrupted."` ✅
-- `binwalk` finds **no clean ELF** in the payload, only noise / false-positive "JBOOT" hits —
-  consistent with the kernel being **compressed**. ✅
+## Surface (b): a custom bootable floppy — solved ✅🟡
 
-So to regenerate a custom boot floppy with your driver in it, you would have to reproduce, in order,
-all of:
+The boot floppy is no longer a black box. From the [reverse-engineering writeup](reverse-engineering-boot-adf.md):
 
-1. The **compression format** the bootstrap expects (unknown — not a clean gzip/LZ signature that
-   our tooling recognizes). 🔴
-2. The **checksum algorithm and where the expected value is stored** (the bootstrap verifies a
-   "kernel file checksum"; the algorithm is not documented). 🔴
-3. The **on-disk layout** the bootstrap uses to find the payload (no AmigaDOS FS, so it is raw
-   offsets, not files). 🔴
-4. A correct **AmigaDOS OFS bootblock** with valid checksum so the ROM will boot it (this part is a
-   known, documented format — the *only* easy step). ✅
+- The kernel is a **standard Unix `compress` (`.Z`, LZW `-b16`) stream at offset `0x2800`** that
+  decompresses to an m68k ELF. ✅
+- The "Kernel file checksum" is a 16-bit folded sum, and **a mismatch is non-fatal** — the bootstrap
+  prints `WARNING! Kernel file checksum mismatch.` and **boots anyway**. ✅
 
-Steps 1–3 are **not fully reverse-engineered**. Until they are, you cannot mechanically build a
-`boot.adf` that boots your own kernel. Treat any claim that a custom Amix boot floppy "just works"
-as 🔴 unless it shows the compression + checksum recipe.
+So a custom bootable floppy is just: **donor bootblock+bootstrap + your `compress`'d kernel + zero pad**.
+[`tools/build-bootfloppy.sh`](../../tools/build-bootfloppy.sh) does it (and self-tests the round-trip):
 
-> **Note:** This is specifically about the *floppy*. The HD boot **partition** has the same payload
-> shape but a supported writer (`make bootpart`) ✅, which sidesteps every problem above. Whatever
-> `make bootpart` does to compress + checksum is encapsulated in the (object-only) build tooling
-> that ships with Amix — we get the result without reproducing the format. That is why surface (a)
-> is solved and surface (b) is not.
+```sh
+tools/extract-kernel.sh   amix_2.1_boot.adf  unix.elf        # (optional) pull the stock kernel
+# ... relink unix.elf with your driver via /usr/sys, or supply your own kernel ELF ...
+tools/build-bootfloppy.sh --donor amix_2.1_boot.adf --kernel unix.elf --out custom_boot.adf
+```
 
-See [Anatomy of the boot ADF](anatomy-boot-adf.md) for the full byte-level breakdown.
+What you get and what to watch:
 
-## The realistic path: a self-extracting add-on disk
+- ✅ The donor's first `0x2800` bytes (bootblock + bootstrap) are copied **verbatim**, so the AmigaDOS
+  bootblock checksum stays valid and the ROM still boots it.
+- ✅ The build **self-tests**: it confirms the floppy decompresses back to the exact kernel you supplied.
+- 🟡 Your kernel must fit **compressed** within `880 KB − 0x2800` (≈ 868 KB of `.Z`). The stock kernel
+  compresses to ~668 KB, leaving headroom for a driver or two.
+- 🟡 If your kernel differs from the donor's, you'll see the cosmetic **checksum-mismatch warning** at
+  boot. It does not stop the boot. (To silence it you'd need to pin the checksum's exact range and
+  on-disk location — see [open items](#whats-still-open) — but you don't need to.)
+- 🟡 **Not yet booted on real Amix.** The format work is host-verified end-to-end; verify any rebuilt
+  floppy in [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md)
+  before relying on it.
 
-The right way to *distribute* a driver to other users is the **patch-disk model** ✅, not a modified
-boot floppy. The real Amix 2.1 patch disk (`amix_21_patch.adf`) is a self-extracting hybrid we have
-**fully decoded** ✅, and it is a clean template for an add-on/driver disk.
+## Surface (c): a self-extracting add-on disk — to distribute a driver ✅🟡
 
-Its structure ✅ (full detail in [Anatomy of the patch ADF](anatomy-patch-adf.md)):
+To *ship* a driver to other users (who already run Amix), the cleanest vehicle is a **self-extracting
+disk modeled on the real Amix 2.1 patch disk** ([fully decoded](anatomy-patch-adf.md)): a ≤1 KB
+`/sbin/sh` header followed by an SVR4 `cpio` archive. The header extracts the payload into the
+filesystem and runs your installer, which does the surface-(a) relink on the user's machine.
 
-- **Offset 0:** a `#!/sbin/sh` header script, with the comment `# THIS FILE 1024 CHARACTERS MAX` —
-  i.e. the header is constrained to the **first 1 KB**.
-- **After byte 1024:** a single **SVR4 ASCII cpio (`070701`) archive** of the payload (the patch
-  ships `var/patch/…` members, including an `apply` script and an LHA payload).
-
-The header script's core is the self-extraction idiom ✅:
+The real patch disk's self-extraction idiom ✅:
 
 ```sh
 QUIETDD=y dd if="$0" bs=1k iseek=1 2>/dev/null | (cd /; QUIETCPIO=y cpio -icdmuv)
@@ -5390,108 +5551,63 @@ uncompress -f /var/patch/*.Z
 exec /var/patch/apply
 ```
 
-It reads its **own image** (`$0`), skips the 1 KB header (`iseek=1` at `bs=1k`), and pipes the rest
-into `cpio` to extract the payload into the filesystem, then runs the bundled installer. The real
-patch disk also gates on identity and version before doing anything ✅: it requires `uid=0(root)`
-and greps the live `uname -v` for `^2\.1.* 08004..$` (else it prints "USE AT YOUR OWN RISK").
+Build one with [`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh):
 
-**To ship a driver this way**, your payload's installer does the surface-(a) work: drop the driver
-`.o` into `/usr/sys`, patch the Makefile and `master.d/kernel.c`, relink, `make bootpart`, `mknod`,
-and tell the user to reboot. The disk is just a delivery vehicle; the actual install is the kernel
-relink described above.
+```sh
+tools/build-custom-bootdisk.sh --payload ./payload --out my-driver-addon.adf --install var/addon/install
+```
 
-### Recommended workflow today
+Lay out `./payload` so it extracts under `/` (e.g. `var/addon/install` for the installer plus your
+driver source/`.o`); keep the installer **pre-POSIX-shell-safe** and the header **under 1024 bytes** ✅.
+This disk runs *on* an already-booted Amix — it is not itself bootable.
 
-1. Build and **test the driver the manual way first** — relink it into a live system's boot
-   partition per [Building & installing a kernel](../drivers/kernel-build.md). Do not automate
-   anything you have not done by hand once.
-2. Author an **installer script** that performs those exact steps non-interactively. Keep it
-   **pre-POSIX-shell-safe** (backticks, no `$(...)`, no `grep -q`) ✅ and keep the on-disk header
-   under **1024 bytes** ✅.
-3. Lay out a **payload directory** whose contents extract under `/` (e.g. `var/addon/install` for
-   the installer, plus your driver source/`.o`).
-4. Build the self-extracting image with
-   [`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh):
+## Which surface should I use?
 
-   ```sh
-   tools/build-custom-bootdisk.sh \
-       --payload ./payload \
-       --out my-driver-addon.adf \
-       --install var/addon/install
-   ```
-
-   The tool writes the ≤1 KB `/sbin/sh` header, appends a `newc` cpio of the payload, pads to floppy
-   size, and **self-tests the structure** (it lists the cpio members back via
-   `dd … skip=1 | cpio -it`). ✅
-5. **Verify in an emulator** before trusting it. The generated image is structure-validated on the
-   host but **UNTESTED on real Amix** 🟡 — boot a known-good Amix in
-   [WinUAE](../getting-started/emulation-winuae.md) or
-   [FS-UAE](../getting-started/emulation-fs-uae.md) and run the disk through.
-
-This add-on disk is **not** a boot floppy — it runs *on* an already-installed, already-booted Amix.
-It deliberately avoids the compressed/checksummed kernel format entirely, which is exactly why it
-works while a custom `boot.adf` does not.
-
-### What this approach does and does not solve
-
-| Goal | Status | How |
+| Goal | Use | Status |
 |---|---|---|
-| Add a driver to a running system's boot partition | ✅ works | relink + `make bootpart` ([kernel-build](../drivers/kernel-build.md)) |
-| Ship a driver to other users to install | ✅ works | self-extracting add-on disk (patch-disk model) |
-| Make a custom **bootable/installer** floppy with your kernel | 🔴 open | needs the boot.adf compression + checksum format |
-| Replace the install kernel on the floppy | 🔴 open | same blocker |
+| Add a driver to a running system | (a) relink + `make bootpart` | ✅ works |
+| Make custom install/recovery media that boots your kernel | (b) `build-bootfloppy.sh` | ✅ host-verified · 🟡 emulator-test |
+| Distribute a driver for users to install | (c) `build-custom-bootdisk.sh` | ✅ host-verified · 🟡 emulator-test |
 
-## Open reverse-engineering problems
+Recommended workflow regardless: **build and test the driver the manual way first** (relink into a live
+system per [kernel-build](../drivers/kernel-build.md)) before automating any packaging.
 
-These are the gaps that stand between us and a fully custom boot/install floppy. Carry them as 🔴:
+## What's still open
 
-- **boot.adf kernel compression format** — the bootstrap decompresses the kernel, but the
-  compression scheme is unidentified (`binwalk` sees only noise). 🔴
-- **boot.adf kernel checksum** — algorithm and the location of the stored expected value are
-  undocumented; the bootstrap explicitly checks a "kernel file checksum." 🔴
-- **boot.adf payload layout** — with no AmigaDOS filesystem, the bootstrap finds the kernel by raw
-  offset/structure that is not yet mapped. 🔴
-- **What `make bootpart` actually emits** — it clearly produces the compressed+checksummed boot
-  payload, but it relies on object-only Amix build tooling; the format is consumed, not reproduced,
-  by us. Documenting its output would also crack the floppy problem. 🔴
-- **Exact RDB partition type IDs Amix uses** (boot vs swap vs UFS) are not documented, which matters
-  if you ever script creation of a boot partition from scratch rather than letting the installer do
-  it. 🔴
+The boot floppy format is solved; these are the remaining loose ends, none of them blocking:
 
-If you reverse-engineer any of these, that is the missing piece for a genuinely custom Amix install
-floppy — please contribute it back.
+- 🟡 **Silence the checksum warning.** The checksum is a 16-bit folded sum and is *non-fatal*, but its
+  exact summed byte-range and the on-disk location of the *expected* value aren't pinned, so a rebuilt
+  custom kernel boots with a cosmetic warning. Pinning it (likely via dynamic analysis under an
+  emulator) would remove the warning. See [the RE writeup](reverse-engineering-boot-adf.md#step-4--the-checksum-and-why-it-doesnt-stop-you).
+- 🟡 **Real-hardware/emulator verification** of `build-bootfloppy.sh` output — the pipeline round-trips
+  on the host but hasn't been booted on Amix yet.
+- 🔴 **Exact RDB partition type IDs** Amix uses (boot vs swap vs UFS) are undocumented — relevant only
+  if you script creating a boot *partition* from scratch rather than letting the installer do it.
+
+If you boot-test a rebuilt floppy, or pin the checksum, please contribute the result back.
 
 ## See also
-
-- [Building & installing a kernel](../drivers/kernel-build.md) — the relink + `make bootpart` you
-  automate.
-- [Anatomy of the boot ADF](anatomy-boot-adf.md) — why the floppy is the hard surface.
-- [Anatomy of the patch ADF](anatomy-patch-adf.md) — the self-extracting model this page copies.
-- [The build pipeline](build-pipeline.md) — end-to-end disk-building tooling.
-- [VA2000 framebuffer case study](../drivers/case-studies/va2000.md) — a real driver relinked into a
-  boot partition.
-- [Hydra network-driver case study](../drivers/case-studies/hydra.md) — a cross-compiled STREAMS
-  driver (`elf2brel`, `make oldboot`).
+- [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) — how the format was cracked.
+- [Building & installing a kernel](../drivers/kernel-build.md) — the relink all three surfaces share.
+- [Anatomy of the boot ADF](anatomy-boot-adf.md) / [patch ADF](anatomy-patch-adf.md) — the formats built here.
+- [The build pipeline](build-pipeline.md) — the `tools/` end-to-end.
+- [VA2000 case study](../drivers/case-studies/va2000.md) · [Hydra case study](../drivers/case-studies/hydra.md).
 
 ## Sources
-
-- `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh): OFS bootblock
-  (`DOS\0` + checksum), no AmigaDOS FS (`xdftool` "Invalid Root Block @880"), kernel
-  decompression/checksum strings, `binwalk` finding no clean ELF — research brief §3, §10.
-- `amix_21_patch.adf` analysis: 1 KB `/sbin/sh` header, `# THIS FILE 1024 CHARACTERS MAX`, the
-  `dd … iseek=1 | cpio -icdmuv` self-extraction idiom, SVR4 `070701` cpio payload — research brief §10.
-- Kernel install flow (`/usr/sys` relink → `relocunix`/`rdbunix` → `cp /stand` →
-  `make bootpart KERNEL=relocunix` → reboot) — research brief §3, §5, §6.
-- Monolithic kernel, no loadable modules; static driver linking — research brief §4, §5.
-- VA2000 and Hydra driver-install procedures — research brief §6; repos
+- [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) and research brief §3, §10, §13
+  ([`../../sources/research-brief.md`](../../sources/research-brief.md)): the `compress`/LZW kernel at
+  `0x2800` → m68k ELF, the 16-bit folded **non-fatal** checksum (bootstrap disassembly), and the
+  host-verified round-trip via `tools/extract-kernel.sh` + `tools/build-bootfloppy.sh`.
+- Kernel relink flow (`/usr/sys` → `relocunix` → `make bootpart` / `make oldboot`; keep old `/unix`) —
+  Ditto paper; research brief §3, §5, §6.
+- Patch-disk self-extraction model — `amix_21_patch.adf` analysis; research brief §10;
+  [`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh).
+- VA2000 / Hydra driver-install procedures — research brief §6; repos
   [`github.com/asokero/va2000-amix`](https://github.com/asokero/va2000-amix),
   [`github.com/isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
-- RDB boot partition (`BOOTSIZE=2` MB / `BOOTLEN = BOOTSIZE*2048`), pre-POSIX `/bin/sh`,
-  open-questions list — research brief §3, §6, §13.
-- [`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh) (this repo) — the
-  self-extracting add-on-disk builder described above.
-- End-user/historical install media: [amigaunix.com](https://www.amigaunix.com/doku.php/home) and
-  the Amix images on [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
+- Install media (user-supplied): [amigaunix.com](https://www.amigaunix.com/doku.php/downloads) ·
+  [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
 
 
 ================================================================================
@@ -5500,17 +5616,19 @@ floppy — please contribute it back.
 
 ---
 title: The Boot-Disk Tooling Pipeline
-summary: What the tools/ scripts do — inspect, unpack, and (scaffolded) rebuild Amix disk images, plus the prerequisites they need.
+summary: What the tools/ scripts do — inspect, extract a kernel, rebuild a bootable floppy, unpack a miniroot, build an add-on disk, plus the prerequisites they need.
 status: draft
 ---
 
 # The Boot-Disk Tooling Pipeline
 
-This page documents the four scripts under `tools/` in this repository that
-work with Amix floppy images: `inspect-adf.sh`, `unpack-root.sh`, `build-custom-bootdisk.sh`, and
-`gen-llms-full.sh`. Two are read-only analysis tools, one builds an add-on disk image, and one
-regenerates the LLM corpus. **Every tool that touches a disk image operates on a *user-supplied*
-image — none of them ship, contain, or require a copy of the proprietary Amix media.** ✅
+This page documents the scripts under `tools/` in this repository that work with Amix floppy images:
+`inspect-adf.sh`, `extract-kernel.sh`, `build-bootfloppy.sh`, `unpack-root.sh`,
+`build-custom-bootdisk.sh`, and `gen-llms-full.sh`. They cover analysis (inspect, unpack), the
+now-solved [boot-floppy decode/rebuild](reverse-engineering-boot-adf.md) (extract a kernel, build a
+bootable floppy), add-on-disk packaging, and LLM-corpus regeneration. **Every tool that touches a disk
+image operates on a *user-supplied* image — none of them ship, contain, or require a copy of the
+proprietary Amix media.** ✅
 
 If you just want the end-to-end "I have a driver, how do I get it onto a disk" story, read
 [adding drivers to a boot disk](adding-drivers-to-boot-disk.md) first; this page is the reference for
@@ -5527,8 +5645,10 @@ the underlying tooling.
 | Script | Status | What it does | Mutates input? | Writes to |
 |---|---|---|---|---|
 | `inspect-adf.sh` | ✅ done | Classify boot/root/patch; dump bootblock, embedded objects (ELF/cpio/tar), installer/bootstrap strings | No (read-only) | stdout |
+| `extract-kernel.sh` | ✅ done | Decompress the `compress`/LZW kernel out of a `boot.adf` → m68k ELF (trimmed via ELF header) | No (read-only) | `<out>.elf` |
+| `build-bootfloppy.sh` | ✅ host-verified · 🟡 not Amix-tested | Build a **bootable** `boot.adf` = donor bootblock+bootstrap + `compress -b16` of your kernel; self-tests the round-trip | No (reads donor + kernel, writes new image) | `--out <image.adf>` |
 | `unpack-root.sh` | ✅ done (carve-based) | Carve embedded objects out of a UFS miniroot; dump installer script text | No (read-only) | `tools/_work/<image>/` |
-| `build-custom-bootdisk.sh` | 🟡 scaffold | Build a *self-extracting add-on* disk (1 KB `/sbin/sh` header + cpio payload), modeled on the real patch disk | No (reads a payload **dir**, writes a new image) | `--out <image.adf>` |
+| `build-custom-bootdisk.sh` | ✅ host-verified · 🟡 not Amix-tested | Build a *self-extracting add-on* disk (1 KB `/sbin/sh` header + cpio payload), modeled on the real patch disk | No (reads a payload **dir**, writes a new image) | `--out <image.adf>` |
 | `gen-llms-full.sh` | ✅ done | Concatenate all `docs/` pages into `llms-full.txt` | n/a | `llms-full.txt` |
 
 `tools/_work/` is gitignored, so extraction scratch never ends up in a commit. ✅
@@ -5542,7 +5662,10 @@ The scripts prefer richer tools when present and degrade gracefully, but for ful
 | `binwalk` | inspect, unpack | Find embedded ELF / cpio / tar / gzip signatures and their offsets |
 | `xdftool` (from **amitools**) | inspect | Attempt an AmigaDOS directory listing (expected to *fail* on boot/root disks — see below) |
 | `sha256sum` | inspect | Print the image checksum so you can match `sources/CHECKSUMS.txt` |
-| `cpio` (newc) **or** `bsdtar` | build, unpack | Build / list the SVR4 ASCII (newc) cpio archive |
+| `cpio` (newc) **or** `bsdtar` | build-custom-bootdisk, unpack | Build / list the SVR4 ASCII (newc) cpio archive |
+| `gzip` / `zcat` / `uncompress` | extract-kernel, build-bootfloppy | Decode the Unix `compress` (`.Z`, LZW) kernel stream |
+| `compress` (or `ncompress`) | build-bootfloppy | Pack a kernel ELF back into `.Z` (`-b 16`, block mode) |
+| `od` (GNU) | extract-kernel, build-bootfloppy | Locate the `.Z` magic and read ELF size fields |
 | `dd`, `strings`, `xxd`, `wc`, `tar` | all | Carving, hex dumps, string scans, size math |
 
 The authoritative, install-by-platform list lives in `tools/requirements.md` — consult it for exact
@@ -5612,14 +5735,50 @@ Notes that match the brief:
 - **`xdftool list` is *expected* to fail** on boot and root disks — there is no AmigaDOS filesystem to
   list. On boot.adf it reports `Invalid Root Block @880`; on root.adf, `Invalid Boot Block @0`. A clean
   listing would mean you handed it the wrong kind of image. ✅
-- On **boot.adf**, binwalk finds **no clean ELF**, only noise / false-positive `JBOOT` hits — consistent
-  with the kernel being **compressed and checksummed** rather than a flat ELF. ✅
+- On **boot.adf**, binwalk reports only noise / false-positive `JBOOT` hits because it doesn't flag a
+  `.Z` stream — but the kernel **is** a standard Unix `compress` (LZW) stream at `0x2800`; decode it with
+  `extract-kernel.sh`. See [the RE writeup](reverse-engineering-boot-adf.md). ✅
 - On **root.adf**, the `[root]` section greps for the installer/tape-pipeline strings
   (`/dev/rmt`, `cpio`, `amixpkg`, `BOOTSIZE`, `/dev/dsk`, `mkfs`, `fsck`, `ufs`, `viper`). ✅
 - On **patch.adf**, the `[patch]` section prints the leading ~1 KB `/sbin/sh` bootstrap and the cpio
   member names (`var/patch/...`). ✅
 
 **Exit status:** `0` success, `2` usage error (no image given), `3` if the file is unreadable. ✅
+
+## `extract-kernel.sh` — pull the kernel out of a boot floppy ✅
+
+`extract-kernel.sh` decodes the [boot floppy's `compress`/LZW kernel](reverse-engineering-boot-adf.md)
+into a plain m68k ELF. It finds the `1f 9d` (`.Z`) magic after the bootstrap, decompresses to EOF, and
+trims the result to the true ELF size (`e_shoff + e_shnum*e_shentsize`). Read-only on input.
+
+```sh
+tools/extract-kernel.sh amix_2.1_boot.adf unix.elf
+#   compressed kernel (.Z) found at offset 0x2800
+#   wrote unix.elf
+#     ELF: 32-bit MSB m68k; size 1171200 bytes (0x11df00)  [e_shoff=0x11de60 e_shnum=4]
+```
+
+**Requires:** `dd`, `od` (GNU), and one of `gzip` / `zcat` / `uncompress`.
+
+## `build-bootfloppy.sh` — rebuild a bootable floppy with your kernel ✅🟡
+
+`build-bootfloppy.sh` produces a **bootable** `boot.adf` carrying your own kernel, by reusing a donor
+floppy's bootblock+bootstrap (first `0x2800` bytes, copied verbatim so the bootblock checksum stays
+valid) and replacing the compressed kernel with `compress -b16` of your ELF.
+
+```sh
+tools/build-bootfloppy.sh --donor amix_2.1_boot.adf --kernel unix.elf --out custom_boot.adf
+#   donor bootblock+bootstrap: 0x0..0x2800 (10240 bytes)
+#   kernel ... -> compress -b16 = ... bytes
+#   self-test: floppy decompresses to the IDENTICAL kernel ✅
+```
+
+It **self-tests** by decompressing its own output and comparing to the input kernel. Your kernel must fit
+*compressed* in `880 KB − 0x2800`. If the kernel differs from the donor's you'll get a harmless
+`WARNING! Kernel file checksum mismatch.` at boot (the checksum is [non-fatal](reverse-engineering-boot-adf.md#step-4--the-checksum-and-why-it-doesnt-stop-you)).
+✅ host round-trip verified; 🟡 **not yet booted on real Amix** — test in an emulator.
+
+**Requires:** `dd`, `od`, `compress` (or `ncompress`), and `gzip`/`zcat` (for the self-test).
 
 ## `unpack-root.sh` — carve the UFS miniroot
 
@@ -5688,30 +5847,25 @@ under `/`. Put your installer at e.g. `var/addon/install` and pass `--install va
 4. **Structural self-test:** dumps the header's first lines and re-lists the cpio members with
    `dd if=<out> bs=1k skip=1 | cpio -it`, proving the archive is well-formed.
 
-### What this is NOT — the unsolved part 🔴
+### Add-on disk vs. bootable floppy vs. boot partition
 
-> **🔴 This does NOT regenerate the real, bootable Amix *boot* floppy.** The compressed, checksummed
-> bootstrap/kernel format of `boot.adf` is **not yet fully reverse-engineered**. There is no working tool —
-> here or anywhere public — that rebuilds a bootable `boot.adf` from a custom kernel. This script only
-> produces an **add-on / driver-install** disk, and it is **structure-validated but UNTESTED on real Amix**
-> (🟡) — verify it in an emulator before trusting it.
+This script builds an **add-on / driver-install** disk that runs *on* an already-booted Amix — it is not
+itself bootable. For the other two delivery surfaces:
 
-The supported path for putting a *kernel* change onto a real system is not "rebuild the boot floppy"; it is
-**relink the kernel and write the on-disk boot partition**:
+- A **bootable** `boot.adf` carrying a custom kernel: use `build-bootfloppy.sh` (above) — the floppy
+  format is now [reverse-engineered](reverse-engineering-boot-adf.md), so this is solved (host-verified;
+  🟡 emulator-test pending).
+- Putting a kernel change onto an **installed** system: relink and write the on-disk boot partition with
+  `make bootpart` (run on Amix; see [kernel build](../drivers/kernel-build.md)):
+  ```sh
+  make install                         # produces /usr/sys/.../relocunix
+  cp relocunix /stand
+  make bootpart KERNEL=relocunix       # writes the 2 MB boot partition (BOOTSIZE=2 MB)
+  shutdown -i6                         # reboot
+  ```
 
-```sh
-# on the Amix system itself (see docs/drivers/kernel-build.md)
-make install                         # produces /usr/sys/.../relocunix
-cp relocunix /stand
-make bootpart KERNEL=relocunix       # writes the 2 MB boot partition (BOOTSIZE=2 MB)
-shutdown -i6                         # reboot
-```
-
-`make bootpart` is the kernel install mechanism Amix actually uses; the floppy-regeneration problem is
-specifically about producing fresh *removable* boot media, which remains an open gap. ✅ for the
-`make bootpart` flow / 🔴 for floppy regeneration. See
-[adding drivers to a boot disk](adding-drivers-to-boot-disk.md) for the decision tree (add-on disk vs.
-boot-partition relink) and [the kernel build page](../drivers/kernel-build.md) for the relink details.
+See [adding drivers to a boot disk](adding-drivers-to-boot-disk.md) for the full decision tree across all
+three surfaces.
 
 **Requires:** `cpio` (newc) **or** `bsdtar`; plus `dd` and `printf`. ✅
 
@@ -5743,20 +5897,27 @@ tools/inspect-adf.sh sources/floppy/amix_21_boot.adf
 tools/inspect-adf.sh sources/floppy/amix_21_root.adf
 tools/inspect-adf.sh sources/floppy/amix_21_patch.adf
 
-# 3. Carve the miniroot to study the installer scripts.
+# 3. Extract the kernel from the boot floppy (-> m68k ELF).
+tools/extract-kernel.sh sources/floppy/amix_21_boot.adf unix.elf
+
+# 4. (Optional) Rebuild a bootable floppy with your kernel. 🟡 verify in an emulator
+tools/build-bootfloppy.sh --donor sources/floppy/amix_21_boot.adf --kernel unix.elf --out custom_boot.adf
+
+# 5. Carve the miniroot to study the installer scripts.
 tools/unpack-root.sh sources/floppy/amix_21_root.adf
 
-# 4. (Optional) Build a self-extracting add-on disk for your driver. 🟡 untested on real Amix
+# 6. (Optional) Build a self-extracting add-on disk for your driver. 🟡 untested on real Amix
 tools/build-custom-bootdisk.sh --payload ./mydriver-payload --out ./mydriver-addon.adf \
     --install var/addon/install
 
-# 5. Regenerate the LLM corpus after editing docs.
+# 7. Regenerate the LLM corpus after editing docs.
 tools/gen-llms-full.sh
 ```
 
 ## See also
 
 - [Adding drivers to a boot disk](adding-drivers-to-boot-disk.md) — the decision tree this tooling serves.
+- [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) — the decode behind `extract-kernel.sh` / `build-bootfloppy.sh`.
 - [boot.adf anatomy](anatomy-boot-adf.md), [root.adf anatomy](anatomy-root-adf.md),
   [patch.adf anatomy](anatomy-patch-adf.md) — what each disk type contains, in detail.
 - [The kernel build](../drivers/kernel-build.md) — the `make bootpart KERNEL=relocunix` boot-partition flow.

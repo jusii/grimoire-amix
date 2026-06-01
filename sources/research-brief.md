@@ -79,9 +79,25 @@ SHA-256 of all four: see `sources/CHECKSUMS.txt`. Inspect any ADF with `tools/in
 - ✅ Kernel install flow (Ditto paper + modern repos): build kernel in `/usr/sys` via `make` → kernel image (paper calls it **`rdbunix`** in 1990; modern 2.1 systems/repos call it **`relocunix`** — note the historical rename), copy to `/stand`, then `make bootpart KERNEL=relocunix` writes the boot partition; reboot (`shutdown -i6`).
 - ✅ Amiga **AUTOCONFIG** assigns Zorro II board addresses at reset; Amix reads these via the kernel `autocon()` interface (Zorro II only).
 
-### What the real boot.adf contains ✅ (from `tools/inspect-adf.sh`)
-- Valid **AmigaDOS OFS bootblock**: bytes `44 4f 53 00` = `DOS\0`, checksum, then 68k bootstrap code → so the Kickstart ROM will boot it. `xdftool list` fails ("Invalid Root Block @880") because **there is no AmigaDOS filesystem** — the disk is bootblock + raw bootstrap + payload.
-- The bootstrap **loads and decompresses a kernel**, with checksum verification. Embedded strings: `"Load boot volume %d"`, `"Decompression failed!"`, `"WARNING! Kernel decompression overrun."`, `"WARNING! Kernel file checksum mismatch."`, `"Kernel may have been corrupted."`, `"unix."`, plus a full **NFS/RPC** client string table and `hat_vtokp_prot: user addr in kernel space` (an SVR4 HAT/MMU panic message). So the on-floppy kernel is **compressed** (binwalk finds no clean ELF, only noise/false-positive "JBOOT" hits — consistent with compressed data).
+### What the real boot.adf contains ✅ — FULLY REVERSE-ENGINEERED (2026-06)
+The boot.adf format was an open question in the first draft; it is now **solved**. Method and evidence:
+`tools/inspect-adf.sh`, entropy mapping, LZW decompression, capstone M68K disassembly of the bootstrap,
+and verified round-trip rebuild via `tools/extract-kernel.sh` + `tools/build-bootfloppy.sh`.
+
+**Disk layout (901,120-byte / 880 KB image):** ✅
+| Range | Contents |
+|---|---|
+| `0x000000–0x000400` | AmigaDOS **OFS bootblock**: `44 4f 53 00` (`DOS\0`) + valid checksum + start of 68k bootstrap. Bootblock checksum **verified to compute to 0** (valid). |
+| `0x000400–0x002800` | Secondary **bootstrap** loader: a4-relative compiled C using exec/DOS libs (`OpenLibrary`, block `Read` of `$400`=512 B). Contains the **LZW decompressor** and the error strings. |
+| `0x002800` | Start of the **kernel**, stored as a standard **Unix `compress` (`.Z`, LZW)** stream: magic `1f 9d`, flags byte `0x90` = block-mode + 16-bit maxbits. |
+| `0x002800–≈0xa5c00` | The compressed kernel (~668 KB). Decompresses to a **1,171,200-byte m68k ELF** (`7f 45 4c 46`, ET=`0xff00` processor-specific, EM_68K, big-endian). |
+| `≈0xa5c00–0x0dc000` | **Slack / free space** — fragments of the (same) kernel + ~30% zeros; **not used by boot** (9/12 sampled chunks appear verbatim in the decompressed kernel). |
+
+- **Compression = standard Unix `compress`** (LZW, `-b 16`, block mode). ✅ Proven twice: (a) `gzip -d`/`zcat`/`uncompress` decode it to a clean ELF; (b) the bootstrap's decompressor disassembles to the canonical `compress` reader — the `rmask[] = 00 01 03 07 0f 1f 3f 7f ff` table at `$840(a2)` and the `1f`/`9d` magic check at ~0x1782. **Rebuild round-trips**: `compress -b16` of the extracted kernel decompresses back to the byte-identical kernel.
+- **Kernel checksum** (strings `"WARNING! Kernel file checksum mismatch."`, `"Expected %x, found %x."`): the bootstrap computes a **16-bit folded ones-complement sum** (code at `0x0bcc`: `d2=acc>>16; d2+=acc&0xffff;` twice → 16-bit) and compares it (`cmp.l $10(a3),d1` at `0x0c12`) to an *expected* value held in a disk descriptor field. 🟡 The exact summed byte-range and the on-disk location of the expected value are **not yet pinned** (candidate folds didn't match a stored value). **But it does not matter:** ✅ the mismatch branch at `0x0c1a` only **prints the warning and falls through to the normal continuation at `0x0c48`** — i.e. **a checksum mismatch is NON-FATAL; the kernel boots anyway.**
+- Other bootstrap strings: `"Load boot volume %d"`, `"Decompression failed!"`, `"WARNING! Kernel decompression overrun."`, `"Kernel may have been corrupted."`, plus an NFS/RPC client string table and `hat_vtokp_prot: user addr in kernel space` (these last live in the *decompressed* kernel, which is why they're readable once unpacked).
+
+**Consequence:** building a custom bootable floppy with your own kernel is **tractable today** — splice `[donor bootblock+bootstrap | compress -b16 <your-kernel.elf> | zero-pad to 880 KB]`. The donor's first `0x2800` bytes are copied verbatim so the bootblock checksum stays valid; a differing kernel just yields the cosmetic checksum warning. Implemented by `tools/build-bootfloppy.sh` (host round-trip verified; **not yet booted on real Amix** 🟡). Full writeup: `docs/boot-disks/reverse-engineering-boot-adf.md`.
 
 ---
 
@@ -219,8 +235,8 @@ motherboard_ram = 16384
 
 ## 10. Boot / root / patch disk anatomy ✅ (our primary analysis — the differentiator)
 
-### boot.adf
-OFS bootblock (`DOS\0` + checksum + 68k bootstrap) → loads & decompresses a **checksummed, compressed kernel**; NFS/RPC-capable install kernel. No AmigaDOS FS. (Strings & evidence in §3.)
+### boot.adf — FULLY REVERSE-ENGINEERED ✅
+OFS bootblock (`DOS\0` + valid checksum + 68k bootstrap) → bootstrap LZW-decompresses a kernel. The kernel is a **standard Unix `compress` (`.Z`, LZW `-b16`) stream at offset `0x2800`** that unpacks to a **1,171,200-byte m68k ELF** kernel; the tail of the disk is unused slack. The "kernel file checksum" is a **16-bit folded sum** and a mismatch is **non-fatal (warning only)**. No AmigaDOS FS. Full layout table, compression proof, disassembly evidence, and the rebuild method are in §3 ("What the real boot.adf contains") and `docs/boot-disks/reverse-engineering-boot-adf.md`. Tools: `extract-kernel.sh`, `build-bootfloppy.sh`.
 
 ### root.adf
 - First sectors zeroed (no AmigaDOS bootblock → `xdftool` "Invalid Boot Block @0"); the body is a **UFS filesystem** (`lost+found`, fsck strings).
@@ -263,6 +279,8 @@ SCSI ID 6 disk / ID 4 tape hard-coded; 16 MB RAM ceiling; no Zorro III; no 68040
 6. 🔴 Full original `master.d/kernel.c` not publicly archived; table schema inferred from paper + repos.
 7. 🟡 X11R4-vs-R5 "default" claims conflict; amigaunix.com (most authoritative) says R4 default.
 8. 🔴 Exact RDB partition type IDs Amix uses (boot vs swap vs UFS) not documented.
+9. 🟡 boot.adf kernel **checksum**: algorithm known (16-bit folded sum, **non-fatal**), but the exact summed byte-range and on-disk location of the *expected* value are not pinned. Not blocking (mismatch only warns). Pinning it would let a rebuilt floppy boot with no warning. *(Was 🔴 "compression+checksum entirely unknown"; the compression and the non-fatal nature are now solved — see §3.)*
+10. 🟡 `tools/build-bootfloppy.sh` round-trips correctly on the host but is **not yet booted on real Amix** — needs emulator/hardware verification.
 
 ---
 
