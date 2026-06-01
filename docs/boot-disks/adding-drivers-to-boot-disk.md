@@ -74,8 +74,10 @@ The boot floppy is no longer a black box. From the [reverse-engineering writeup]
 - The "Kernel file checksum" is a 16-bit folded sum, and **a mismatch is non-fatal** — the bootstrap
   prints `WARNING! Kernel file checksum mismatch.` and **boots anyway**. ✅
 
-So a custom bootable floppy is just: **donor bootblock+bootstrap + your `compress`'d kernel + zero pad**.
-[`tools/build-bootfloppy.sh`](../../tools/build-bootfloppy.sh) does it (and self-tests the round-trip):
+A custom bootable floppy is: **donor bootblock+bootstrap + your `compress`'d kernel + zero pad**, with
+the bootstrap's **`IBLK` descriptor** (`0x2600`: compressed length, decompressed size, checksum)
+rewritten to describe *your* stream. [`tools/build-bootfloppy.sh`](../../tools/build-bootfloppy.sh) does
+all of that (and self-tests via the descriptor):
 
 ```sh
 tools/extract-kernel.sh   amix_2.1_boot.adf  unix.elf        # (optional) pull the stock kernel
@@ -90,9 +92,10 @@ What you get and what to watch:
 - ✅ The build **self-tests**: it confirms the floppy decompresses back to the exact kernel you supplied.
 - 🟡 Your kernel must fit **compressed** within `880 KB − 0x2800` (≈ 868 KB of `.Z`). The stock kernel
   compresses to ~668 KB, leaving headroom for a driver or two.
-- 🟡 If your kernel differs from the donor's, you'll see the cosmetic **checksum-mismatch warning** at
-  boot. It does not stop the boot. (To silence it you'd need to pin the checksum's exact range and
-  on-disk location — see [open items](#whats-still-open) — but you don't need to.)
+- ✅ The tool **patches `IBLK`** (`comp_len`, `decomp_size`, and `checksum` = folded byte-sum of your
+  `.Z`), so it loads with **no overrun and no checksum warning**. *(A naive rebuild that leaves `IBLK`
+  stale fails with `WARNING! Kernel decompression overrun.` — the bootstrap reads the old, longer length
+  and decodes your zero-padding. Don't do that; the tool handles it.)*
 - 🟡 **Not yet booted on real Amix.** The format work is host-verified end-to-end; verify any rebuilt
   floppy in [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md)
   before relying on it.
@@ -135,14 +138,11 @@ system per [kernel-build](../drivers/kernel-build.md)) before automating any pac
 
 ## What's still open
 
-The boot floppy format is solved; these are the remaining loose ends, none of them blocking:
+The boot floppy format is solved (layout, `compress`/LZW kernel, `IBLK` descriptor, and the
+folded-byte-sum checksum are all pinned); these are the remaining loose ends, none blocking:
 
-- 🟡 **Silence the checksum warning.** The checksum is a 16-bit folded sum and is *non-fatal*, but its
-  exact summed byte-range and the on-disk location of the *expected* value aren't pinned, so a rebuilt
-  custom kernel boots with a cosmetic warning. Pinning it (likely via dynamic analysis under an
-  emulator) would remove the warning. See [the RE writeup](reverse-engineering-boot-adf.md#step-4--the-checksum-and-why-it-doesnt-stop-you).
 - 🟡 **Real-hardware/emulator verification** of `build-bootfloppy.sh` output — the pipeline round-trips
-  on the host but hasn't been booted on Amix yet.
+  on the host (descriptor-driven self-test) but hasn't been booted on Amix yet.
 - 🔴 **Exact RDB partition type IDs** Amix uses (boot vs swap vs UFS) are undocumented — relevant only
   if you script creating a boot *partition* from scratch rather than letting the installer do it.
 

@@ -20,16 +20,19 @@ the tools in [`../../tools/`](../../tools/) on your own copy of the image.
 
 - The kernel is stored as a **standard Unix `compress` (`.Z`, LZW, 16-bit, block mode)** stream at file
   offset **`0x2800`**. ✅ It decompresses to a **1,171,200-byte m68k ELF** kernel.
-- The "kernel file checksum" is a **16-bit folded ones-complement sum**, and a mismatch is
-  **non-fatal — the bootstrap prints a warning and boots anyway.** ✅
-- Therefore a custom bootable floppy = **`[donor bootblock+bootstrap] + [compress -b16 your-kernel.elf] + [zero pad to 880 KB]`**, built by [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ host-verified; 🟡 not yet booted on real Amix.
+- A small **`IBLK` boot descriptor at offset `0x2600`** tells the bootstrap the compressed length
+  (`+0x8`), the decompressed size (`+0xc`), and a **checksum (`+0x10`) = 16-bit folded byte-sum of the
+  compressed stream**. ✅ All three must describe *your* stream or the boot fails.
+- Therefore a custom bootable floppy = **`[donor bootblock+bootstrap] + [compress -b16 your-kernel.elf]
+  + [zero pad to 880 KB]`**, **with the `IBLK` fields patched to the new stream**, built by
+  [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ host round-trip verified; 🟡 not yet booted on real Amix.
 
 ## Disk layout (880 KB / 901,120-byte image) ✅
 
 | Range | Size | Contents |
 |---|---|---|
 | `0x000000`–`0x000400` | 1 KB | **AmigaDOS OFS bootblock** — `44 4f 53 00` (`DOS\0`) + checksum + start of bootstrap. The bootblock checksum **verifies to 0** (valid), so the Kickstart ROM boots it. |
-| `0x000400`–`0x002800` | ~9 KB | **Secondary bootstrap** — a4-relative compiled C using exec/DOS libraries; contains the LZW decompressor and the boot messages. |
+| `0x000400`–`0x002800` | ~9 KB | **Secondary bootstrap** — a4-relative compiled C using exec/DOS libraries; contains the LZW decompressor, the boot messages, and the **`IBLK` boot descriptor at `0x2600`** (magic `IBLK`; `+0x8` comp-len, `+0xc` decomp-size, `+0x10` checksum). |
 | `0x002800`–≈`0xa5c00` | ~668 KB | **Kernel**, as a Unix `compress` `.Z` stream (`1f 9d`, flags `0x90`). Decompresses to a 1,171,200-byte ELF. |
 | ≈`0xa5c00`–`0x0dc000` | ~220 KB | **Slack / free space** — fragments of the same kernel plus ~30% zeros. Not used by boot. |
 
@@ -98,44 +101,64 @@ After decompression the bootstrap verifies a checksum. The relevant code (file o
 0c48: ...                     ; <-- the mismatch path FALLS THROUGH to here (== the match path)
 ```
 
-So the checksum is a **16-bit folded ones-complement sum**, compared against an *expected* value carried
-in a disk descriptor. **Crucially, the mismatch branch only prints a warning and falls through to the
-same continuation (`0x0c48`) as the success path** — a checksum mismatch is **non-fatal**. A custom
-kernel boots even with a "wrong" checksum; you just see the warning.
+So the checksum is a **16-bit folded sum**, compared (`cmp.l $10(a3),d1`) against the **`+0x10` field of
+the `IBLK` descriptor** (`a3` = the `IBLK` block). The mismatch branch only prints a warning and falls
+through to the same continuation (`0x0c48`) as the success path — so it is **non-fatal**. But you don't
+need to rely on that, because the checksum is now **fully pinned** — see below.
 
-🟡 **Still open:** the exact byte-range summed and the on-disk location of the *expected* value are not
-pinned (candidate folds of the kernel and of the `.Z` did not match a value stored in the bootstrap).
-Pinning them would let a rebuilt floppy boot with no warning at all. This is a nice-to-have, not a blocker.
+### The `IBLK` descriptor — and the overrun trap ✅
 
-## Step 5 — rebuild and round-trip ✅
+The `cmp` against `$10(a3)` led to the descriptor. Searching the bootstrap for the known lengths finds a
+4-byte field holding the compressed length and, adjacent to it, the decompressed size; both sit inside a
+block tagged **`IBLK`** at offset `0x2600`:
 
-Re-compressing the extracted kernel with standard `compress -b 16` produces a `.Z` that decompresses to
-the **byte-identical** kernel (the encoder differs from the original by a handful of bytes, but `.Z`
-decoding is canonical, so the bootstrap will accept it). [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh)
-assembles a complete image and self-tests it:
+| Offset | Field | Original value |
+|---|---|---|
+| `0x2600` | magic | `"IBLK"` |
+| `0x2608` | **compressed length** | `0x000a32a2` = 668,322 |
+| `0x260c` | **decompressed size** | `0x0011df00` = 1,171,200 |
+| `0x2610` | **checksum** | `0x0000156d` |
+
+And the checksum resolves cleanly: **`0x156d` = the 16-bit folded sum of the *bytes of the compressed
+`.Z` stream*** (`fold16(sum(stream[0:comp_len]))`). ✅ That's the algorithm, confirmed by an exact match.
+
+This also explains a real failure. A first rebuild that kept the donor's `IBLK` **verbatim** but swapped
+in a re-compressed kernel **failed at boot with `WARNING! Kernel decompression overrun.`** Why: our
+`compress -b16` stream was 668,317 bytes — 5 bytes shorter than the donor's 668,322 — but the stale
+`IBLK` still said "read 668,322 compressed bytes." The bootstrap therefore read our stream **plus 5 bytes
+of the zero-padding**, decoded those zeros into extra output past the 1,171,200-byte buffer, and tripped
+the overrun check. **Lesson: the `IBLK` fields must describe *your* stream.**
+
+## Step 5 — rebuild (patch `IBLK`) and round-trip ✅
+
+[`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh) reuses the donor's bootblock+bootstrap, splices
+in `compress -b16` of your kernel, and **rewrites the `IBLK` fields** (`comp_len`, `decomp_size`, and the
+`checksum` = `fold16(sum(your .Z))`) — so there is no overrun and the checksum **matches** (no warning).
+It locates the genuine `IBLK` by checksum-consistency (several byte-sequences spell `IBLK` by accident)
+and self-tests by emulating the descriptor:
 
 ```sh
-# pull the kernel, (optionally relink it with your driver), then rebuild a floppy:
-tools/extract-kernel.sh   amix_2.1_boot.adf  unix.elf
+tools/extract-kernel.sh   amix_2.1_boot.adf  unix.elf      # (optionally relink with your driver)
 tools/build-bootfloppy.sh --donor amix_2.1_boot.adf --kernel unix.elf --out custom_boot.adf
-#   donor bootblock+bootstrap: 0x0..0x2800 (10240 bytes)
-#   kernel ... -> compress -b16 = ... bytes
-#   self-test: floppy decompresses to the IDENTICAL kernel ✅
+#   IBLK @0x2600 (checksum-verified) patched: comp_len=668317 decomp=1171200 checksum=0x3e69
+#   self-test ✅  ... stream decompresses to the IDENTICAL kernel; checksum will MATCH at boot (no warning).
 ```
 
-The donor's first `0x2800` bytes are copied **verbatim**, so the AmigaDOS bootblock checksum stays valid.
+The donor's first `0x2800` bytes are copied verbatim **except** the three `IBLK` fields, so the AmigaDOS
+bootblock checksum (in the first 1 KB) stays valid (verified: recomputes to 0).
 
 ## What this unlocks — and the honest caveats
 
 - ✅ **Extract** the kernel from any `boot.adf` → ELF.
-- ✅ **Rebuild** a bootable floppy from a donor bootstrap + any (same-size-or-smaller) kernel ELF; the
-  whole pipeline round-trips on the host.
-- ✅ Custom **kernels boot despite the checksum** (cosmetic warning only).
+- ✅ **Rebuild** a bootable floppy from a donor bootstrap + any kernel ELF that fits compressed; `IBLK`
+  patched so it loads cleanly. The whole pipeline round-trips on the host.
+- ✅ **Checksum fully pinned** (`fold16` byte-sum of the compressed stream, stored at `IBLK+0x10`) — a
+  rebuilt floppy matches it, so **no warning**. (It's also non-fatal regardless.)
 - 🟡 **Not yet booted on real Amix.** Verify any rebuilt floppy in
   [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md)
   before trusting it. The kernel must still fit (compressed) in `880 KB − 0x2800`.
-- 🟡 To boot with **no** checksum warning, the summed range + expected-value location need pinning
-  (see Step 4). Dynamic analysis under an emulator is the obvious next step.
+- 🟡 The 16-bit fold is small — collisions are possible in principle, but the descriptor also carries
+  the exact lengths, so a correctly-rebuilt stream is unambiguous.
 
 For the broader "add a driver to a boot disk" decision (this vs. relinking the on-HD boot partition),
 see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).

@@ -7,7 +7,7 @@ input** (except `build-custom-bootdisk.sh`, which writes a new image) and never 
 |---|---|---|
 | `inspect-adf.sh` | `bash`, `dd`, `xxd`, `strings` | `binwalk` (embedded-object scan), `xdftool` (amitools; AmigaDOS listing), `sha256sum` |
 | `extract-kernel.sh` | `bash`, `dd`, `od` (GNU), and one of `gzip`/`zcat`/`uncompress` | `file` (identify the ELF) |
-| `build-bootfloppy.sh` | `bash`, `dd`, `od` (GNU), `compress` (or `ncompress`), and `gzip`/`zcat` (self-test) | — |
+| `build-bootfloppy.sh` | `bash`, `dd`, `od` (GNU), `python3` (IBLK patch + self-test), `compress` (or `ncompress`), and `gzip`/`zcat` | — |
 | `unpack-root.sh` | `bash`, `binwalk`, `dd`, `strings` | `tar` (unpack carved members) |
 | `build-custom-bootdisk.sh` | `bash`, `dd`, `printf`, and **`cpio`** *or* `bsdtar` | `cpio` (to list members in the self-test) |
 | `gen-llms-full.sh` | `bash`, `cat`, `wc` | — |

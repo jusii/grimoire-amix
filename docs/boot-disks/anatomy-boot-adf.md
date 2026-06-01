@@ -22,7 +22,7 @@ If you want the runtime story (Superkickstart → bootstrap → kernel → root 
 | Disk type id (first 4 bytes) | `44 4f 53 00` = `DOS\0` (OFS bootblock) | ✅ |
 | AmigaDOS filesystem? | **No** — `xdftool list` → "Invalid Root Block @880" | ✅ |
 | Payload | kernel as a Unix `compress` `.Z` (LZW) stream at `0x2800` → **1,171,200-byte m68k ELF** (NFS/RPC-capable install kernel) | ✅ |
-| Kernel checksum | 16-bit folded sum; **mismatch is non-fatal (warning only)** | ✅ |
+| Kernel checksum | `IBLK+0x10` = 16-bit folded byte-sum of the `.Z` stream; mismatch is non-fatal | ✅ |
 
 ## The three layers
 
@@ -133,9 +133,12 @@ carrying **your own** kernel — splice your `compress -b16`'d kernel onto a don
 tools/build-bootfloppy.sh --donor amix_21_boot.adf --kernel my-unix.elf --out custom_boot.adf
 ```
 
-The donor's first `0x2800` bytes are copied verbatim (bootblock checksum stays valid); a differing
-kernel just produces the cosmetic checksum warning. ✅ host round-trip verified; 🟡 not yet booted on
-real Amix — test in an emulator. See [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
+The donor's first `0x2800` bytes are copied verbatim (bootblock checksum stays valid) **except** the
+bootstrap's **`IBLK` descriptor** (at `0x2600`: compressed length, decompressed size, checksum), which
+the tool rewrites to match your stream — so it loads with no overrun and no checksum warning. ✅ host
+round-trip verified; 🟡 not yet booted on real Amix — test in an emulator. See
+[Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) and
+[Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 
 ## Inspecting it yourself
 

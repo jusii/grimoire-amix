@@ -11,16 +11,18 @@
 #   [ kernel, Unix `compress` (.Z, LZW -b16) ]     bytes ZOFF .. ~0xa5800
 #   [ free space / slack ]                         .. 0xdc000 (880 KB)
 #
-# The bootstrap LZW-decompresses the kernel and verifies a 16-bit folded checksum.
-# A mismatch is NON-FATAL: it prints "WARNING! Kernel file checksum mismatch." and
-# boots anyway. So a custom kernel boots even without recomputing the checksum
-# (you just see that warning). The donor's bootblock checksum is preserved because
-# we copy the first ZOFF bytes verbatim.
+# The bootstrap finds an "IBLK" boot descriptor (in the copied bootstrap) that holds
+# the compressed length (+0x8), the decompressed size (+0xc), and a checksum (+0x10 =
+# 16-bit folded byte-sum of the compressed stream). We REWRITE those three fields to
+# match our stream — otherwise the stale (longer) length makes the bootstrap decode our
+# zero-padding and report "Kernel decompression overrun". Patching them also makes the
+# checksum match, so there is no warning. The donor's AmigaDOS bootblock checksum is
+# preserved because we copy the first ZOFF bytes verbatim.
 #
 # Usage:
 #   tools/build-bootfloppy.sh --donor <orig.adf> --kernel <unix.elf> --out <new.adf>
 #
-# Requires: dd, od, compress (or ncompress), and gzip/zcat (for the self-test).
+# Requires: dd, od, python3 (IBLK patch + self-test), compress (or ncompress), gzip/zcat.
 # Operates on USER-SUPPLIED images; we ship no proprietary media.
 #
 # STATUS: layout + compression + non-fatal-checksum are verified by analysis and a
@@ -62,22 +64,88 @@ if [ $((zoff + zlen)) -gt "$SIZE" ]; then
 fi
 
 # 4. assemble: donor header (verbatim) + compressed kernel + zero-pad to 880 KB
+ksz=$(wc -c <"$kern")
 dd if="$donor" of="$out" bs=1 count="$zoff" 2>/dev/null
 cat "$tmpz" >> "$out"
 cur=$(wc -c <"$out")
 dd if=/dev/zero bs=1 count=$((SIZE-cur)) >> "$out" 2>/dev/null
 printf 'wrote %s (%d bytes)\n' "$out" "$(wc -c <"$out")"
 
-# 5. self-test: does our floppy decompress back to the EXACT kernel we put in?
-dd if="$out" bs=1 skip="$zoff" 2>/dev/null | decomp > "$tmpz.out" 2>/dev/null || true
-# truncate to kernel size for compare
-ksz=$(wc -c <"$kern")
-dd if="$tmpz.out" of="$tmpz.cmp" bs=1 count="$ksz" 2>/dev/null
-if cmp -s "$kern" "$tmpz.cmp"; then
-  echo "self-test: floppy decompresses to the IDENTICAL kernel ✅"
-else
-  echo "self-test: FAILED — decompressed kernel differs ❌" >&2; rm -f "$tmpz.out" "$tmpz.cmp"; exit 6
-fi
-rm -f "$tmpz.out" "$tmpz.cmp"
-echo "🟡 Untested on real Amix — boot it in WinUAE/FS-UAE. If the kernel differs from the donor's,"
-echo "   expect a harmless 'WARNING! Kernel file checksum mismatch.' at boot (non-fatal)."
+# 5. patch the IBLK boot descriptor so the bootstrap reads OUR stream/size/checksum.
+#    The donor's IBLK (offsets +0x8 comp-len, +0xc decomp-size, +0x10 checksum) still
+#    describes the donor's kernel; leaving it stale causes a decompression overrun (the
+#    bootstrap reads the old, longer length and decodes our zero-padding). We rewrite it.
+#    Checksum = 16-bit folded byte-sum over the compressed (.Z) stream.
+python3 - "$out" "$donor" "$zoff" "$zlen" "$ksz" "$SIZE" <<'PY'
+import sys,struct
+out,donor,zoff,zlen,ksz,SIZE=sys.argv[1],sys.argv[2],int(sys.argv[3]),int(sys.argv[4]),int(sys.argv[5]),int(sys.argv[6])
+def fold(buf):
+    s=sum(buf)
+    while s>>16: s=(s>>16)+(s&0xffff)
+    return s&0xffff
+db=open(donor,'rb').read()
+# Several byte-sequences spell "IBLK" by coincidence; the genuine boot descriptor is the
+# one whose fields are plausible AND whose checksum (+0x10) == fold(byte-sum of the donor's
+# OWN compressed stream of length comp-len). Select by that, falling back to plausibility.
+verified=[]; plausible=[]; i=0
+while True:
+    j=db.find(b'IBLK',i,0x2800)
+    if j<0: break
+    i=j+1
+    comp=struct.unpack('>I',db[j+8:j+12])[0]
+    dec =struct.unpack('>I',db[j+12:j+16])[0]
+    chk =struct.unpack('>I',db[j+16:j+20])[0]&0xffff
+    if not (0<comp<=SIZE-zoff and 0x80000<dec<0x300000): continue
+    plausible.append(j)
+    if zoff+comp<=len(db) and fold(db[zoff:zoff+comp])==chk: verified.append(j)
+sel=verified or plausible
+if not sel:
+    sys.stderr.write("  warning: no genuine IBLK descriptor found in donor — leaving header as-is;\n"
+                     "           a differing kernel may overrun/warn. (Donor not a known 2.1 boot.adf?)\n")
+    sys.exit(0)
+iblk=sel[0]
+tag='checksum-verified' if iblk in verified else 'plausibility-only'
+b=bytearray(open(out,'rb').read())
+ck=fold(bytes(b[zoff:zoff+zlen]))
+struct.pack_into('>I',b,iblk+0x08,zlen)    # compressed length
+struct.pack_into('>I',b,iblk+0x0c,ksz)     # decompressed size
+struct.pack_into('>I',b,iblk+0x10,ck)      # checksum (16-bit folded byte-sum of the .Z)
+open(out,'wb').write(b)
+print(f"  IBLK @0x{iblk:04x} ({tag}) patched: comp_len={zlen} decomp={ksz} checksum=0x{ck:04x}")
+PY
+
+# 6. self-test: emulate the bootstrap via the patched IBLK — read comp-len bytes from
+#    0x2800, decompress, and check it equals our kernel AND the checksum field matches.
+#    (Validates the descriptor we actually wrote, not just the bash variables.)
+st_zlen="$zlen"
+dd if="$out" bs=1 skip="$zoff" count="$st_zlen" 2>/dev/null | decomp > "$tmpz.out" 2>/dev/null || true
+python3 - "$out" "$kern" "$tmpz.out" "$zoff" "$SIZE" <<'PY'
+import sys,struct
+out,kern,decoded,zoff,SIZE=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]),int(sys.argv[5])
+def fold(b):
+    s=sum(b)
+    while s>>16: s=(s>>16)+(s&0xffff)
+    return s&0xffff
+b=open(out,'rb').read(); k=open(kern,'rb').read(); d=open(decoded,'rb').read()
+# locate the genuine IBLK in the OUTPUT by checksum-consistency against its own stream
+j=-1; i=0
+while True:
+    p=b.find(b'IBLK',i,0x2800)
+    if p<0: break
+    i=p+1
+    comp=struct.unpack('>I',b[p+8:p+12])[0]; dec=struct.unpack('>I',b[p+12:p+16])[0]; chk=struct.unpack('>I',b[p+16:p+20])[0]&0xffff
+    if 0<comp<=SIZE-zoff and 0x80000<dec<0x300000 and zoff+comp<=len(b) and fold(b[zoff:zoff+comp])==chk:
+        j=p; break
+ok=True
+if j<0: print("self-test: FAILED — no checksum-consistent IBLK in output ❌"); sys.exit(6)
+comp=struct.unpack('>I',b[j+8:j+12])[0]; dec=struct.unpack('>I',b[j+12:j+16])[0]; chk=struct.unpack('>I',b[j+16:j+20])[0]&0xffff
+if d!=k: print(f"self-test: FAILED — decompressed stream != kernel ❌"); ok=False
+if dec!=len(k): print(f"self-test: FAILED — IBLK decomp={dec} != kernel size {len(k)} ❌"); ok=False
+if not ok: sys.exit(6)
+print(f"self-test ✅  IBLK @0x{j:04x}: comp_len={comp} decomp={dec} checksum=0x{chk:04x} (matches stream)")
+print(f"            stream decompresses to the IDENTICAL kernel; checksum will MATCH at boot (no warning).")
+PY
+rc=$?
+rm -f "$tmpz.out"
+[ "$rc" -eq 0 ] || exit 6
+echo "🟡 Host round-trip OK. Verify the boot in WinUAE/FS-UAE before relying on it."

@@ -50,6 +50,7 @@ The scripts prefer richer tools when present and degrade gracefully, but for ful
 | `gzip` / `zcat` / `uncompress` | extract-kernel, build-bootfloppy | Decode the Unix `compress` (`.Z`, LZW) kernel stream |
 | `compress` (or `ncompress`) | build-bootfloppy | Pack a kernel ELF back into `.Z` (`-b 16`, block mode) |
 | `od` (GNU) | extract-kernel, build-bootfloppy | Locate the `.Z` magic and read ELF size fields |
+| `python3` | build-bootfloppy | Patch the `IBLK` descriptor (length/size/checksum) + descriptor-driven self-test |
 | `dd`, `strings`, `xxd`, `wc`, `tar` | all | Carving, hex dumps, string scans, size math |
 
 The authoritative, install-by-platform list lives in `tools/requirements.md` — consult it for exact
@@ -157,10 +158,12 @@ tools/build-bootfloppy.sh --donor amix_2.1_boot.adf --kernel unix.elf --out cust
 #   self-test: floppy decompresses to the IDENTICAL kernel ✅
 ```
 
-It **self-tests** by decompressing its own output and comparing to the input kernel. Your kernel must fit
-*compressed* in `880 KB − 0x2800`. If the kernel differs from the donor's you'll get a harmless
-`WARNING! Kernel file checksum mismatch.` at boot (the checksum is [non-fatal](reverse-engineering-boot-adf.md#step-4--the-checksum-and-why-it-doesnt-stop-you)).
-✅ host round-trip verified; 🟡 **not yet booted on real Amix** — test in an emulator.
+It **rewrites the bootstrap's `IBLK` descriptor** (`0x2600`: compressed length, decompressed size, and
+checksum = folded byte-sum of the `.Z`) to match your stream — so the boot has no overrun and no
+checksum warning — then **self-tests** by decompressing per the patched descriptor and comparing to your
+kernel. Your kernel must fit *compressed* in `880 KB − 0x2800`. ✅ host round-trip verified; 🟡 **not yet
+booted on real Amix** — test in an emulator. (Leaving `IBLK` stale causes `WARNING! Kernel decompression
+overrun.`; the tool avoids that.)
 
 **Requires:** `dd`, `od`, `compress` (or `ncompress`), and `gzip`/`zcat` (for the self-test).
 
