@@ -1,0 +1,63 @@
+# Amix-docs
+
+> Developer- and LLM-oriented documentation for **Amiga Unix (Amix)** — Commodore's port of AT&T
+> System V Release 4 (SVR4) to 68030 Amigas (A3000UX / A2500UX). It explains how Amix works, how to
+> develop software and device drivers for it, and how to build custom boot/install disks with extra
+> hardware drivers. Independent of, and cross-linked to, amigaunix.com; we go deeper on development.
+
+The single source of truth (facts + citations + ✅/🟡/🔴 confidence tags) is
+[research-brief.md](sources/research-brief.md). Contributor rules are in [AGENTS.md](AGENTS.md).
+For the full corpus in one file, see [llms-full.txt](llms-full.txt).
+
+## How Amix works
+- [What Amix Is](docs/how-it-works/overview.md): SVR4/3B2 lineage, what it is and isn't, version timeline.
+- [Supported Hardware & Requirements](docs/how-it-works/hardware.md): machines, MMU/FPU, the 16 MB ceiling, SCSI ID rules, Zorro II only.
+- [How Amix Boots](docs/how-it-works/boot-process.md): Superkickstart → bootblock → compressed kernel; RDB layout.
+- [Kernel Architecture](docs/how-it-works/kernel-architecture.md): monolithic SVR4, /usr/sys, switch tables, MMU, STREAMS.
+- [Filesystems & Disk Layout](docs/how-it-works/filesystems-and-disks.md): RDB partitions, UFS vs s5, /dev disk naming.
+- [Networking](docs/how-it-works/networking.md): STREAMS TCP/IP, A2065, DNS-off default, NFS, SLIP.
+- [X11 & the Desktop](docs/how-it-works/x11-and-desktop.md): X11R4/R5, OpenLook, A2410 color, RTG.
+- [Quirks & Gotchas](docs/how-it-works/quirks.md): the Amiga-port surprises.
+- [Glossary](docs/how-it-works/glossary.md): terms used across the docs.
+
+## Getting started (emulation-first)
+- [Running Amix in WinUAE](docs/getting-started/emulation-winuae.md): the exact config (MMU on, JIT off, SCSI 6/4).
+- [Running Amix in FS-UAE](docs/getting-started/emulation-fs-uae.md): the verified FS-UAE config.
+- [Amix on Amiberry (status)](docs/getting-started/emulation-amiberry.md): why it doesn't run yet.
+- [Installing Amix (Walkthrough)](docs/getting-started/install-walkthrough.md): boot+root+tape → partition → kernel → patch.
+- [Running Amix on Real Hardware](docs/getting-started/real-hardware.md): A3000UX/A2500UX, modern SCSI.
+- [First Login & a Quick Tour](docs/getting-started/first-login-and-tour.md): login, consoles, shells, X.
+
+## Driver & software development
+- [The Amix Device-Driver Model](docs/drivers/driver-model.md): major/minor, cdevsw/bdevsw switch tables.
+- [Building & Installing a Kernel](docs/drivers/kernel-build.md): /usr/sys, kernel.c, make, make bootpart.
+- [Writing a Character Driver](docs/drivers/writing-a-char-driver.md): the Ditto par.c walkthrough.
+- [Writing a STREAMS/DLPI Driver](docs/drivers/writing-a-streams-driver.md): network drivers via hydra.
+- [Zorro II AUTOCONFIG for Drivers](docs/drivers/zorro-autoconfig.md): autocon(), board IDs, /dev/mem scanning.
+- [X11 RTG Graphics Drivers](docs/drivers/x11-rtg-drivers.md): the Xrtg server over a framebuffer driver.
+- [Toolchain & Packaging](docs/drivers/toolchain.md): cc/gcc, m68k-amix-gcc cross-build, pkgadd.
+- [Case Study: va2000-amix](docs/drivers/case-studies/va2000.md): char framebuffer driver (MNT VA2000).
+- [Case Study: xrtg-amix](docs/drivers/case-studies/xrtg.md): X11R5 server for the VA2000.
+- [Case Study: lszorro-amix](docs/drivers/case-studies/lszorro.md): userspace Zorro II scanner.
+- [Case Study: hydra-amix](docs/drivers/case-studies/hydra.md): STREAMS/DLPI Ethernet driver.
+
+## Custom boot & install disks
+- [Anatomy of the Boot Floppy](docs/boot-disks/anatomy-boot-adf.md): bootblock + compressed kernel.
+- [Anatomy of the Root (miniroot) Floppy](docs/boot-disks/anatomy-root-adf.md): UFS installer + scripts.
+- [Anatomy of the Patch Floppy](docs/boot-disks/anatomy-patch-adf.md): self-extracting sh + cpio.
+- [Adding Drivers to a Custom Boot Disk](docs/boot-disks/adding-drivers-to-boot-disk.md): what works, what's open.
+- [The Boot-Disk Tooling Pipeline](docs/boot-disks/build-pipeline.md): inspect / unpack / build scripts.
+
+## Reference
+- [Version Matrix](docs/reference/versions.md)
+- [Device & Card Reference](docs/reference/device-list.md)
+- [Command Cheat Sheet](docs/reference/commands-cheatsheet.md)
+- [Bibliography & Sources](docs/reference/bibliography.md)
+
+## Contributing
+- [Style Guide](docs/contributing/style-guide.md)
+- [Writing for LLM Consumers](docs/contributing/writing-for-llms.md)
+
+## Optional
+- [amigaunix.com](https://www.amigaunix.com/doku.php/home): the established community wiki (end-user/install/history).
+- [va2000-amix](https://github.com/asokero/va2000-amix), [xrtg-amix](https://github.com/asokero/xrtg-amix), [lszorro-amix](https://github.com/asokero/lszorro-amix), [hydra-amix](https://github.com/isoriano1968/hydra-amix): the modern driver repos this project documents.

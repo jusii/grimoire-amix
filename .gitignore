@@ -1,0 +1,15 @@
+# Proprietary Commodore Amiga Unix media — kept locally for analysis, never committed.
+# We ship SHA-256 checksums (sources/CHECKSUMS.txt) + pointers instead; tooling
+# operates on user-supplied images. See sources/NOTES.md.
+sources/floppy/*.adf
+sources/floppy/*.hdf
+sources/floppy/*.zip
+sources/pdf/*.pdf
+
+# Scratch / extraction output from the tools
+tools/_work/
+*.tmp
+
+# OS / editor cruft
+.DS_Store
+*~

@@ -1,0 +1,4 @@
+0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65272  floppy/amix_21_boot.adf
+674f3ac691fd032c2c79c2fe90e2cd158e3f7d6004da03c4820373c50060fdfe  floppy/amix_21_patch.adf
+890da5e52f00cae74b817b42d1b94c3438f57b8c13b3d2b055e8b116a3feac56  floppy/amix_21_root.adf
+71f27f565d0fb41d4a0a49d2bc2470cfc2aa48122e60fec7c7a2650500c09ade  pdf/Writing Amix Device Drivers - Michael Ditto - North Amercian DevCon 1990 (2).pdf
