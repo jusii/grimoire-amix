@@ -25,7 +25,9 @@ the tools in [`../../tools/`](../../tools/) on your own copy of the image.
   compressed stream**. ✅ All three must describe *your* stream or the boot fails.
 - Therefore a custom bootable floppy = **`[donor bootblock+bootstrap] + [compress -b16 your-kernel.elf]
   + [zero pad to 880 KB]`**, **with the `IBLK` fields patched to the new stream**, built by
-  [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ host round-trip verified; 🟡 not yet booted on real Amix.
+  [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ **Verified booting in an emulator**
+  (Amiberry): a rebuilt floppy loads and runs identically to the original, reaching the
+  `Insert floppy disk 2 (root file system)` prompt — no overrun, no checksum warning.
 
 ## Disk layout (880 KB / 901,120-byte image) ✅
 
@@ -154,11 +156,13 @@ bootblock checksum (in the first 1 KB) stays valid (verified: recomputes to 0).
   patched so it loads cleanly. The whole pipeline round-trips on the host.
 - ✅ **Checksum fully pinned** (`fold16` byte-sum of the compressed stream, stored at `IBLK+0x10`) — a
   rebuilt floppy matches it, so **no warning**. (It's also non-fatal regardless.)
-- 🟡 **Not yet booted on real Amix.** Verify any rebuilt floppy in
-  [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md)
-  before trusting it. The kernel must still fit (compressed) in `880 KB − 0x2800`.
-- 🟡 The 16-bit fold is small — collisions are possible in principle, but the descriptor also carries
-  the exact lengths, so a correctly-rebuilt stream is unambiguous.
+- ✅ **Verified in an emulator (Amiberry).** A rebuilt floppy (same kernel, re-`compress`'d, `IBLK`
+  patched) boots and reaches the original's `Insert floppy disk 2 (root file system)` prompt — no
+  overrun, no warning. This proves the rebuild *pipeline* and the format work.
+- 🟡 **Next validations:** boot a floppy carrying a *driver-modified, relinked* kernel (needs a kernel
+  built on Amix/`/usr/sys`), and run a full install through (the tape stage needs A3000 SCSI/tape
+  emulation — see [Amiberry status](../getting-started/emulation-amiberry.md)). The kernel must fit
+  (compressed) in `880 KB − 0x2800`.
 
 For the broader "add a driver to a boot disk" decision (this vs. relinking the on-HD boot partition),
 see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).

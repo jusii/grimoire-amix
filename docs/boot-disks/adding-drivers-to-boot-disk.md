@@ -14,7 +14,7 @@ was an open reverse-engineering problem. It is now solved (see
 | Surface | Use it for | Status |
 |---|---|---|
 | **(a) On-HD boot partition** | adding a driver to an already-installed system | ✅ supported, normal kernel rebuild |
-| **(b) Custom bootable floppy** | install/recovery media that boots *your* kernel | ✅ host-verified · 🟡 not yet booted on real Amix |
+| **(b) Custom bootable floppy** | install/recovery media that boots *your* kernel | ✅ boots in Amiberry (same kernel) · 🟡 driver-modified kernel untested |
 | **(c) Self-extracting add-on disk** | *distributing* a driver to other users to install | ✅ host-verified · 🟡 not yet run on real Amix |
 
 A driver in Amix is **statically linked into a monolithic kernel — there are no loadable modules** ✅, so
@@ -96,9 +96,9 @@ What you get and what to watch:
   `.Z`), so it loads with **no overrun and no checksum warning**. *(A naive rebuild that leaves `IBLK`
   stale fails with `WARNING! Kernel decompression overrun.` — the bootstrap reads the old, longer length
   and decodes your zero-padding. Don't do that; the tool handles it.)*
-- 🟡 **Not yet booted on real Amix.** The format work is host-verified end-to-end; verify any rebuilt
-  floppy in [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md)
-  before relying on it.
+- ✅ **Verified in an emulator (Amiberry):** a rebuilt floppy boots and reaches the original's
+  `Insert floppy disk 2 (root file system)` prompt. Still worth verifying your own builds in
+  [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md).
 
 ## Surface (c): a self-extracting add-on disk — to distribute a driver ✅🟡
 
@@ -130,7 +130,7 @@ This disk runs *on* an already-booted Amix — it is not itself bootable.
 | Goal | Use | Status |
 |---|---|---|
 | Add a driver to a running system | (a) relink + `make bootpart` | ✅ works |
-| Make custom install/recovery media that boots your kernel | (b) `build-bootfloppy.sh` | ✅ host-verified · 🟡 emulator-test |
+| Make custom install/recovery media that boots your kernel | (b) `build-bootfloppy.sh` | ✅ boots in Amiberry |
 | Distribute a driver for users to install | (c) `build-custom-bootdisk.sh` | ✅ host-verified · 🟡 emulator-test |
 
 Recommended workflow regardless: **build and test the driver the manual way first** (relink into a live
@@ -139,10 +139,14 @@ system per [kernel-build](../drivers/kernel-build.md)) before automating any pac
 ## What's still open
 
 The boot floppy format is solved (layout, `compress`/LZW kernel, `IBLK` descriptor, and the
-folded-byte-sum checksum are all pinned); these are the remaining loose ends, none blocking:
+folded-byte-sum checksum are all pinned) and a rebuilt floppy boots in Amiberry to the root-disk prompt;
+these are the remaining loose ends, none blocking:
 
-- 🟡 **Real-hardware/emulator verification** of `build-bootfloppy.sh` output — the pipeline round-trips
-  on the host (descriptor-driven self-test) but hasn't been booted on Amix yet.
+- 🟡 **Driver-modified kernel** end-to-end: the rebuild was verified with the *same* kernel; booting a
+  floppy whose kernel was relinked with a new driver (needs a kernel built on Amix `/usr/sys`) is the
+  next validation.
+- 🟡 **Full install** through the tape stage needs A3000 SCSI/tape emulation (see
+  [Amiberry status](../getting-started/emulation-amiberry.md)).
 - 🔴 **Exact RDB partition type IDs** Amix uses (boot vs swap vs UFS) are undocumented — relevant only
   if you script creating a boot *partition* from scratch rather than letting the installer do it.
 

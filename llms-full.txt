@@ -1621,24 +1621,25 @@ The boot/root/patch floppies and the scanned manuals are **proprietary Commodore
 
 ---
 title: Amix on Amiberry (status)
-summary: Why Amix does not currently run under Amiberry, and what is missing.
+summary: What works and what's missing for Amix under Amiberry — the boot floppy loads, but the SCSI/tape install stage is unsupported.
 status: draft
 ---
 
 # Amix on Amiberry (status)
 
-**Amix does not currently run under [Amiberry](https://github.com/BlitterStudio/amiberry).** 🟡 It crashes during boot/install because Amiberry does not emulate the hardware Amix's install scripts and kernel hard-code their expectations against — specifically the **A3000 on-board SCSI controller** and **SCSI tape** emulation that [FS-UAE](emulation-fs-uae.md) and [WinUAE](emulation-winuae.md) provide. For now, **use [WinUAE](emulation-winuae.md) or [FS-UAE](emulation-fs-uae.md) instead.** 🟡
+**Partial.** The Amix **boot floppy loads and runs in [Amiberry](https://github.com/BlitterStudio/amiberry)** — verified reaching the install kernel's `Insert floppy disk 2 (root file system)` prompt ✅. What is missing is the **A3000 on-board SCSI controller** and **SCSI tape** emulation the *install* needs (to read the distribution tape at ID 4 and write the RDB disk at ID 6) — so a full install cannot complete on Amiberry as of issue [#1376](https://github.com/BlitterStudio/amiberry/issues/1376). For an actual install, **use [WinUAE](emulation-winuae.md) or [FS-UAE](emulation-fs-uae.md)**, which emulate the A3000 SCSI + tape. 🟡
 
-This page documents the current state so you don't burn time trying to make Amiberry work. If you have new information (a working config, a fixed build), it belongs here.
+This page documents the current state so you don't burn time. If you have new information (a working config, a fixed build), it belongs here.
 
-## Current status: not working
+## Current status: boots, can't install
 
 | Question | Answer | Tag |
 |---|---|---|
-| Does Amix boot on Amiberry? | No — it crashes | 🟡 |
+| Does the boot floppy / install kernel load on Amiberry? | **Yes** — reaches the `Insert floppy disk 2 (root file system)` prompt | ✅ (observed) |
+| Can a full install complete on Amiberry? | **No** — the SCSI-disk / tape stage is unsupported | 🟡 |
 | Tracking issue | [BlitterStudio/amiberry #1376](https://github.com/BlitterStudio/amiberry/issues/1376), **closed as an enhancement request** (not a bug fix) | 🟡 |
 | Root cause | Missing **A3000 SCSI controller** + **SCSI tape** emulation | 🟡 |
-| Recommended emulator instead | [WinUAE](emulation-winuae.md) (reference target) or [FS-UAE](emulation-fs-uae.md) | 🟡 |
+| Recommended emulator for installing | [WinUAE](emulation-winuae.md) (reference target) or [FS-UAE](emulation-fs-uae.md) | 🟡 |
 
 ## Why it fails
 
@@ -1647,7 +1648,7 @@ Amix is unusually demanding about its storage hardware, and the requirements are
 - The SCSI **hard disk must be at ID 6** and the **tape must be at ID 4** ✅ — these IDs are hard-coded in the kernel and in the install scripts on the root floppy (e.g. `/dev/rmt/4h` for the tape, and `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` for the boot partition). See [the root.adf anatomy page](../boot-disks/anatomy-root-adf.md) and [the disk/filesystem internals](../how-it-works/filesystems-and-disks.md) for how this is wired up.
 - The standard install **streams the distribution from a SCSI tape at ID 4** ✅ (`dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`), so an emulator must present a working SCSI tape device, not just a hard disk.
 
-WinUAE and FS-UAE emulate the **A3000's on-board SCSI** well enough to satisfy the kernel and to attach both a hardfile (the RDB disk at ID 6) and a tape image (at ID 4). Amiberry, as of issue [#1376](https://github.com/BlitterStudio/amiberry/issues/1376), does **not** provide equivalent A3000 SCSI + tape emulation, so Amix crashes rather than completing boot/install. 🟡
+WinUAE and FS-UAE emulate the **A3000's on-board SCSI** well enough to satisfy the kernel and to attach both a hardfile (the RDB disk at ID 6) and a tape image (at ID 4). Amiberry, as of issue [#1376](https://github.com/BlitterStudio/amiberry/issues/1376), does **not** provide equivalent A3000 SCSI + tape emulation. The floppy-loaded **install kernel still comes up** (it doesn't need SCSI to reach the root-disk prompt) ✅, but the install can't proceed once it needs the SCSI disk/tape. 🟡
 
 **Note:** the issue being **closed as an enhancement** means this is treated as a missing feature in Amiberry, not a regression that will be quickly patched. Do not assume a near-term fix.
 
@@ -1677,7 +1678,7 @@ Both attach the hardfile at `scsi6` (RDB) and a tape image at SCSI ID 4, which i
 - [Install walkthrough](install-walkthrough.md) — the end-to-end install once you have a working emulator.
 
 ## Sources
-- Research brief §8 (Emulation): "Amiberry 🟡: Amix crashes (issue #1376, closed-as-enhancement) — missing A3000 SCSI + tape emulation. Document as 'not currently working.'"
+- First-hand observation (2026-06, Amiberry): a rebuilt Amix boot floppy loads the install kernel and reaches the `Insert floppy disk 2 (root file system)` prompt; the SCSI/tape install stage is where Amiberry's missing A3000 storage emulation (issue #1376) bites. Recorded in research brief §8.
 - Research brief §2 (Hardware): SCSI hard disk must be ID 6, tape must be ID 4 (hard-coded in kernel and install scripts; `/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).
 - Research brief §9 (Installation flow): distribution streamed from tape at SCSI ID 4 via `dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`; tape-free install notes on comp.unix.amiga.
 - [BlitterStudio/amiberry issue #1376](https://github.com/BlitterStudio/amiberry/issues/1376) (closed as enhancement).
@@ -4662,8 +4663,8 @@ tools/build-bootfloppy.sh --donor amix_21_boot.adf --kernel my-unix.elf --out cu
 
 The donor's first `0x2800` bytes are copied verbatim (bootblock checksum stays valid) **except** the
 bootstrap's **`IBLK` descriptor** (at `0x2600`: compressed length, decompressed size, checksum), which
-the tool rewrites to match your stream — so it loads with no overrun and no checksum warning. ✅ host
-round-trip verified; 🟡 not yet booted on real Amix — test in an emulator. See
+the tool rewrites to match your stream — so it loads with no overrun and no checksum warning. ✅
+**verified booting in Amiberry** (reaches the original's root-disk prompt). See
 [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) and
 [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 
@@ -5307,7 +5308,9 @@ the tools in [`../../tools/`](../../tools/) on your own copy of the image.
   compressed stream**. ✅ All three must describe *your* stream or the boot fails.
 - Therefore a custom bootable floppy = **`[donor bootblock+bootstrap] + [compress -b16 your-kernel.elf]
   + [zero pad to 880 KB]`**, **with the `IBLK` fields patched to the new stream**, built by
-  [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ host round-trip verified; 🟡 not yet booted on real Amix.
+  [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ **Verified booting in an emulator**
+  (Amiberry): a rebuilt floppy loads and runs identically to the original, reaching the
+  `Insert floppy disk 2 (root file system)` prompt — no overrun, no checksum warning.
 
 ## Disk layout (880 KB / 901,120-byte image) ✅
 
@@ -5436,11 +5439,13 @@ bootblock checksum (in the first 1 KB) stays valid (verified: recomputes to 0).
   patched so it loads cleanly. The whole pipeline round-trips on the host.
 - ✅ **Checksum fully pinned** (`fold16` byte-sum of the compressed stream, stored at `IBLK+0x10`) — a
   rebuilt floppy matches it, so **no warning**. (It's also non-fatal regardless.)
-- 🟡 **Not yet booted on real Amix.** Verify any rebuilt floppy in
-  [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md)
-  before trusting it. The kernel must still fit (compressed) in `880 KB − 0x2800`.
-- 🟡 The 16-bit fold is small — collisions are possible in principle, but the descriptor also carries
-  the exact lengths, so a correctly-rebuilt stream is unambiguous.
+- ✅ **Verified in an emulator (Amiberry).** A rebuilt floppy (same kernel, re-`compress`'d, `IBLK`
+  patched) boots and reaches the original's `Insert floppy disk 2 (root file system)` prompt — no
+  overrun, no warning. This proves the rebuild *pipeline* and the format work.
+- 🟡 **Next validations:** boot a floppy carrying a *driver-modified, relinked* kernel (needs a kernel
+  built on Amix/`/usr/sys`), and run a full install through (the tape stage needs A3000 SCSI/tape
+  emulation — see [Amiberry status](../getting-started/emulation-amiberry.md)). The kernel must fit
+  (compressed) in `880 KB − 0x2800`.
 
 For the broader "add a driver to a boot disk" decision (this vs. relinking the on-HD boot partition),
 see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
@@ -5479,7 +5484,7 @@ was an open reverse-engineering problem. It is now solved (see
 | Surface | Use it for | Status |
 |---|---|---|
 | **(a) On-HD boot partition** | adding a driver to an already-installed system | ✅ supported, normal kernel rebuild |
-| **(b) Custom bootable floppy** | install/recovery media that boots *your* kernel | ✅ host-verified · 🟡 not yet booted on real Amix |
+| **(b) Custom bootable floppy** | install/recovery media that boots *your* kernel | ✅ boots in Amiberry (same kernel) · 🟡 driver-modified kernel untested |
 | **(c) Self-extracting add-on disk** | *distributing* a driver to other users to install | ✅ host-verified · 🟡 not yet run on real Amix |
 
 A driver in Amix is **statically linked into a monolithic kernel — there are no loadable modules** ✅, so
@@ -5561,9 +5566,9 @@ What you get and what to watch:
   `.Z`), so it loads with **no overrun and no checksum warning**. *(A naive rebuild that leaves `IBLK`
   stale fails with `WARNING! Kernel decompression overrun.` — the bootstrap reads the old, longer length
   and decodes your zero-padding. Don't do that; the tool handles it.)*
-- 🟡 **Not yet booted on real Amix.** The format work is host-verified end-to-end; verify any rebuilt
-  floppy in [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md)
-  before relying on it.
+- ✅ **Verified in an emulator (Amiberry):** a rebuilt floppy boots and reaches the original's
+  `Insert floppy disk 2 (root file system)` prompt. Still worth verifying your own builds in
+  [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md).
 
 ## Surface (c): a self-extracting add-on disk — to distribute a driver ✅🟡
 
@@ -5595,7 +5600,7 @@ This disk runs *on* an already-booted Amix — it is not itself bootable.
 | Goal | Use | Status |
 |---|---|---|
 | Add a driver to a running system | (a) relink + `make bootpart` | ✅ works |
-| Make custom install/recovery media that boots your kernel | (b) `build-bootfloppy.sh` | ✅ host-verified · 🟡 emulator-test |
+| Make custom install/recovery media that boots your kernel | (b) `build-bootfloppy.sh` | ✅ boots in Amiberry |
 | Distribute a driver for users to install | (c) `build-custom-bootdisk.sh` | ✅ host-verified · 🟡 emulator-test |
 
 Recommended workflow regardless: **build and test the driver the manual way first** (relink into a live
@@ -5604,10 +5609,14 @@ system per [kernel-build](../drivers/kernel-build.md)) before automating any pac
 ## What's still open
 
 The boot floppy format is solved (layout, `compress`/LZW kernel, `IBLK` descriptor, and the
-folded-byte-sum checksum are all pinned); these are the remaining loose ends, none blocking:
+folded-byte-sum checksum are all pinned) and a rebuilt floppy boots in Amiberry to the root-disk prompt;
+these are the remaining loose ends, none blocking:
 
-- 🟡 **Real-hardware/emulator verification** of `build-bootfloppy.sh` output — the pipeline round-trips
-  on the host (descriptor-driven self-test) but hasn't been booted on Amix yet.
+- 🟡 **Driver-modified kernel** end-to-end: the rebuild was verified with the *same* kernel; booting a
+  floppy whose kernel was relinked with a new driver (needs a kernel built on Amix `/usr/sys`) is the
+  next validation.
+- 🟡 **Full install** through the tape stage needs A3000 SCSI/tape emulation (see
+  [Amiberry status](../getting-started/emulation-amiberry.md)).
 - 🔴 **Exact RDB partition type IDs** Amix uses (boot vs swap vs UFS) are undocumented — relevant only
   if you script creating a boot *partition* from scratch rather than letting the installer do it.
 
@@ -5672,7 +5681,7 @@ the underlying tooling.
 |---|---|---|---|---|
 | `inspect-adf.sh` | ✅ done | Classify boot/root/patch; dump bootblock, embedded objects (ELF/cpio/tar), installer/bootstrap strings | No (read-only) | stdout |
 | `extract-kernel.sh` | ✅ done | Decompress the `compress`/LZW kernel out of a `boot.adf` → m68k ELF (trimmed via ELF header) | No (read-only) | `<out>.elf` |
-| `build-bootfloppy.sh` | ✅ host-verified · 🟡 not Amix-tested | Build a **bootable** `boot.adf` = donor bootblock+bootstrap + `compress -b16` of your kernel; self-tests the round-trip | No (reads donor + kernel, writes new image) | `--out <image.adf>` |
+| `build-bootfloppy.sh` | ✅ boots in Amiberry | Build a **bootable** `boot.adf` = donor bootblock+bootstrap + `compress -b16` of your kernel + patched `IBLK`; self-tests via the descriptor | No (reads donor + kernel, writes new image) | `--out <image.adf>` |
 | `unpack-root.sh` | ✅ done (carve-based) | Carve embedded objects out of a UFS miniroot; dump installer script text | No (read-only) | `tools/_work/<image>/` |
 | `build-custom-bootdisk.sh` | ✅ host-verified · 🟡 not Amix-tested | Build a *self-extracting add-on* disk (1 KB `/sbin/sh` header + cpio payload), modeled on the real patch disk | No (reads a payload **dir**, writes a new image) | `--out <image.adf>` |
 | `gen-llms-full.sh` | ✅ done | Concatenate all `docs/` pages into `llms-full.txt` | n/a | `llms-full.txt` |
@@ -5803,9 +5812,9 @@ tools/build-bootfloppy.sh --donor amix_2.1_boot.adf --kernel unix.elf --out cust
 It **rewrites the bootstrap's `IBLK` descriptor** (`0x2600`: compressed length, decompressed size, and
 checksum = folded byte-sum of the `.Z`) to match your stream — so the boot has no overrun and no
 checksum warning — then **self-tests** by decompressing per the patched descriptor and comparing to your
-kernel. Your kernel must fit *compressed* in `880 KB − 0x2800`. ✅ host round-trip verified; 🟡 **not yet
-booted on real Amix** — test in an emulator. (Leaving `IBLK` stale causes `WARNING! Kernel decompression
-overrun.`; the tool avoids that.)
+kernel. Your kernel must fit *compressed* in `880 KB − 0x2800`. ✅ **verified booting in Amiberry**
+(rebuilt floppy reaches the original's root-disk prompt). (Leaving `IBLK` stale causes
+`WARNING! Kernel decompression overrun.`; the tool avoids that.)
 
 **Requires:** `dd`, `od`, `compress` (or `ncompress`), and `gzip`/`zcat` (for the self-test).
 

@@ -219,7 +219,7 @@ hard_drive_0_controller = scsi6
 hard_drive_0_type = rdb
 motherboard_ram = 16384
 ```
-**Amiberry** 🟡: Amix crashes (issue #1376, closed-as-enhancement) — missing A3000 SCSI + tape emulation. Document as "not currently working." **QEMU**: no working setup (no Amiga SCSI/hw). 🟡 default post-install login password "wasp".
+**Amiberry**: the floppy-loaded **install kernel boots** (✅ observed 2026-06: reaches the `Insert floppy disk 2 (root file system)` prompt), but a **full install can't complete** — Amiberry lacks the A3000 SCSI + tape emulation the install needs (issue #1376, closed-as-enhancement). Use WinUAE/FS-UAE to install. **QEMU**: no working setup (no Amiga SCSI/hw). 🟡 default post-install login password "wasp".
 
 ---
 
@@ -282,7 +282,7 @@ SCSI ID 6 disk / ID 4 tape hard-coded; 16 MB RAM ceiling; no Zorro III; no 68040
 7. 🟡 X11R4-vs-R5 "default" claims conflict; amigaunix.com (most authoritative) says R4 default.
 8. 🔴 Exact RDB partition type IDs Amix uses (boot vs swap vs UFS) not documented.
 9. ✅ boot.adf kernel **checksum** — **fully pinned**: `IBLK+0x10` = `fold16(byte-sum of the compressed `.Z` stream)`; lengths in `IBLK` (`+0x8` comp, `+0xc` decomp). Non-fatal anyway. `build-bootfloppy.sh` patches all three so a rebuild matches (no warning). *(Was 🔴 "compression+checksum entirely unknown".)*
-10. 🟡 `tools/build-bootfloppy.sh` round-trips correctly on the host (IBLK-driven self-test) but is **not yet booted on real Amix** — needs emulator/hardware verification. A first attempt that left `IBLK` stale failed with "decompression overrun"; patching `IBLK` fixed it.
+10. ✅ `tools/build-bootfloppy.sh` — a same-kernel rebuild (re-`compress`'d, `IBLK` patched) **boots in Amiberry** to the original's `Insert floppy disk 2 (root file system)` prompt (no overrun, no warning). 🟡 Next: a *driver-modified* relinked kernel, and the full tape install. (A first attempt that left `IBLK` stale failed with "decompression overrun"; patching `IBLK` fixed it.)
 
 ---
 

@@ -25,8 +25,9 @@
 # Requires: dd, od, python3 (IBLK patch + self-test), compress (or ncompress), gzip/zcat.
 # Operates on USER-SUPPLIED images; we ship no proprietary media.
 #
-# STATUS: layout + compression + non-fatal-checksum are verified by analysis and a
-# host-side round-trip self-test. NOT yet booted on real Amix — verify in WinUAE/FS-UAE. 🟡
+# STATUS: layout + compression + IBLK descriptor + checksum are reverse-engineered, and a
+# same-kernel rebuild has been verified BOOTING in Amiberry (reaches the root-disk prompt,
+# no overrun, no checksum warning). Booting a driver-modified kernel is the next validation.
 
 set -u
 donor="" kern="" out=""
@@ -148,4 +149,5 @@ PY
 rc=$?
 rm -f "$tmpz.out"
 [ "$rc" -eq 0 ] || exit 6
-echo "🟡 Host round-trip OK. Verify the boot in WinUAE/FS-UAE before relying on it."
+echo "Host round-trip OK. (A same-kernel rebuild has booted in Amiberry to the root-disk prompt;"
+echo " verify your own build in an emulator.)"

@@ -30,7 +30,7 @@ the underlying tooling.
 |---|---|---|---|---|
 | `inspect-adf.sh` | ✅ done | Classify boot/root/patch; dump bootblock, embedded objects (ELF/cpio/tar), installer/bootstrap strings | No (read-only) | stdout |
 | `extract-kernel.sh` | ✅ done | Decompress the `compress`/LZW kernel out of a `boot.adf` → m68k ELF (trimmed via ELF header) | No (read-only) | `<out>.elf` |
-| `build-bootfloppy.sh` | ✅ host-verified · 🟡 not Amix-tested | Build a **bootable** `boot.adf` = donor bootblock+bootstrap + `compress -b16` of your kernel; self-tests the round-trip | No (reads donor + kernel, writes new image) | `--out <image.adf>` |
+| `build-bootfloppy.sh` | ✅ boots in Amiberry | Build a **bootable** `boot.adf` = donor bootblock+bootstrap + `compress -b16` of your kernel + patched `IBLK`; self-tests via the descriptor | No (reads donor + kernel, writes new image) | `--out <image.adf>` |
 | `unpack-root.sh` | ✅ done (carve-based) | Carve embedded objects out of a UFS miniroot; dump installer script text | No (read-only) | `tools/_work/<image>/` |
 | `build-custom-bootdisk.sh` | ✅ host-verified · 🟡 not Amix-tested | Build a *self-extracting add-on* disk (1 KB `/sbin/sh` header + cpio payload), modeled on the real patch disk | No (reads a payload **dir**, writes a new image) | `--out <image.adf>` |
 | `gen-llms-full.sh` | ✅ done | Concatenate all `docs/` pages into `llms-full.txt` | n/a | `llms-full.txt` |
@@ -161,9 +161,9 @@ tools/build-bootfloppy.sh --donor amix_2.1_boot.adf --kernel unix.elf --out cust
 It **rewrites the bootstrap's `IBLK` descriptor** (`0x2600`: compressed length, decompressed size, and
 checksum = folded byte-sum of the `.Z`) to match your stream — so the boot has no overrun and no
 checksum warning — then **self-tests** by decompressing per the patched descriptor and comparing to your
-kernel. Your kernel must fit *compressed* in `880 KB − 0x2800`. ✅ host round-trip verified; 🟡 **not yet
-booted on real Amix** — test in an emulator. (Leaving `IBLK` stale causes `WARNING! Kernel decompression
-overrun.`; the tool avoids that.)
+kernel. Your kernel must fit *compressed* in `880 KB − 0x2800`. ✅ **verified booting in Amiberry**
+(rebuilt floppy reaches the original's root-disk prompt). (Leaving `IBLK` stale causes
+`WARNING! Kernel decompression overrun.`; the tool avoids that.)
 
 **Requires:** `dd`, `od`, `compress` (or `ncompress`), and `gzip`/`zcat` (for the self-test).
 

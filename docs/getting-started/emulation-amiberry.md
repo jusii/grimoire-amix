@@ -1,23 +1,24 @@
 ---
 title: Amix on Amiberry (status)
-summary: Why Amix does not currently run under Amiberry, and what is missing.
+summary: What works and what's missing for Amix under Amiberry — the boot floppy loads, but the SCSI/tape install stage is unsupported.
 status: draft
 ---
 
 # Amix on Amiberry (status)
 
-**Amix does not currently run under [Amiberry](https://github.com/BlitterStudio/amiberry).** 🟡 It crashes during boot/install because Amiberry does not emulate the hardware Amix's install scripts and kernel hard-code their expectations against — specifically the **A3000 on-board SCSI controller** and **SCSI tape** emulation that [FS-UAE](emulation-fs-uae.md) and [WinUAE](emulation-winuae.md) provide. For now, **use [WinUAE](emulation-winuae.md) or [FS-UAE](emulation-fs-uae.md) instead.** 🟡
+**Partial.** The Amix **boot floppy loads and runs in [Amiberry](https://github.com/BlitterStudio/amiberry)** — verified reaching the install kernel's `Insert floppy disk 2 (root file system)` prompt ✅. What is missing is the **A3000 on-board SCSI controller** and **SCSI tape** emulation the *install* needs (to read the distribution tape at ID 4 and write the RDB disk at ID 6) — so a full install cannot complete on Amiberry as of issue [#1376](https://github.com/BlitterStudio/amiberry/issues/1376). For an actual install, **use [WinUAE](emulation-winuae.md) or [FS-UAE](emulation-fs-uae.md)**, which emulate the A3000 SCSI + tape. 🟡
 
-This page documents the current state so you don't burn time trying to make Amiberry work. If you have new information (a working config, a fixed build), it belongs here.
+This page documents the current state so you don't burn time. If you have new information (a working config, a fixed build), it belongs here.
 
-## Current status: not working
+## Current status: boots, can't install
 
 | Question | Answer | Tag |
 |---|---|---|
-| Does Amix boot on Amiberry? | No — it crashes | 🟡 |
+| Does the boot floppy / install kernel load on Amiberry? | **Yes** — reaches the `Insert floppy disk 2 (root file system)` prompt | ✅ (observed) |
+| Can a full install complete on Amiberry? | **No** — the SCSI-disk / tape stage is unsupported | 🟡 |
 | Tracking issue | [BlitterStudio/amiberry #1376](https://github.com/BlitterStudio/amiberry/issues/1376), **closed as an enhancement request** (not a bug fix) | 🟡 |
 | Root cause | Missing **A3000 SCSI controller** + **SCSI tape** emulation | 🟡 |
-| Recommended emulator instead | [WinUAE](emulation-winuae.md) (reference target) or [FS-UAE](emulation-fs-uae.md) | 🟡 |
+| Recommended emulator for installing | [WinUAE](emulation-winuae.md) (reference target) or [FS-UAE](emulation-fs-uae.md) | 🟡 |
 
 ## Why it fails
 
@@ -26,7 +27,7 @@ Amix is unusually demanding about its storage hardware, and the requirements are
 - The SCSI **hard disk must be at ID 6** and the **tape must be at ID 4** ✅ — these IDs are hard-coded in the kernel and in the install scripts on the root floppy (e.g. `/dev/rmt/4h` for the tape, and `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` for the boot partition). See [the root.adf anatomy page](../boot-disks/anatomy-root-adf.md) and [the disk/filesystem internals](../how-it-works/filesystems-and-disks.md) for how this is wired up.
 - The standard install **streams the distribution from a SCSI tape at ID 4** ✅ (`dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`), so an emulator must present a working SCSI tape device, not just a hard disk.
 
-WinUAE and FS-UAE emulate the **A3000's on-board SCSI** well enough to satisfy the kernel and to attach both a hardfile (the RDB disk at ID 6) and a tape image (at ID 4). Amiberry, as of issue [#1376](https://github.com/BlitterStudio/amiberry/issues/1376), does **not** provide equivalent A3000 SCSI + tape emulation, so Amix crashes rather than completing boot/install. 🟡
+WinUAE and FS-UAE emulate the **A3000's on-board SCSI** well enough to satisfy the kernel and to attach both a hardfile (the RDB disk at ID 6) and a tape image (at ID 4). Amiberry, as of issue [#1376](https://github.com/BlitterStudio/amiberry/issues/1376), does **not** provide equivalent A3000 SCSI + tape emulation. The floppy-loaded **install kernel still comes up** (it doesn't need SCSI to reach the root-disk prompt) ✅, but the install can't proceed once it needs the SCSI disk/tape. 🟡
 
 **Note:** the issue being **closed as an enhancement** means this is treated as a missing feature in Amiberry, not a regression that will be quickly patched. Do not assume a near-term fix.
 
@@ -56,7 +57,7 @@ Both attach the hardfile at `scsi6` (RDB) and a tape image at SCSI ID 4, which i
 - [Install walkthrough](install-walkthrough.md) — the end-to-end install once you have a working emulator.
 
 ## Sources
-- Research brief §8 (Emulation): "Amiberry 🟡: Amix crashes (issue #1376, closed-as-enhancement) — missing A3000 SCSI + tape emulation. Document as 'not currently working.'"
+- First-hand observation (2026-06, Amiberry): a rebuilt Amix boot floppy loads the install kernel and reaches the `Insert floppy disk 2 (root file system)` prompt; the SCSI/tape install stage is where Amiberry's missing A3000 storage emulation (issue #1376) bites. Recorded in research brief §8.
 - Research brief §2 (Hardware): SCSI hard disk must be ID 6, tape must be ID 4 (hard-coded in kernel and install scripts; `/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).
 - Research brief §9 (Installation flow): distribution streamed from tape at SCSI ID 4 via `dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`; tape-free install notes on comp.unix.amiga.
 - [BlitterStudio/amiberry issue #1376](https://github.com/BlitterStudio/amiberry/issues/1376) (closed as enhancement).

@@ -135,8 +135,8 @@ tools/build-bootfloppy.sh --donor amix_21_boot.adf --kernel my-unix.elf --out cu
 
 The donor's first `0x2800` bytes are copied verbatim (bootblock checksum stays valid) **except** the
 bootstrap's **`IBLK` descriptor** (at `0x2600`: compressed length, decompressed size, checksum), which
-the tool rewrites to match your stream — so it loads with no overrun and no checksum warning. ✅ host
-round-trip verified; 🟡 not yet booted on real Amix — test in an emulator. See
+the tool rewrites to match your stream — so it loads with no overrun and no checksum warning. ✅
+**verified booting in Amiberry** (reaches the original's root-disk prompt). See
 [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) and
 [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 
