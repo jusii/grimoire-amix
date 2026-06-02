@@ -15,7 +15,7 @@ script*: the header bootstraps itself, `dd`s past its own first kilobyte, pipes 
 (`archive.lha`) according to three list files.
 
 This page decodes that structure byte-for-byte (reproduced locally with
-[`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) and a small cpio walker), then explains the
+[`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and a small cpio walker), then explains the
 `apply` + `lha` + list mechanism. It is the closest thing Amix has to a worked example of a custom
 add-on disk, so it doubles as the reference model for
 [adding your own drivers to a boot/patch disk](adding-drivers-to-boot-disk.md).
@@ -240,7 +240,7 @@ dd if=amix_21_patch.adf bs=1k skip=1 2>/dev/null | cpio -itv
 
 ## Sources
 
-- `amix_21_patch.adf` analysis via [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) and a `newc`-cpio header walk (offsets, modes, sizes reproduced locally) — SHA-256 `674f3ac6…0060fdfe` in `sources/CHECKSUMS.txt`.
-- Master research brief, [§10 "Boot / root / patch disk anatomy"](../../sources/research-brief.md) and §1 version matrix (`^2\.1.* 08004..$` gate, 2.1p2a / kernel 2.1c).
+- `amix_21_patch.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and a `newc`-cpio header walk (offsets, modes, sizes reproduced locally) — SHA-256 `674f3ac6…0060fdfe` in `sources/CHECKSUMS.txt`.
+- Master research brief, [§10 "Boot / root / patch disk anatomy"](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) and §1 version matrix (`^2\.1.* 08004..$` gate, 2.1p2a / kernel 2.1c).
 - Verbatim 1 KB header script captured from the image (`dd … bs=1 count=1024 | strings`).
 - amigaunix.com patch-disk page and the [archive.org Amix collection](https://archive.org/details/commodore-amiga-operating-systems-amix) (image provenance; not redistributed here).

@@ -7,7 +7,7 @@ status: reviewed
 # Style Guide
 
 This guide covers *how* to write pages. For the *rules of accuracy* (grounding, fact-confidence tags,
-licensing) see [`AGENTS.md`](../../AGENTS.md) at the repo root — those are mandatory for humans and AI alike.
+licensing) see [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) at the repo root — those are mandatory for humans and AI alike.
 
 ## Page skeleton
 
@@ -55,7 +55,7 @@ status: draft
 
 ## Fact-confidence tags
 
-Inline, per the [AGENTS contract](../../AGENTS.md): ✅ verified, 🟡 community-reported, 🔴 unverified/disputed.
+Inline, per the [AGENTS contract](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md): ✅ verified, 🟡 community-reported, 🔴 unverified/disputed.
 Example: "The kernel hard-codes a 16 MB Fast RAM ceiling ✅; exceeding it mis-maps the SCSI drive ✅."
 
 ## Filenames
@@ -69,5 +69,5 @@ Write so a newcomer can follow it *and* so an LLM agent can lift exact commands 
 guessing. Concrete > clever. When in doubt, add a table, a command, or a citation.
 
 ## Sources
-- [`AGENTS.md`](../../AGENTS.md) (repo conventions)
+- [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) (repo conventions)
 - The `llms.txt` convention (Jeremy Howard, Answer.AI, 2024)

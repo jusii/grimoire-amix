@@ -13,7 +13,7 @@ sources** (amigaunix.com, encyclopedias, blogs, Usenet, emulator issue trackers,
 docs). Every `docs/` page ends with its own `## Sources` list citing the specific items below; this
 page is where those citations resolve.
 
-The hierarchy we apply everywhere, per the [contributor contract](../../AGENTS.md): **primary manuals
+The hierarchy we apply everywhere, per the [contributor contract](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md): **primary manuals
 / the Ditto driver paper / the real disk images and repo source > archived Usenet
 (comp.unix.amiga) > forum lore.** Confidence tags (✅ verified, 🟡 community-reported,
 🔴 unverified/disputed) are carried from the research brief into every page; this page is mostly a
@@ -218,7 +218,7 @@ so a reader (human or agent) can resolve and reproduce them:
 - [Driver model](../drivers/driver-model.md) — the page the Ditto paper most directly grounds.
 - [Boot-disk anatomy: boot.adf](../boot-disks/anatomy-boot-adf.md) — where the local image analysis lands.
 - [Writing for LLMs](../contributing/writing-for-llms.md) — the `llms.txt` convention in practice.
-- [AGENTS.md](../../AGENTS.md) — the grounding, tagging, and licensing contract that this list serves.
+- [AGENTS.md](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — the grounding, tagging, and licensing contract that this list serves.
 
 ## Sources
 

@@ -1072,7 +1072,7 @@ status: draft
 
 Amix is a "quick and dirty" 1990–1992 SVR4 port ✅, and it shows: the kernel hard-codes SCSI IDs and a RAM ceiling, the bootstrap predates the 68040 and Zorro III, the clock breaks in 2000, and the userland is pre-POSIX. This page is the **checklist of port-specific surprises** — the things that are technically correct, technically broken, or just unexpected, that cost people hours before they realize "it's just Amix."
 
-Each item is one line: what it is, the ✅/🟡 confidence tag carried from the [research brief](../../sources/research-brief.md) §12 (and §2/§9/§11), and a cross-link to the page that covers it in depth.
+Each item is one line: what it is, the ✅/🟡 confidence tag carried from the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §12 (and §2/§9/§11), and a cross-link to the page that covers it in depth.
 
 ## TL;DR checklist
 
@@ -1214,7 +1214,7 @@ status: draft
 Concise definitions of the Amix-, Amiga-, and SVR4-specific terms that recur across these docs.
 Each entry is one or two lines and links to the page that covers the term in depth. Confidence
 tags (✅ verified, 🟡 community-reported, 🔴 unverified/disputed) carry over from the
-[research brief](../../sources/research-brief.md) — they are *not* upgraded here.
+[research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — they are *not* upgraded here.
 
 Entries are alphabetical. Acronyms sort by their letters (so "RDB" sits under R, "s5" under S).
 
@@ -1416,7 +1416,7 @@ addresses are assigned by [AUTOCONFIG](#autoconfig) at reset ✅. See [hardware]
 
 ## Sources
 
-- [`sources/research-brief.md`](../../sources/research-brief.md) — sections 1, 2, 3, 4, 5, 6, 7, 9, 11 (the grounding source of every definition above)
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — sections 1, 2, 3, 4, 5, 6, 7, 9, 11 (the grounding source of every definition above)
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model, `cdevsw`/`bdevsw`, majors/minors, `spl`/clist, `rdbunix` (the Ditto paper)
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — miniroot, UFS, `viper_kludge`, install/partition logic, `relocunix`/`make bootpart`
 - `amix_21_boot.adf` analysis via `tools/inspect-adf.sh` — compressed kernel, HAT panic string
@@ -1707,7 +1707,7 @@ genuine host on your LAN — static IP, gateway, DNS, internet. Full verified re
 **[Putting Amix on your real LAN](networking-on-the-lan.md)**.
 
 ## See also
-- [`tools/amix-amiberry.uae`](../../tools/amix-amiberry.uae) — a complete, ready-to-edit working Amiberry config (A3000 / KS 2.04 / 68030+MMU / SCSI disk@6 + tape@4 / A2065).
+- [`tools/amix-amiberry.uae`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amix-amiberry.uae) — a complete, ready-to-edit working Amiberry config (A3000 / KS 2.04 / 68030+MMU / SCSI disk@6 + tape@4 / A2065).
 - [Install walkthrough](install-walkthrough.md) — the end-to-end tape install (works on Amiberry 8.x, WinUAE, and FS-UAE).
 - [Amix on WinUAE](emulation-winuae.md) / [Amix on FS-UAE](emulation-fs-uae.md) — the other UAE-family targets.
 - [Hardware & requirements](../how-it-works/hardware.md) — why the SCSI IDs and RAM ceiling are fixed.
@@ -1747,7 +1747,7 @@ The result, with the example values used throughout:
 It builds on the conceptual [networking page](../how-it-works/networking.md) (the SVR4 STREAMS stack, `aen0`, static-IP/no-DHCP, DNS-off-by-default) and [the Amiberry page](emulation-amiberry.md): **Amiberry 8.x fully runs and installs Amix** — its A3000 on-board SCSI emulates the disk (ID 6) and tape (ID 4) — and adds real A2065 networking. ✅
 
 > Substitute your own IP/gateway/DNS throughout. The host-side helpers in
-> [`tools/host-net/`](../../tools/host-net/) default to exactly these values and
+> [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) default to exactly these values and
 > autodetect your LAN interface.
 
 ## Why this works on Amiberry (and the design choice)
@@ -1805,7 +1805,7 @@ sudo iptables -I DOCKER-USER 1 -i $ETH -o tap0 -j ACCEPT
 ## Step 2 — Amiberry config
 
 In your machine's `.uae` (a complete working example is committed at
-[`tools/amix-amiberry.uae`](../../tools/amix-amiberry.uae)), the networking lines are:
+[`tools/amix-amiberry.uae`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amix-amiberry.uae)), the networking lines are:
 
 ```ini
 a2065=tap0
@@ -1953,14 +1953,14 @@ Useful for automation / agents driving Amix without a visible window:
   with `xdotool windowfocus <id>` + `xdotool type/key`, screenshot with
   `import -window root`). ✅
 - Once `aen0` is up, skip the console entirely and use the LAN: scripted shell via
-  [`tools/host-net/amixsh.py`](../../tools/host-net/amixsh.py) (telnet) and file
-  uploads via [`amixput.py`](../../tools/host-net/amixput.py) (FTP). ✅
+  [`tools/host-net/amixsh.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/host-net/amixsh.py) (telnet) and file
+  uploads via [`amixput.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/host-net/amixput.py) (FTP). ✅
 
 ## See also
 
 - [Networking (concepts)](../how-it-works/networking.md) — the SVR4 STREAMS stack, `aen0`, DNS-off-by-default, the `route` metric.
 - [Amix on Amiberry (status)](emulation-amiberry.md) — what runs vs. what needs WinUAE/FS-UAE.
-- [`tools/host-net/`](../../tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
+- [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
 - [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap.
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) — the community source that documents the `/etc/domain` "general weirdness".
 
@@ -2599,7 +2599,7 @@ status: draft
 
 # The Amix Device-Driver Model
 
-In Amix, a device is just a file in `/dev` carrying two numbers — a **major** (which driver) and a **minor** (which sub-device). The kernel never looks at the name; it indexes a per-class **switch table** by the major number to find the driver's entry points. Everything else in this page is the elaboration of that one idea ✅. The authoritative source is Michael Ditto's *Writing Amix Device Drivers* (1990 European Amiga Developer's Conference), §5 of the [research brief](../../sources/research-brief.md), and it is the conceptual core for the rest of the drivers pillar.
+In Amix, a device is just a file in `/dev` carrying two numbers — a **major** (which driver) and a **minor** (which sub-device). The kernel never looks at the name; it indexes a per-class **switch table** by the major number to find the driver's entry points. Everything else in this page is the elaboration of that one idea ✅. The authoritative source is Michael Ditto's *Writing Amix Device Drivers* (1990 European Amiga Developer's Conference), §5 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), and it is the conceptual core for the rest of the drivers pillar.
 
 This page is **uniformly ✅** (primary source: the Ditto paper) except where a tag says otherwise.
 
@@ -2767,7 +2767,7 @@ The paper's end-to-end procedure ties the whole model together ✅. Full mechani
 ## Sources
 
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (the project's authoritative driver paper) — §5; `cdevsw`/`bdevsw` from `conf.h`; the `ls -l /dev` example; `par.c` worked driver and `par(7A)` man page (p.22).
-- [`sources/research-brief.md`](../../sources/research-brief.md) §5 (device-driver model), §4 (kernel architecture: monolithic, no loadable modules, `kernel.c` in source), §2 (SCSI ID hard-coding, Zorro II only).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §5 (device-driver model), §4 (kernel architecture: monolithic, no loadable modules, `kernel.c` in source), §2 (SCSI ID hard-coding, Zorro II only).
 - `asokero/va2000-amix` repo (`io_init[]` / `cdevsw[]` slot 68 patches): <https://github.com/asokero/va2000-amix>
 - `isoriano1968/hydra-amix` repo (`hya` at `cdevsw` slot 47, `hydraopen`/`hydrawput`/`hydraintr`): <https://github.com/isoriano1968/hydra-amix>
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>
@@ -3517,7 +3517,7 @@ Read the full mechanics — kernel-file patches, the `make install` / `make boot
 ## Sources
 
 - Ditto, Michael. *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — pp. 8–22: the line-by-line driver narrative (pp. 8–12), the full `par.c` listing (pp. 13–19, lines 1–317), the references (pp. 20–21), and the `par(7A)` man page (p. 22). All code excerpts on this page are quoted from that listing.
-- [`sources/research-brief.md`](../../sources/research-brief.md) §5 (device-driver model; the `par.c` worked example as the canonical char-driver teaching case) and §6 (VA2000 modern char/`mmap` driver facts).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §5 (device-driver model; the `par.c` worked example as the canonical char-driver teaching case) and §6 (VA2000 modern char/`mmap` driver facts).
 - `asokero/va2000-amix` repo (char major 68, `/dev/va2000`, `mmap`, `autocon()`/`uiomove()`/`copyin`/`copyout`): <https://github.com/asokero/va2000-amix>
 - amigaunix.com — historical and end-user reference for Amix and its media: <https://www.amigaunix.com/doku.php/home>
 
@@ -3662,7 +3662,7 @@ The pipeline 🟡:
 
 For the compiler, the `_KERNEL`/`SVR4` flags, and the rest of the cross-build story see [Toolchain](toolchain.md) and the kernel-relink mechanics in [Building and installing a kernel](kernel-build.md).
 
-> **Warning:** there is **no public, reproducible build recipe** for the `m68k-amix-gcc` cross-compiler — it is a private build that needs the proprietary Amix SVR4 headers and libraries 🔴. Treat the toolchain as an open gap: you cannot currently reproduce this build from scratch without already having an Amix install to harvest headers/libs from. See the [licensing boundary](../../AGENTS.md) — obtain media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution.
+> **Warning:** there is **no public, reproducible build recipe** for the `m68k-amix-gcc` cross-compiler — it is a private build that needs the proprietary Amix SVR4 headers and libraries 🔴. Treat the toolchain as an open gap: you cannot currently reproduce this build from scratch without already having an Amix install to harvest headers/libs from. See the [licensing boundary](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — obtain media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution.
 
 ## Checklist: adding a STREAMS net driver
 
@@ -3687,7 +3687,7 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 
 ## Sources
 
-- [`sources/research-brief.md`](../../sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x041D0001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x041D0001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).
 - `isoriano1968/hydra-amix` repo: <https://github.com/isoriano1968/hydra-amix>
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>
@@ -3712,7 +3712,7 @@ Two hard limits frame everything on this page:
 - **Zorro II only.** Amix's memory-mapping layer cannot address Zorro III space, and that source was never shipped, so it can't be community-fixed ✅. See [Hardware](../how-it-works/hardware.md).
 - **AutoConfig boards only.** RAM and accelerator boards with no AutoConfig ROM are invisible to this mechanism — `lszorro` cannot see them ✅.
 
-Grounding: this page is built from §2 and §6 of the [research brief](../../sources/research-brief.md), the [Ditto driver paper](../reference/bibliography.md), and the `asokero/lszorro-amix` source. The `autocon()` signature is **repo-confirmed but community-tier** 🟡 — do not treat it as primary-verified.
+Grounding: this page is built from §2 and §6 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), the [Ditto driver paper](../reference/bibliography.md), and the `asokero/lszorro-amix` source. The `autocon()` signature is **repo-confirmed but community-tier** 🟡 — do not treat it as primary-verified.
 
 ## What AUTOCONFIG does, and why drivers care
 
@@ -3824,7 +3824,7 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 
 ## Sources
 
-- [`sources/research-brief.md`](../../sources/research-brief.md) §2 (Zorro II only; no Zorro III mapping; supported expansion), §3 (AUTOCONFIG assigns Zorro II addresses at reset; `autocon()` consumed by the kernel), §5 (`autocon(product_id, dev, &board, &dummy)` 🟡 repo-confirmed; driver API surface), §6 (lszorro mechanism, ranges, nibble encoding, ID database; VA2000 and Hydra AutoConfig IDs).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (Zorro II only; no Zorro III mapping; supported expansion), §3 (AUTOCONFIG assigns Zorro II addresses at reset; `autocon()` consumed by the kernel), §5 (`autocon(product_id, dev, &board, &dummy)` 🟡 repo-confirmed; driver API surface), §6 (lszorro mechanism, ranges, nibble encoding, ID database; VA2000 and Hydra AutoConfig IDs).
 - `asokero/lszorro-amix` repo — `/dev/mem` `mmap()` scan, `0x80`-byte windows, I/O `0xE90000`–`0xEFFFFF` / mem `0x200000`–`0x9FFFFF`, AutoConfig nibble decode, 461-entry ID DB, register-only fingerprinting: <https://github.com/asokero/lszorro-amix>
 - `asokero/va2000-amix` repo — VA2000 AutoConfig mfr `0x6D6E` product `0x01`, 4 MB Zorro II window, `autocon()` usage: <https://github.com/asokero/va2000-amix>
 - `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x041D0001` (1053/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
@@ -3989,7 +3989,7 @@ For the native compilers and SVR4 toolchain caveats (the bundled AT&T `cc`, GCC 
 
 The **new** `Xrtg` Amix code is **MIT-licensed**; the surrounding **X11R5** code retains the original **X
 Consortium** terms ✅. Building it also requires a licensed Amix system for the SVR4 headers and libraries —
-the proprietary Amix distribution is not redistributable (see [licensing](../../AGENTS.md)).
+the proprietary Amix distribution is not redistributable (see [licensing](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
 
 ## Input: the AMIX screen manager
 
@@ -4033,7 +4033,7 @@ historical desktop environment (OpenLook `olwm`/`olwsm`, `tvtwm`, the X11R5 font
 - [Toolchain](toolchain.md) — the native SVR4 `cc`/GCC and cross-build notes.
 
 ## Sources
-- Research brief [`sources/research-brief.md`](../../sources/research-brief.md) §6 (`asokero/xrtg-amix` and `asokero/va2000-amix` repo facts) and §11 (X11 / RTG path).
+- Research brief [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`asokero/xrtg-amix` and `asokero/va2000-amix` repo facts) and §11 (X11 / RTG path).
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — README and source tree (`ddx/amix/`, `ddx/amix/rtg/`, `ddx/amix/rtg/va2000/`, `config/amix.cf`); X11R5 / `imake` build; `BuildPex=NO`; `OpenScreen()` / `SIOCACTIVATE` input; TrueColor RGB565; MIT (new code) + X Consortium (X11R5) licensing.
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — README and source; `/dev/va2000` char major 68 minor 0; RTG screen type patched into `amiga/console/{scrdev.c,c0.c,screen.c}`; `relocunix` relink + `make bootpart`.
 - amigaunix.com — historical X11 context cross-referenced in [X11 & the Desktop](../how-it-works/x11-and-desktop.md) (🟡 community-reported).
@@ -4162,7 +4162,7 @@ Practical consequences:
 - The reliable native fallback is to build **inside the emulator or on real hardware** with the on-box `cc`/GCC (see [native compilers](#native-compilers-on-the-box)). Single-file drivers like the [VA2000 framebuffer driver](case-studies/va2000.md) build natively with `cc va2000.c` and never need the cross toolchain ✅.
 - If you do have a licensed Amix install, you can extract its headers/libs to form a sysroot, but the exact configure/build invocation for the cross GCC is **not documented** in any source we hold 🔴.
 
-This is tracked as open gap #1 in §13 of the [research brief](../../sources/research-brief.md).
+This is tracked as open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
 
 ## SVR4 packaging
 
@@ -4194,7 +4194,7 @@ pkgadd -d /tmp/MYpkg.pkg MYpkg
 
 ### How the installer itself uses packaging
 
-The Amix install path is package-driven ✅. The `root.adf` install scripts wrap the pkg machinery with **`amixpkg`** (e.g. `amixpkg -i -m -d -r /mnt -y standard`) and stream the distribution from tape (`dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`) ✅. The `amixpkg` wrapper is widely reported to be flaky/"broken" 🟡, but the underlying `pkgadd`/`pkgmk`/`pkgtrans` tools are the standard SVR4 ones. The installation flow is detailed in §9 of the [research brief](../../sources/research-brief.md); see also the [installation walkthrough](../getting-started/install-walkthrough.md).
+The Amix install path is package-driven ✅. The `root.adf` install scripts wrap the pkg machinery with **`amixpkg`** (e.g. `amixpkg -i -m -d -r /mnt -y standard`) and stream the distribution from tape (`dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`) ✅. The `amixpkg` wrapper is widely reported to be flaky/"broken" 🟡, but the underlying `pkgadd`/`pkgmk`/`pkgtrans` tools are the standard SVR4 ones. The installation flow is detailed in §9 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md); see also the [installation walkthrough](../getting-started/install-walkthrough.md).
 
 ### AmixBP and the zoo+cpio fallback
 
@@ -4226,7 +4226,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 
 ## Sources
 
-- [research brief](../../sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra cross-build), §11 (userland shells), and §13 (open gaps #1, #3).
+- [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra cross-build), §11 (userland shells), and §13 (open gaps #1, #3).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (kernel build flow; `rdbunix` historical name).
 - `isoriano1968/hydra-amix` repo (the `m68k-amix-gcc` / `CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"` / `elf2brel` in `stand/` / `make oldboot` flow): <https://github.com/isoriano1968/hydra-amix>
 - `asokero/va2000-amix` repo (native `cc va2000.c`; pre-POSIX `/bin/sh` gotchas — no `$(...)`, no `grep -q`): <https://github.com/asokero/va2000-amix>
@@ -4391,7 +4391,7 @@ These are the practical traps the repo documents — useful for anyone writing o
 ## Sources
 
 - `asokero/va2000-amix` repo (README + `va2000.c` source): <https://github.com/asokero/va2000-amix> — device node, char major 68, AutoConfig mfr `0x6D6E`/product `0x01`, 4 MB window split, modes, native `cc` build, the six patched kernel files, install sequence, `(base+off)>>11` page frame, and the shell/`extern`/stale-object gotchas.
-- [`sources/research-brief.md`](../../../sources/research-brief.md) §6 (modern driver repos — va2000 entry), §5 (device-driver model, `cdevsw[]`/`io_init[]`/`init_tbl[]`, `autocon()`/`uiomove()`/`copyin`/`copyout`), §4 (monolithic kernel, no loadable modules, `kernel.c` in source), §2 (Zorro II only), §11 (pre-POSIX `/bin/sh`).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (modern driver repos — va2000 entry), §5 (device-driver model, `cdevsw[]`/`io_init[]`/`init_tbl[]`, `autocon()`/`uiomove()`/`copyin`/`copyout`), §4 (monolithic kernel, no loadable modules, `kernel.c` in source), §2 (Zorro II only), §11 (pre-POSIX `/bin/sh`).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver-add procedure and the `init_tbl[]` vs `io_init[]` naming note (the full original `master.d/kernel.c` is not publicly archived 🔴).
 
 
@@ -4409,7 +4409,7 @@ status: draft
 
 [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) is an **X11R5 X server** for Amix — its server binary is `Xrtg` — that renders into the MNT **VA2000** retargetable-graphics (RTG) card through the kernel framebuffer device `/dev/va2000` ✅. It runs **TrueColor RGB565** at resolutions from 640×480 up to **1920×1080**, uses the card's hardware blitter for fills and copies, and draws a software cursor ✅. It targets Amix **2.1p2a** on an Amiga 3000 / 68030 / Zorro II, and it **requires the [`va2000-amix` framebuffer driver](va2000.md) to be in the kernel first** — `Xrtg` is a userspace consumer of `/dev/va2000`, not a driver itself ✅.
 
-This page is the development-side companion to [X11 & the desktop](../../how-it-works/x11-and-desktop.md) (the user-facing X overview) and [X11 / RTG driver development](../x11-rtg-drivers.md) (the general DDX/RTG layering). The facts here are **uniformly ✅** (from the repo README/source, via [research brief §6](../../../sources/research-brief.md)) except where a tag says otherwise.
+This page is the development-side companion to [X11 & the desktop](../../how-it-works/x11-and-desktop.md) (the user-facing X overview) and [X11 / RTG driver development](../x11-rtg-drivers.md) (the general DDX/RTG layering). The facts here are **uniformly ✅** (from the repo README/source, via [research brief §6](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)) except where a tag says otherwise.
 
 ## What Xrtg is, in one sentence
 
@@ -4508,7 +4508,7 @@ The original Amix color X path is the **A2410** "Lowell" TIGA board driven by `o
 
 - **New code** written for `xrtg-amix` is **MIT-licensed** ✅.
 - The **X11R5** portions retain their original **X Consortium** license terms ✅.
-- The repository is **source-only** by necessity: building and running it requires a **licensed Amix SVR4** system (its X11R5 libraries/headers and the proprietary kernel interface to `/dev/va2000`) ✅. Do not expect a redistributable binary. See [AGENTS.md §5](../../../AGENTS.md) on the Amix licensing boundary — the Amix media and environment are proprietary Commodore material; obtain them via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
+- The repository is **source-only** by necessity: building and running it requires a **licensed Amix SVR4** system (its X11R5 libraries/headers and the proprietary kernel interface to `/dev/va2000`) ✅. Do not expect a redistributable binary. See [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) on the Amix licensing boundary — the Amix media and environment are proprietary Commodore material; obtain them via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
 
 ## See also
 
@@ -4521,8 +4521,8 @@ The original Amix color X path is the **A2410** "Lowell" TIGA board driven by `o
 
 ## Sources
 
-- [`sources/research-brief.md`](../../../sources/research-brief.md) §6 — `asokero/xrtg-amix`: `Xrtg` X11R5 server, TrueColor RGB565 640×480 → 1920×1080, hardware blitter fills/copies + software cursor, DDX layering (`ddx/amix/` → RTG → `ddx/amix/rtg/va2000/` → `/dev/va2000`), input via the AMIX screen manager (`OpenScreen()`, `SIOCACTIVATE`), imake build with `config/amix.cf` (`BuildPex=NO`, SVR4 lib rules avoiding ranlib issues), dependency on the va2000 driver, MIT + X Consortium licensing.
-- [`sources/research-brief.md`](../../../sources/research-brief.md) §6 — `asokero/va2000-amix`: `/dev/va2000` char major 68 minor 0, 16-bit modes, console screen-type patches the screen manager relies on.
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 — `asokero/xrtg-amix`: `Xrtg` X11R5 server, TrueColor RGB565 640×480 → 1920×1080, hardware blitter fills/copies + software cursor, DDX layering (`ddx/amix/` → RTG → `ddx/amix/rtg/va2000/` → `/dev/va2000`), input via the AMIX screen manager (`OpenScreen()`, `SIOCACTIVATE`), imake build with `config/amix.cf` (`BuildPex=NO`, SVR4 lib rules avoiding ranlib issues), dependency on the va2000 driver, MIT + X Consortium licensing.
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 — `asokero/va2000-amix`: `/dev/va2000` char major 68 minor 0, 16-bit modes, console screen-type patches the screen manager relies on.
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — the X11R5 `Xrtg` server source (DDX `ddx/amix/`, RTG layer, VA2000 backend, `config/amix.cf`).
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — the framebuffer driver the server sits on.
 - [amigaunix.com — X11](https://www.amigaunix.com/doku.php/x11) — community reference for the historical X stack the RTG path replaces (🟡).
@@ -4690,7 +4690,7 @@ status: draft
 
 [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix) is a modern, source-only **STREAMS/DLPI Ethernet driver** that brings the Hydra Systems *AmigaNet* card (an NE2000-class board built around the National Semiconductor **DP8390** chip) up as a first-class network interface under Amix 2.1p2a on a 68030 Amiga 3000 ✅. It registers at **`cdevsw` slot 47** under the tag `hya`, and once configured you plumb it the SVR4 way: `ifconfig hya0 plumb` ✅.
 
-This page is the worked example for [Writing a STREAMS driver](../writing-a-streams-driver.md): hydra-amix is the project's reference STREAMS network driver, mirroring the structure of the stock A2065 LANCE driver. Everything here is grounded in §6 of the [research brief](../../../sources/research-brief.md), which in turn draws on the repo's README and source ✅. The driver is **source-only** — it requires a licensed Amix SVR4 environment to build, so no binaries are distributed ✅.
+This page is the worked example for [Writing a STREAMS driver](../writing-a-streams-driver.md): hydra-amix is the project's reference STREAMS network driver, mirroring the structure of the stock A2065 LANCE driver. Everything here is grounded in §6 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), which in turn draws on the repo's README and source ✅. The driver is **source-only** — it requires a licensed Amix SVR4 environment to build, so no binaries are distributed ✅.
 
 > **Status note.** hydra-amix is a recent, AI-assisted hobby effort like its sibling RTG drivers. Treat the build recipe below as "works for the author against real Amix headers," not as a turnkey, publicly reproducible toolchain (see [Toolchain caveat](#toolchain-caveat)).
 
@@ -4781,7 +4781,7 @@ Notes on each step ✅:
 
 ### Toolchain caveat
 
-🔴 **There is no public, reproducible build recipe for the `m68k-amix-gcc` cross-compiler.** It appears to be a private build that needs the proprietary Amix SVR4 headers and libraries, which cannot be redistributed. Treat the commands above as the author's working invocation, not a recipe you can run from a clean machine without first obtaining a licensed Amix environment. This is tracked as an open gap in [Toolchain](../toolchain.md) and in §13 of the [research brief](../../../sources/research-brief.md). Because of this dependency, the repo is **source-only** — no prebuilt driver is distributed ✅.
+🔴 **There is no public, reproducible build recipe for the `m68k-amix-gcc` cross-compiler.** It appears to be a private build that needs the proprietary Amix SVR4 headers and libraries, which cannot be redistributed. Treat the commands above as the author's working invocation, not a recipe you can run from a clean machine without first obtaining a licensed Amix environment. This is tracked as an open gap in [Toolchain](../toolchain.md) and in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md). Because of this dependency, the repo is **source-only** — no prebuilt driver is distributed ✅.
 
 ## Why this is a good template
 
@@ -4805,8 +4805,8 @@ If you are writing another NE2000/DP8390-class or Zorro II network driver for Am
 ## Sources
 
 - [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix) — repo README and source (driver entry points, AutoConfig ID, register offsets, build commands). ✅
-- [research brief](../../../sources/research-brief.md) §6 (`isoriano1968/hydra-amix` case-study facts) and §13 (cross-toolchain gap). ✅/🔴
-- [research brief](../../../sources/research-brief.md) §11 (networking: SVR4 STREAMS TCP/IP, `aen0`) and §5 (driver model: `cdevsw`, STREAMS, `int2_tbl[]`). ✅
+- [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix` case-study facts) and §13 (cross-toolchain gap). ✅/🔴
+- [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §11 (networking: SVR4 STREAMS TCP/IP, `aen0`) and §5 (driver model: `cdevsw`, STREAMS, `int2_tbl[]`). ✅
 - AT&T SVR4 *Streams Programmer's Guide* / *Network Programmer's Guide* and the DLPI specification (for the `DL_*` primitives), as cited in the Ditto paper. ✅
 
 
@@ -4958,7 +4958,7 @@ the tool rewrites to match your stream — so it loads with no overrun and no ch
 
 ## Inspecting it yourself
 
-Use [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) — it is read-only and never modifies the image. Point it at **your own** copy (see [below](#where-to-get-the-image)):
+Use [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) — it is read-only and never modifies the image. Point it at **your own** copy (see [below](#where-to-get-the-image)):
 
 ```sh
 tools/inspect-adf.sh amix_21_boot.adf
@@ -5039,8 +5039,8 @@ Expected SHA-256: `0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65
 
 ## Sources
 
-- `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) — bootblock hex dump, `DOS\0` magic + checksum, bootstrap/kernel strings, `xdftool` "Invalid Root Block @880", binwalk false-positive "JBOOT" hits (reproduced locally; SHA-256 `0d8af1c0…65272`, see `sources/CHECKSUMS.txt`).
-- [`sources/research-brief.md`](../../sources/research-brief.md) §3 ("What the real boot.adf contains") and §10 ("boot.adf").
+- `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) — bootblock hex dump, `DOS\0` magic + checksum, bootstrap/kernel strings, `xdftool` "Invalid Root Block @880", binwalk false-positive "JBOOT" hits (reproduced locally; SHA-256 `0d8af1c0…65272`, see `sources/CHECKSUMS.txt`).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §3 ("What the real boot.adf contains") and §10 ("boot.adf").
 - amigaunix.com Downloads (image source): <https://www.amigaunix.com/doku.php/downloads>
 - Internet Archive, *Commodore Amiga Operating Systems — AMIX*: <https://archive.org/details/commodore-amiga-operating-systems-amix>
 
@@ -5084,9 +5084,9 @@ detected disk type : root
     'list' FSError: Invalid Boot Block(1):block=BootBlock:@0
 ```
 
-That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **UFS** (Berkeley Fast File System) image, recognisable by its UFS fingerprints: a `lost+found` directory entry and `fsck`/`mkfs` string tables embedded in the image. ✅ (`inspect-adf.sh` keys off the `lost+found` string to classify the disk; see [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) lines 59–63.)
+That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **UFS** (Berkeley Fast File System) image, recognisable by its UFS fingerprints: a `lost+found` directory entry and `fsck`/`mkfs` string tables embedded in the image. ✅ (`inspect-adf.sh` keys off the `lost+found` string to classify the disk; see [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) lines 59–63.)
 
-**Note — reading the tree.** Linux's in-tree `ufs` driver generally **cannot** mount Amix's big-endian SVR4/m68k UFS, so a full file-tree traversal needs a UFS-aware reader (a *BSD host, or UFS Explorer). The bundled [`tools/unpack-root.sh`](../../tools/unpack-root.sh) does a *pragmatic carve* instead: it reports every ELF/script offset, carves the POSIX `tar` member(s), and dumps the install-script text — which is what you usually want when studying the installer. ✅
+**Note — reading the tree.** Linux's in-tree `ufs` driver generally **cannot** mount Amix's big-endian SVR4/m68k UFS, so a full file-tree traversal needs a UFS-aware reader (a *BSD host, or UFS Explorer). The bundled [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) does a *pragmatic carve* instead: it reports every ELF/script offset, carves the POSIX `tar` member(s), and dumps the install-script text — which is what you usually want when studying the installer. ✅
 
 ## What's inside: installer ELF binaries, scripts, and a tar member
 
@@ -5306,7 +5306,7 @@ Both require `binwalk`/`strings`; `inspect-adf.sh` additionally uses `xdftool` (
 
 ## Sources
 
-- `amix_21_root.adf` analysis via [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) and [`tools/unpack-root.sh`](../../tools/unpack-root.sh) — `binwalk` object table (30 m68k ELF objects, first at 0x6800; `tar` member at 0x17180; `/bin/sh` scripts at 0x35000/0x35400), ELF header bytes at 0x6800 (`ELFCLASS32`, `ELFDATA2MSB`, `ET_EXEC`, `EM_68K`), and `strings` dump of the install script (BOOTSIZE/BREAKPT/LGSWAP/SMSWAP, `BPART`/`UPART`/`SPART`, s5/ufs prompt, `ROOT_FSYS="s5" # Johann ROM`, RDB `-F` type tags `0x554e4900`/`0x554e4901`/`0x72657376`, `amixpkg` invocations, `/dev/rmt/4hn` tape pipelines).
+- `amix_21_root.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) — `binwalk` object table (30 m68k ELF objects, first at 0x6800; `tar` member at 0x17180; `/bin/sh` scripts at 0x35000/0x35400), ELF header bytes at 0x6800 (`ELFCLASS32`, `ELFDATA2MSB`, `ET_EXEC`, `EM_68K`), and `strings` dump of the install script (BOOTSIZE/BREAKPT/LGSWAP/SMSWAP, `BPART`/`UPART`/`SPART`, s5/ufs prompt, `ROOT_FSYS="s5" # Johann ROM`, RDB `-F` type tags `0x554e4900`/`0x554e4901`/`0x72657376`, `amixpkg` invocations, `/dev/rmt/4hn` tape pipelines).
 - `viper.README` and the `viper_kludge` runtime banner extracted from `amix_21_root.adf` (author Frank "Crash" Edwards; incompatibility with A3070/Caliper/Wangtek/Sankyo; RAM-only patch; pointer to `/usr/sys/amiga/alien/contrib`).
 - Master research brief, §9 (installation flow) and §10 (root.adf anatomy); §2 (hard-coded SCSI ids, RAM ceiling); §13 gap #8 (RDB partition type IDs).
 - SHA-256 cross-check: `sources/CHECKSUMS.txt`.
@@ -5334,7 +5334,7 @@ script*: the header bootstraps itself, `dd`s past its own first kilobyte, pipes 
 (`archive.lha`) according to three list files.
 
 This page decodes that structure byte-for-byte (reproduced locally with
-[`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) and a small cpio walker), then explains the
+[`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and a small cpio walker), then explains the
 `apply` + `lha` + list mechanism. It is the closest thing Amix has to a worked example of a custom
 add-on disk, so it doubles as the reference model for
 [adding your own drivers to a boot/patch disk](adding-drivers-to-boot-disk.md).
@@ -5559,8 +5559,8 @@ dd if=amix_21_patch.adf bs=1k skip=1 2>/dev/null | cpio -itv
 
 ## Sources
 
-- `amix_21_patch.adf` analysis via [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) and a `newc`-cpio header walk (offsets, modes, sizes reproduced locally) — SHA-256 `674f3ac6…0060fdfe` in `sources/CHECKSUMS.txt`.
-- Master research brief, [§10 "Boot / root / patch disk anatomy"](../../sources/research-brief.md) and §1 version matrix (`^2\.1.* 08004..$` gate, 2.1p2a / kernel 2.1c).
+- `amix_21_patch.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and a `newc`-cpio header walk (offsets, modes, sizes reproduced locally) — SHA-256 `674f3ac6…0060fdfe` in `sources/CHECKSUMS.txt`.
+- Master research brief, [§10 "Boot / root / patch disk anatomy"](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) and §1 version matrix (`^2\.1.* 08004..$` gate, 2.1p2a / kernel 2.1c).
 - Verbatim 1 KB header script captured from the image (`dd … bs=1 count=1024 | strings`).
 - amigaunix.com patch-disk page and the [archive.org Amix collection](https://archive.org/details/commodore-amiga-operating-systems-amix) (image provenance; not redistributed here).
 
@@ -5583,9 +5583,9 @@ is now solved.** This page documents the analysis, the evidence, and the practic
 a custom bootable Amix floppy carrying your own kernel.
 
 All findings here were produced by analysing a real `amix_21_boot.adf` (SHA-256 in
-[`../../sources/CHECKSUMS.txt`](../../sources/CHECKSUMS.txt)) with `tools/inspect-adf.sh`, entropy
+[`../../sources/CHECKSUMS.txt`](https://github.com/Jusii/grimoire-amix/blob/master/sources/CHECKSUMS.txt)) with `tools/inspect-adf.sh`, entropy
 mapping, LZW decompression, and capstone M68K disassembly of the bootstrap. They are reproducible with
-the tools in [`../../tools/`](../../tools/) on your own copy of the image.
+the tools in [`../../tools/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/) on your own copy of the image.
 
 ## TL;DR
 
@@ -5596,7 +5596,7 @@ the tools in [`../../tools/`](../../tools/) on your own copy of the image.
   compressed stream**. ✅ All three must describe *your* stream or the boot fails.
 - Therefore a custom bootable floppy = **`[donor bootblock+bootstrap] + [compress -b16 your-kernel.elf]
   + [zero pad to 880 KB]`**, **with the `IBLK` fields patched to the new stream**, built by
-  [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ **Verified booting in an emulator**
+  [`build-bootfloppy.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-bootfloppy.sh). ✅ **Verified booting in an emulator**
   (Amiberry): a rebuilt floppy loads and runs identically to the original, reaching the
   `Insert floppy disk 2 (root file system)` prompt — no overrun, no checksum warning.
 
@@ -5638,7 +5638,7 @@ file <(dd if=amix_2.1_boot.adf bs=1 skip=$((0x2800)) | gzip -dc)
 ```
 
 The real ELF size is recovered from its own header (`e_shoff + e_shnum*e_shentsize` =
-`0x11de60 + 4*0x28` = **1,171,200**), which is how [`extract-kernel.sh`](../../tools/extract-kernel.sh)
+`0x11de60 + 4*0x28` = **1,171,200**), which is how [`extract-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/extract-kernel.sh)
 trims the trailing slack. Use it directly:
 
 ```sh
@@ -5704,7 +5704,7 @@ the overrun check. **Lesson: the `IBLK` fields must describe *your* stream.**
 
 ## Step 5 — rebuild (patch `IBLK`) and round-trip ✅
 
-[`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh) reuses the donor's bootblock+bootstrap, splices
+[`build-bootfloppy.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-bootfloppy.sh) reuses the donor's bootblock+bootstrap, splices
 in `compress -b16` of your kernel, and **rewrites the `IBLK` fields** (`comp_len`, `decomp_size`, and the
 `checksum` = `fold16(sum(your .Z))`) — so there is no overrun and the checksum **matches** (no warning).
 It locates the genuine `IBLK` by checksum-consistency (several byte-sequences spell `IBLK` by accident)
@@ -5747,7 +5747,7 @@ see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 ## Sources
 - Primary analysis of `amix_21_boot.adf` (2026-06): `tools/inspect-adf.sh`, entropy mapping, `gzip`/`zcat`
   LZW decompression, capstone M68K disassembly; round-trip via `tools/extract-kernel.sh` +
-  `tools/build-bootfloppy.sh`. Recorded in the research brief §3, §10, §13 — [`../../sources/research-brief.md`](../../sources/research-brief.md).
+  `tools/build-bootfloppy.sh`. Recorded in the research brief §3, §10, §13 — [`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
 - Unix `compress`/`.Z` LZW format (magic `1f 9d`, flags byte = block-mode | maxbits).
 - ELF32 header fields for size recovery (`e_shoff`, `e_shnum`, `e_shentsize`).
 
@@ -5834,7 +5834,7 @@ The boot floppy is no longer a black box. From the [reverse-engineering writeup]
 
 A custom bootable floppy is: **donor bootblock+bootstrap + your `compress`'d kernel + zero pad**, with
 the bootstrap's **`IBLK` descriptor** (`0x2600`: compressed length, decompressed size, checksum)
-rewritten to describe *your* stream. [`tools/build-bootfloppy.sh`](../../tools/build-bootfloppy.sh) does
+rewritten to describe *your* stream. [`tools/build-bootfloppy.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-bootfloppy.sh) does
 all of that (and self-tests via the descriptor):
 
 ```sh
@@ -5873,7 +5873,7 @@ uncompress -f /var/patch/*.Z
 exec /var/patch/apply
 ```
 
-Build one with [`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh):
+Build one with [`tools/build-custom-bootdisk.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-custom-bootdisk.sh):
 
 ```sh
 tools/build-custom-bootdisk.sh --payload ./payload --out my-driver-addon.adf --install var/addon/install
@@ -5919,13 +5919,13 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
 
 ## Sources
 - [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) and research brief §3, §10, §13
-  ([`../../sources/research-brief.md`](../../sources/research-brief.md)): the `compress`/LZW kernel at
+  ([`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)): the `compress`/LZW kernel at
   `0x2800` → m68k ELF, the 16-bit folded **non-fatal** checksum (bootstrap disassembly), and the
   host-verified round-trip via `tools/extract-kernel.sh` + `tools/build-bootfloppy.sh`.
 - Kernel relink flow (`/usr/sys` → `relocunix` → `make bootpart` / `make oldboot`; keep old `/unix`) —
   Ditto paper; research brief §3, §5, §6.
 - Patch-disk self-extraction model — `amix_21_patch.adf` analysis; research brief §10;
-  [`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh).
+  [`tools/build-custom-bootdisk.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-custom-bootdisk.sh).
 - VA2000 / Hydra driver-install procedures — research brief §6; repos
   [`github.com/asokero/va2000-amix`](https://github.com/asokero/va2000-amix),
   [`github.com/isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
@@ -6208,7 +6208,7 @@ tools/gen-llms-full.sh
 
 Each page is wrapped with a `# FILE: <path>` banner. Missing pages are reported on stderr
 (`warning: missing <f> (skipped)`) and counted, so you can see at a glance which pages still need
-writing. Per the [contributor contract](../../AGENTS.md), **run this after any content change** so
+writing. Per the [contributor contract](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md), **run this after any content change** so
 `llms-full.txt` stays current — and update `llms.txt` and `docs/index.md` if you add, rename, or move a
 page. ✅
 
@@ -6441,7 +6441,7 @@ This is the quick-reference table for two things you keep needing when you work 
 
 A device node in Amix carries a **major** number (which driver) and a **minor** number (which sub-device). The kernel indexes a per-class switch table by the major and never looks at the file name — see [the device-driver model](../drivers/driver-model.md) for the mechanism. Hardware support is constrained by hard kernel rules (Zorro II only, 68020/030 + MMU + FPU, 4–16 MB Fast RAM, SCSI disk at ID 6 / tape at ID 4) — those are covered in full on [the hardware page](../how-it-works/hardware.md).
 
-Each row carries the same confidence tag the [research brief](../../sources/research-brief.md) uses: ✅ verified (primary source / repo source / reproduced locally), 🟡 community-reported, 🔴 unverified.
+Each row carries the same confidence tag the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) uses: ✅ verified (primary source / repo source / reproduced locally), 🟡 community-reported, 🔴 unverified.
 
 ## /dev major/minor numbers
 
@@ -6563,8 +6563,8 @@ On a running system, list the device nodes and read their major/minor with `ls -
 
 ## Sources
 
-- Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of [`sources/research-brief.md`](../../sources/research-brief.md) (console char 0, par char 21, fd0 block 16, SCSI disk block 18, minor = addr/LUN/partition; `cdevsw`/`bdevsw` switch tables; `int2_tbl[]` interrupt handlers).
-- [`sources/research-brief.md`](../../sources/research-brief.md) §2 (supported machines & expansion cards, Zorro II only, SCSI ID 6 / tape ID 4), §6 (va2000 char 68, hydra char 47/`hya`, AutoConfig IDs).
+- Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) (console char 0, par char 21, fd0 block 16, SCSI disk block 18, minor = addr/LUN/partition; `cdevsw`/`bdevsw` switch tables; `int2_tbl[]` interrupt handlers).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (supported machines & expansion cards, Zorro II only, SCSI ID 6 / tape ID 4), §6 (va2000 char 68, hydra char 47/`hya`, AutoConfig IDs).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (`/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).
 - Driver repos: [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix), [`asokero/lszorro-amix`](https://github.com/asokero/lszorro-amix), [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — A2232, requirements, networking pages (community-reported items: GVP Series II, Ariadne, Gateway! graphics cards).
@@ -6873,7 +6873,7 @@ sources** (amigaunix.com, encyclopedias, blogs, Usenet, emulator issue trackers,
 docs). Every `docs/` page ends with its own `## Sources` list citing the specific items below; this
 page is where those citations resolve.
 
-The hierarchy we apply everywhere, per the [contributor contract](../../AGENTS.md): **primary manuals
+The hierarchy we apply everywhere, per the [contributor contract](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md): **primary manuals
 / the Ditto driver paper / the real disk images and repo source > archived Usenet
 (comp.unix.amiga) > forum lore.** Confidence tags (✅ verified, 🟡 community-reported,
 🔴 unverified/disputed) are carried from the research brief into every page; this page is mostly a
@@ -7078,7 +7078,7 @@ so a reader (human or agent) can resolve and reproduce them:
 - [Driver model](../drivers/driver-model.md) — the page the Ditto paper most directly grounds.
 - [Boot-disk anatomy: boot.adf](../boot-disks/anatomy-boot-adf.md) — where the local image analysis lands.
 - [Writing for LLMs](../contributing/writing-for-llms.md) — the `llms.txt` convention in practice.
-- [AGENTS.md](../../AGENTS.md) — the grounding, tagging, and licensing contract that this list serves.
+- [AGENTS.md](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — the grounding, tagging, and licensing contract that this list serves.
 
 ## Sources
 
@@ -7116,7 +7116,7 @@ status: reviewed
 # Style Guide
 
 This guide covers *how* to write pages. For the *rules of accuracy* (grounding, fact-confidence tags,
-licensing) see [`AGENTS.md`](../../AGENTS.md) at the repo root — those are mandatory for humans and AI alike.
+licensing) see [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) at the repo root — those are mandatory for humans and AI alike.
 
 ## Page skeleton
 
@@ -7164,7 +7164,7 @@ status: draft
 
 ## Fact-confidence tags
 
-Inline, per the [AGENTS contract](../../AGENTS.md): ✅ verified, 🟡 community-reported, 🔴 unverified/disputed.
+Inline, per the [AGENTS contract](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md): ✅ verified, 🟡 community-reported, 🔴 unverified/disputed.
 Example: "The kernel hard-codes a 16 MB Fast RAM ceiling ✅; exceeding it mis-maps the SCSI drive ✅."
 
 ## Filenames
@@ -7178,7 +7178,7 @@ Write so a newcomer can follow it *and* so an LLM agent can lift exact commands 
 guessing. Concrete > clever. When in doubt, add a table, a command, or a citation.
 
 ## Sources
-- [`AGENTS.md`](../../AGENTS.md) (repo conventions)
+- [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) (repo conventions)
 - The `llms.txt` convention (Jeremy Howard, Answer.AI, 2024)
 
 
@@ -7196,7 +7196,7 @@ status: draft
 
 This repo is built so that **both a human and an LLM agent can read it cold and lift exact, trustworthy facts** about Amiga Unix (Amix) without guessing. This page explains the machinery that makes that work — the `llms.txt` / `llms-full.txt` index files, per-page front matter, the ✅/🟡/🔴 fact-confidence system, and the single source of truth — and tells you, the AI contributor, how to add or edit a page without breaking any of it.
 
-If you only read one other file, read [`AGENTS.md`](../../AGENTS.md) at the repo root. It is the mandatory contract; this page is the practical companion to it. For prose and Markdown conventions, see the [style guide](style-guide.md).
+If you only read one other file, read [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) at the repo root. It is the mandatory contract; this page is the practical companion to it. For prose and Markdown conventions, see the [style guide](style-guide.md).
 
 ## Why this repo is built this way
 
@@ -7208,11 +7208,11 @@ The practical upshot: **concrete beats clever.** A config table, an exact comman
 
 Everything in `docs/` is downstream of one file:
 
-1. **[`sources/research-brief.md`](../../sources/research-brief.md)** — the internal, citation-bearing grounding document. It is the *single internal source of truth*. Read it before you write anything. ✅
+1. **[`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)** — the internal, citation-bearing grounding document. It is the *single internal source of truth*. Read it before you write anything. ✅
 2. **Cited primary sources** — the Ditto driver paper (1990 European Amiga Developer's Conference), the real install ADFs analysed with `tools/inspect-adf.sh`, repo source for the modern drivers, and official Commodore manuals.
 3. **Archived Usenet** (comp.unix.amiga) above **forum lore** — when sources conflict, prefer the higher tier.
 
-The rule, restated from [`AGENTS.md`](../../AGENTS.md): **do not state a fact in `docs/` that is not supported in the brief or a cited primary source.** If you believe something but cannot ground it, either drop it or mark it 🔴 and say so. Never launder an unverified claim into confident prose — that is exactly the failure mode this repo exists to prevent.
+The rule, restated from [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md): **do not state a fact in `docs/` that is not supported in the brief or a cited primary source.** If you believe something but cannot ground it, either drop it or mark it 🔴 and say so. Never launder an unverified claim into confident prose — that is exactly the failure mode this repo exists to prevent.
 
 ## Fact-confidence tags
 
@@ -7255,7 +7255,7 @@ tools/gen-llms-full.sh
 
 **Keep the three orderings in sync.** When you add, rename, move, or delete a page, update *all* of:
 
-1. the `order=( … )` array in [`tools/gen-llms-full.sh`](../../tools/gen-llms-full.sh),
+1. the `order=( … )` array in [`tools/gen-llms-full.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/gen-llms-full.sh),
 2. the curated `llms.txt`, and
 3. `docs/index.md` (the human-facing site map).
 
@@ -7263,7 +7263,7 @@ Then rerun `tools/gen-llms-full.sh`. If these drift apart, agents get a stale or
 
 ## Per-page front matter
 
-Every page begins with YAML front matter — three fields, exactly as in [`AGENTS.md`](../../AGENTS.md):
+Every page begins with YAML front matter — three fields, exactly as in [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md):
 
 ```markdown
 ---
@@ -7286,7 +7286,7 @@ These are the conventions that let a model (and a human) jump straight to the ri
 - **Lead with the answer (inverted pyramid).** First paragraph answers the question; caveats and depth go below. An agent that reads only the top of the page should still get the correct headline.
 - **Reproducibility over prose.** Prefer exact commands, config tables, file paths, and major/minor numbers (`/dev/va2000`, char major 68) to hand-wavy description. Fence all code/config with a language hint (` ```sh `, ` ```c `, ` ```text `) and make it copy-pastable.
 - **Relative links with descriptive text.** Cross-link siblings as `../drivers/driver-model.md` (works on GitHub and in any generated site), and use link text that says what's on the other end — `the Ditto driver paper`, never "click here". Define jargon on first use and link the [glossary](../how-it-works/glossary.md).
-- **Every page ends with `## Sources`** — a bullet list of the specific sources behind *that* page (URLs, "Ditto paper p.N", "`amix_21_root.adf` analysis via `tools/inspect-adf.sh`", repo paths). No page ships without it. This is what lets a reader (or a downstream model) verify any claim, and it is non-negotiable per [`AGENTS.md`](../../AGENTS.md).
+- **Every page ends with `## Sources`** — a bullet list of the specific sources behind *that* page (URLs, "Ditto paper p.N", "`amix_21_root.adf` analysis via `tools/inspect-adf.sh`", repo paths). No page ships without it. This is what lets a reader (or a downstream model) verify any claim, and it is non-negotiable per [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md).
 
 ## The licensing boundary
 
@@ -7296,7 +7296,7 @@ The Amix distribution, the boot/root/patch ADFs, the HDFs/tape images, and the s
 
 Before you finish a page edit, confirm:
 
-- [ ] Read [`sources/research-brief.md`](../../sources/research-brief.md) and grounded every non-obvious claim in it (or a cited primary source).
+- [ ] Read [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) and grounded every non-obvious claim in it (or a cited primary source).
 - [ ] Carried the brief's exact ✅/🟡/🔴 tag on each claim — **no upward upgrades.**
 - [ ] Front matter present (`title` matching the H1, one-sentence `summary`, `status`).
 - [ ] One topic, stable headings, answer first, code fenced with language hints, relative links with descriptive text.
@@ -7307,15 +7307,15 @@ Before you finish a page edit, confirm:
 
 ## See also
 
-- [`AGENTS.md`](../../AGENTS.md) — the mandatory contributor contract (read first)
+- [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — the mandatory contributor contract (read first)
 - [Style Guide](style-guide.md) — prose and Markdown conventions
-- [`sources/research-brief.md`](../../sources/research-brief.md) — the grounding source of truth
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — the grounding source of truth
 
 ## Sources
 
-- [`AGENTS.md`](../../AGENTS.md) — repo contract: grounding, fact-confidence tags, `## Sources` requirement, front matter, licensing boundary, "keep `llms.txt` in sync / run `tools/gen-llms-full.sh`".
+- [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — repo contract: grounding, fact-confidence tags, `## Sources` requirement, front matter, licensing boundary, "keep `llms.txt` in sync / run `tools/gen-llms-full.sh`".
 - [`docs/contributing/style-guide.md`](style-guide.md) — page skeleton, headings, relative links, tags.
-- [`tools/gen-llms-full.sh`](../../tools/gen-llms-full.sh) — the generator for `llms-full.txt`; its `order=()` array is the canonical reading order (37 pages).
-- [`sources/research-brief.md`](../../sources/research-brief.md) §0 (source-of-truth hierarchy, confidence tags) and the §1 versions example (2.2 / 2.1c-1994 lore as 🔴).
+- [`tools/gen-llms-full.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/gen-llms-full.sh) — the generator for `llms-full.txt`; its `order=()` array is the canonical reading order (37 pages).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §0 (source-of-truth hierarchy, confidence tags) and the §1 versions example (2.2 / 2.1c-1994 lore as 🔴).
 - The `llms.txt` convention: <https://llmstxt.org/> (Jeremy Howard, Answer.AI, Sept 2024).
 

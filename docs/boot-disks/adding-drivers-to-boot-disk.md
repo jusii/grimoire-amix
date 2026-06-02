@@ -76,7 +76,7 @@ The boot floppy is no longer a black box. From the [reverse-engineering writeup]
 
 A custom bootable floppy is: **donor bootblock+bootstrap + your `compress`'d kernel + zero pad**, with
 the bootstrap's **`IBLK` descriptor** (`0x2600`: compressed length, decompressed size, checksum)
-rewritten to describe *your* stream. [`tools/build-bootfloppy.sh`](../../tools/build-bootfloppy.sh) does
+rewritten to describe *your* stream. [`tools/build-bootfloppy.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-bootfloppy.sh) does
 all of that (and self-tests via the descriptor):
 
 ```sh
@@ -115,7 +115,7 @@ uncompress -f /var/patch/*.Z
 exec /var/patch/apply
 ```
 
-Build one with [`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh):
+Build one with [`tools/build-custom-bootdisk.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-custom-bootdisk.sh):
 
 ```sh
 tools/build-custom-bootdisk.sh --payload ./payload --out my-driver-addon.adf --install var/addon/install
@@ -161,13 +161,13 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
 
 ## Sources
 - [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) and research brief §3, §10, §13
-  ([`../../sources/research-brief.md`](../../sources/research-brief.md)): the `compress`/LZW kernel at
+  ([`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)): the `compress`/LZW kernel at
   `0x2800` → m68k ELF, the 16-bit folded **non-fatal** checksum (bootstrap disassembly), and the
   host-verified round-trip via `tools/extract-kernel.sh` + `tools/build-bootfloppy.sh`.
 - Kernel relink flow (`/usr/sys` → `relocunix` → `make bootpart` / `make oldboot`; keep old `/unix`) —
   Ditto paper; research brief §3, §5, §6.
 - Patch-disk self-extraction model — `amix_21_patch.adf` analysis; research brief §10;
-  [`tools/build-custom-bootdisk.sh`](../../tools/build-custom-bootdisk.sh).
+  [`tools/build-custom-bootdisk.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-custom-bootdisk.sh).
 - VA2000 / Hydra driver-install procedures — research brief §6; repos
   [`github.com/asokero/va2000-amix`](https://github.com/asokero/va2000-amix),
   [`github.com/isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).

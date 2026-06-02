@@ -12,9 +12,9 @@ is now solved.** This page documents the analysis, the evidence, and the practic
 a custom bootable Amix floppy carrying your own kernel.
 
 All findings here were produced by analysing a real `amix_21_boot.adf` (SHA-256 in
-[`../../sources/CHECKSUMS.txt`](../../sources/CHECKSUMS.txt)) with `tools/inspect-adf.sh`, entropy
+[`../../sources/CHECKSUMS.txt`](https://github.com/Jusii/grimoire-amix/blob/master/sources/CHECKSUMS.txt)) with `tools/inspect-adf.sh`, entropy
 mapping, LZW decompression, and capstone M68K disassembly of the bootstrap. They are reproducible with
-the tools in [`../../tools/`](../../tools/) on your own copy of the image.
+the tools in [`../../tools/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/) on your own copy of the image.
 
 ## TL;DR
 
@@ -25,7 +25,7 @@ the tools in [`../../tools/`](../../tools/) on your own copy of the image.
   compressed stream**. ✅ All three must describe *your* stream or the boot fails.
 - Therefore a custom bootable floppy = **`[donor bootblock+bootstrap] + [compress -b16 your-kernel.elf]
   + [zero pad to 880 KB]`**, **with the `IBLK` fields patched to the new stream**, built by
-  [`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh). ✅ **Verified booting in an emulator**
+  [`build-bootfloppy.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-bootfloppy.sh). ✅ **Verified booting in an emulator**
   (Amiberry): a rebuilt floppy loads and runs identically to the original, reaching the
   `Insert floppy disk 2 (root file system)` prompt — no overrun, no checksum warning.
 
@@ -67,7 +67,7 @@ file <(dd if=amix_2.1_boot.adf bs=1 skip=$((0x2800)) | gzip -dc)
 ```
 
 The real ELF size is recovered from its own header (`e_shoff + e_shnum*e_shentsize` =
-`0x11de60 + 4*0x28` = **1,171,200**), which is how [`extract-kernel.sh`](../../tools/extract-kernel.sh)
+`0x11de60 + 4*0x28` = **1,171,200**), which is how [`extract-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/extract-kernel.sh)
 trims the trailing slack. Use it directly:
 
 ```sh
@@ -133,7 +133,7 @@ the overrun check. **Lesson: the `IBLK` fields must describe *your* stream.**
 
 ## Step 5 — rebuild (patch `IBLK`) and round-trip ✅
 
-[`build-bootfloppy.sh`](../../tools/build-bootfloppy.sh) reuses the donor's bootblock+bootstrap, splices
+[`build-bootfloppy.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-bootfloppy.sh) reuses the donor's bootblock+bootstrap, splices
 in `compress -b16` of your kernel, and **rewrites the `IBLK` fields** (`comp_len`, `decomp_size`, and the
 `checksum` = `fold16(sum(your .Z))`) — so there is no overrun and the checksum **matches** (no warning).
 It locates the genuine `IBLK` by checksum-consistency (several byte-sequences spell `IBLK` by accident)
@@ -176,6 +176,6 @@ see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 ## Sources
 - Primary analysis of `amix_21_boot.adf` (2026-06): `tools/inspect-adf.sh`, entropy mapping, `gzip`/`zcat`
   LZW decompression, capstone M68K disassembly; round-trip via `tools/extract-kernel.sh` +
-  `tools/build-bootfloppy.sh`. Recorded in the research brief §3, §10, §13 — [`../../sources/research-brief.md`](../../sources/research-brief.md).
+  `tools/build-bootfloppy.sh`. Recorded in the research brief §3, §10, §13 — [`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
 - Unix `compress`/`.Z` LZW format (magic `1f 9d`, flags byte = block-mode | maxbits).
 - ELF32 header fields for size recovery (`e_shoff`, `e_shnum`, `e_shentsize`).

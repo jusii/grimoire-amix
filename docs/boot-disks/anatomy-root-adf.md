@@ -33,9 +33,9 @@ detected disk type : root
     'list' FSError: Invalid Boot Block(1):block=BootBlock:@0
 ```
 
-That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **UFS** (Berkeley Fast File System) image, recognisable by its UFS fingerprints: a `lost+found` directory entry and `fsck`/`mkfs` string tables embedded in the image. ✅ (`inspect-adf.sh` keys off the `lost+found` string to classify the disk; see [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) lines 59–63.)
+That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **UFS** (Berkeley Fast File System) image, recognisable by its UFS fingerprints: a `lost+found` directory entry and `fsck`/`mkfs` string tables embedded in the image. ✅ (`inspect-adf.sh` keys off the `lost+found` string to classify the disk; see [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) lines 59–63.)
 
-**Note — reading the tree.** Linux's in-tree `ufs` driver generally **cannot** mount Amix's big-endian SVR4/m68k UFS, so a full file-tree traversal needs a UFS-aware reader (a *BSD host, or UFS Explorer). The bundled [`tools/unpack-root.sh`](../../tools/unpack-root.sh) does a *pragmatic carve* instead: it reports every ELF/script offset, carves the POSIX `tar` member(s), and dumps the install-script text — which is what you usually want when studying the installer. ✅
+**Note — reading the tree.** Linux's in-tree `ufs` driver generally **cannot** mount Amix's big-endian SVR4/m68k UFS, so a full file-tree traversal needs a UFS-aware reader (a *BSD host, or UFS Explorer). The bundled [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) does a *pragmatic carve* instead: it reports every ELF/script offset, carves the POSIX `tar` member(s), and dumps the install-script text — which is what you usually want when studying the installer. ✅
 
 ## What's inside: installer ELF binaries, scripts, and a tar member
 
@@ -255,7 +255,7 @@ Both require `binwalk`/`strings`; `inspect-adf.sh` additionally uses `xdftool` (
 
 ## Sources
 
-- `amix_21_root.adf` analysis via [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) and [`tools/unpack-root.sh`](../../tools/unpack-root.sh) — `binwalk` object table (30 m68k ELF objects, first at 0x6800; `tar` member at 0x17180; `/bin/sh` scripts at 0x35000/0x35400), ELF header bytes at 0x6800 (`ELFCLASS32`, `ELFDATA2MSB`, `ET_EXEC`, `EM_68K`), and `strings` dump of the install script (BOOTSIZE/BREAKPT/LGSWAP/SMSWAP, `BPART`/`UPART`/`SPART`, s5/ufs prompt, `ROOT_FSYS="s5" # Johann ROM`, RDB `-F` type tags `0x554e4900`/`0x554e4901`/`0x72657376`, `amixpkg` invocations, `/dev/rmt/4hn` tape pipelines).
+- `amix_21_root.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) — `binwalk` object table (30 m68k ELF objects, first at 0x6800; `tar` member at 0x17180; `/bin/sh` scripts at 0x35000/0x35400), ELF header bytes at 0x6800 (`ELFCLASS32`, `ELFDATA2MSB`, `ET_EXEC`, `EM_68K`), and `strings` dump of the install script (BOOTSIZE/BREAKPT/LGSWAP/SMSWAP, `BPART`/`UPART`/`SPART`, s5/ufs prompt, `ROOT_FSYS="s5" # Johann ROM`, RDB `-F` type tags `0x554e4900`/`0x554e4901`/`0x72657376`, `amixpkg` invocations, `/dev/rmt/4hn` tape pipelines).
 - `viper.README` and the `viper_kludge` runtime banner extracted from `amix_21_root.adf` (author Frank "Crash" Edwards; incompatibility with A3070/Caliper/Wangtek/Sankyo; RAM-only patch; pointer to `/usr/sys/amiga/alien/contrib`).
 - Master research brief, §9 (installation flow) and §10 (root.adf anatomy); §2 (hard-coded SCSI ids, RAM ceiling); §13 gap #8 (RDB partition type IDs).
 - SHA-256 cross-check: `sources/CHECKSUMS.txt`.

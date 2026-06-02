@@ -134,7 +134,7 @@ The pipeline 🟡:
 
 For the compiler, the `_KERNEL`/`SVR4` flags, and the rest of the cross-build story see [Toolchain](toolchain.md) and the kernel-relink mechanics in [Building and installing a kernel](kernel-build.md).
 
-> **Warning:** there is **no public, reproducible build recipe** for the `m68k-amix-gcc` cross-compiler — it is a private build that needs the proprietary Amix SVR4 headers and libraries 🔴. Treat the toolchain as an open gap: you cannot currently reproduce this build from scratch without already having an Amix install to harvest headers/libs from. See the [licensing boundary](../../AGENTS.md) — obtain media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution.
+> **Warning:** there is **no public, reproducible build recipe** for the `m68k-amix-gcc` cross-compiler — it is a private build that needs the proprietary Amix SVR4 headers and libraries 🔴. Treat the toolchain as an open gap: you cannot currently reproduce this build from scratch without already having an Amix install to harvest headers/libs from. See the [licensing boundary](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — obtain media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution.
 
 ## Checklist: adding a STREAMS net driver
 
@@ -159,7 +159,7 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 
 ## Sources
 
-- [`sources/research-brief.md`](../../sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x041D0001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x041D0001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).
 - `isoriano1968/hydra-amix` repo: <https://github.com/isoriano1968/hydra-amix>
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>

@@ -8,7 +8,7 @@ status: draft
 
 This repo is built so that **both a human and an LLM agent can read it cold and lift exact, trustworthy facts** about Amiga Unix (Amix) without guessing. This page explains the machinery that makes that work — the `llms.txt` / `llms-full.txt` index files, per-page front matter, the ✅/🟡/🔴 fact-confidence system, and the single source of truth — and tells you, the AI contributor, how to add or edit a page without breaking any of it.
 
-If you only read one other file, read [`AGENTS.md`](../../AGENTS.md) at the repo root. It is the mandatory contract; this page is the practical companion to it. For prose and Markdown conventions, see the [style guide](style-guide.md).
+If you only read one other file, read [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) at the repo root. It is the mandatory contract; this page is the practical companion to it. For prose and Markdown conventions, see the [style guide](style-guide.md).
 
 ## Why this repo is built this way
 
@@ -20,11 +20,11 @@ The practical upshot: **concrete beats clever.** A config table, an exact comman
 
 Everything in `docs/` is downstream of one file:
 
-1. **[`sources/research-brief.md`](../../sources/research-brief.md)** — the internal, citation-bearing grounding document. It is the *single internal source of truth*. Read it before you write anything. ✅
+1. **[`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)** — the internal, citation-bearing grounding document. It is the *single internal source of truth*. Read it before you write anything. ✅
 2. **Cited primary sources** — the Ditto driver paper (1990 European Amiga Developer's Conference), the real install ADFs analysed with `tools/inspect-adf.sh`, repo source for the modern drivers, and official Commodore manuals.
 3. **Archived Usenet** (comp.unix.amiga) above **forum lore** — when sources conflict, prefer the higher tier.
 
-The rule, restated from [`AGENTS.md`](../../AGENTS.md): **do not state a fact in `docs/` that is not supported in the brief or a cited primary source.** If you believe something but cannot ground it, either drop it or mark it 🔴 and say so. Never launder an unverified claim into confident prose — that is exactly the failure mode this repo exists to prevent.
+The rule, restated from [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md): **do not state a fact in `docs/` that is not supported in the brief or a cited primary source.** If you believe something but cannot ground it, either drop it or mark it 🔴 and say so. Never launder an unverified claim into confident prose — that is exactly the failure mode this repo exists to prevent.
 
 ## Fact-confidence tags
 
@@ -67,7 +67,7 @@ tools/gen-llms-full.sh
 
 **Keep the three orderings in sync.** When you add, rename, move, or delete a page, update *all* of:
 
-1. the `order=( … )` array in [`tools/gen-llms-full.sh`](../../tools/gen-llms-full.sh),
+1. the `order=( … )` array in [`tools/gen-llms-full.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/gen-llms-full.sh),
 2. the curated `llms.txt`, and
 3. `docs/index.md` (the human-facing site map).
 
@@ -75,7 +75,7 @@ Then rerun `tools/gen-llms-full.sh`. If these drift apart, agents get a stale or
 
 ## Per-page front matter
 
-Every page begins with YAML front matter — three fields, exactly as in [`AGENTS.md`](../../AGENTS.md):
+Every page begins with YAML front matter — three fields, exactly as in [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md):
 
 ```markdown
 ---
@@ -98,7 +98,7 @@ These are the conventions that let a model (and a human) jump straight to the ri
 - **Lead with the answer (inverted pyramid).** First paragraph answers the question; caveats and depth go below. An agent that reads only the top of the page should still get the correct headline.
 - **Reproducibility over prose.** Prefer exact commands, config tables, file paths, and major/minor numbers (`/dev/va2000`, char major 68) to hand-wavy description. Fence all code/config with a language hint (` ```sh `, ` ```c `, ` ```text `) and make it copy-pastable.
 - **Relative links with descriptive text.** Cross-link siblings as `../drivers/driver-model.md` (works on GitHub and in any generated site), and use link text that says what's on the other end — `the Ditto driver paper`, never "click here". Define jargon on first use and link the [glossary](../how-it-works/glossary.md).
-- **Every page ends with `## Sources`** — a bullet list of the specific sources behind *that* page (URLs, "Ditto paper p.N", "`amix_21_root.adf` analysis via `tools/inspect-adf.sh`", repo paths). No page ships without it. This is what lets a reader (or a downstream model) verify any claim, and it is non-negotiable per [`AGENTS.md`](../../AGENTS.md).
+- **Every page ends with `## Sources`** — a bullet list of the specific sources behind *that* page (URLs, "Ditto paper p.N", "`amix_21_root.adf` analysis via `tools/inspect-adf.sh`", repo paths). No page ships without it. This is what lets a reader (or a downstream model) verify any claim, and it is non-negotiable per [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md).
 
 ## The licensing boundary
 
@@ -108,7 +108,7 @@ The Amix distribution, the boot/root/patch ADFs, the HDFs/tape images, and the s
 
 Before you finish a page edit, confirm:
 
-- [ ] Read [`sources/research-brief.md`](../../sources/research-brief.md) and grounded every non-obvious claim in it (or a cited primary source).
+- [ ] Read [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) and grounded every non-obvious claim in it (or a cited primary source).
 - [ ] Carried the brief's exact ✅/🟡/🔴 tag on each claim — **no upward upgrades.**
 - [ ] Front matter present (`title` matching the H1, one-sentence `summary`, `status`).
 - [ ] One topic, stable headings, answer first, code fenced with language hints, relative links with descriptive text.
@@ -119,14 +119,14 @@ Before you finish a page edit, confirm:
 
 ## See also
 
-- [`AGENTS.md`](../../AGENTS.md) — the mandatory contributor contract (read first)
+- [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — the mandatory contributor contract (read first)
 - [Style Guide](style-guide.md) — prose and Markdown conventions
-- [`sources/research-brief.md`](../../sources/research-brief.md) — the grounding source of truth
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — the grounding source of truth
 
 ## Sources
 
-- [`AGENTS.md`](../../AGENTS.md) — repo contract: grounding, fact-confidence tags, `## Sources` requirement, front matter, licensing boundary, "keep `llms.txt` in sync / run `tools/gen-llms-full.sh`".
+- [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — repo contract: grounding, fact-confidence tags, `## Sources` requirement, front matter, licensing boundary, "keep `llms.txt` in sync / run `tools/gen-llms-full.sh`".
 - [`docs/contributing/style-guide.md`](style-guide.md) — page skeleton, headings, relative links, tags.
-- [`tools/gen-llms-full.sh`](../../tools/gen-llms-full.sh) — the generator for `llms-full.txt`; its `order=()` array is the canonical reading order (37 pages).
-- [`sources/research-brief.md`](../../sources/research-brief.md) §0 (source-of-truth hierarchy, confidence tags) and the §1 versions example (2.2 / 2.1c-1994 lore as 🔴).
+- [`tools/gen-llms-full.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/gen-llms-full.sh) — the generator for `llms-full.txt`; its `order=()` array is the canonical reading order (37 pages).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §0 (source-of-truth hierarchy, confidence tags) and the §1 versions example (2.2 / 2.1c-1994 lore as 🔴).
 - The `llms.txt` convention: <https://llmstxt.org/> (Jeremy Howard, Answer.AI, Sept 2024).

@@ -14,10 +14,10 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 > **New here?** Read [What Amix Is](how-it-works/overview.md), then jump to
 > [Running Amix in WinUAE](getting-started/emulation-winuae.md) to get a system booting.
 >
-> **An AI agent?** Start from [`../llms.txt`](../llms.txt) or the whole-corpus
-> [`../llms-full.txt`](../llms-full.txt); the grounding facts live in
-> [`../sources/research-brief.md`](../sources/research-brief.md); the rules are in
-> [`../AGENTS.md`](../AGENTS.md).
+> **An AI agent?** Start from [`../llms.txt`](https://github.com/Jusii/grimoire-amix/blob/master/llms.txt) or the whole-corpus
+> [`../llms-full.txt`](https://github.com/Jusii/grimoire-amix/blob/master/llms-full.txt); the grounding facts live in
+> [`../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md); the rules are in
+> [`../AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md).
 
 ## Reading paths
 
@@ -94,5 +94,5 @@ Case studies: [va2000](drivers/case-studies/va2000.md) ·
 [Writing for LLMs](contributing/writing-for-llms.md)
 
 ## Sources
-- [`../sources/research-brief.md`](../sources/research-brief.md) (grounding synthesis with citations)
+- [`../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) (grounding synthesis with citations)
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) (cross-linked community wiki)

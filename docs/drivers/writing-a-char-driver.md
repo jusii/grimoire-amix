@@ -464,6 +464,6 @@ Read the full mechanics — kernel-file patches, the `make install` / `make boot
 ## Sources
 
 - Ditto, Michael. *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — pp. 8–22: the line-by-line driver narrative (pp. 8–12), the full `par.c` listing (pp. 13–19, lines 1–317), the references (pp. 20–21), and the `par(7A)` man page (p. 22). All code excerpts on this page are quoted from that listing.
-- [`sources/research-brief.md`](../../sources/research-brief.md) §5 (device-driver model; the `par.c` worked example as the canonical char-driver teaching case) and §6 (VA2000 modern char/`mmap` driver facts).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §5 (device-driver model; the `par.c` worked example as the canonical char-driver teaching case) and §6 (VA2000 modern char/`mmap` driver facts).
 - `asokero/va2000-amix` repo (char major 68, `/dev/va2000`, `mmap`, `autocon()`/`uiomove()`/`copyin`/`copyout`): <https://github.com/asokero/va2000-amix>
 - amigaunix.com — historical and end-user reference for Amix and its media: <https://www.amigaunix.com/doku.php/home>

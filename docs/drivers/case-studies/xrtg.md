@@ -8,7 +8,7 @@ status: draft
 
 [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) is an **X11R5 X server** for Amix — its server binary is `Xrtg` — that renders into the MNT **VA2000** retargetable-graphics (RTG) card through the kernel framebuffer device `/dev/va2000` ✅. It runs **TrueColor RGB565** at resolutions from 640×480 up to **1920×1080**, uses the card's hardware blitter for fills and copies, and draws a software cursor ✅. It targets Amix **2.1p2a** on an Amiga 3000 / 68030 / Zorro II, and it **requires the [`va2000-amix` framebuffer driver](va2000.md) to be in the kernel first** — `Xrtg` is a userspace consumer of `/dev/va2000`, not a driver itself ✅.
 
-This page is the development-side companion to [X11 & the desktop](../../how-it-works/x11-and-desktop.md) (the user-facing X overview) and [X11 / RTG driver development](../x11-rtg-drivers.md) (the general DDX/RTG layering). The facts here are **uniformly ✅** (from the repo README/source, via [research brief §6](../../../sources/research-brief.md)) except where a tag says otherwise.
+This page is the development-side companion to [X11 & the desktop](../../how-it-works/x11-and-desktop.md) (the user-facing X overview) and [X11 / RTG driver development](../x11-rtg-drivers.md) (the general DDX/RTG layering). The facts here are **uniformly ✅** (from the repo README/source, via [research brief §6](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)) except where a tag says otherwise.
 
 ## What Xrtg is, in one sentence
 
@@ -107,7 +107,7 @@ The original Amix color X path is the **A2410** "Lowell" TIGA board driven by `o
 
 - **New code** written for `xrtg-amix` is **MIT-licensed** ✅.
 - The **X11R5** portions retain their original **X Consortium** license terms ✅.
-- The repository is **source-only** by necessity: building and running it requires a **licensed Amix SVR4** system (its X11R5 libraries/headers and the proprietary kernel interface to `/dev/va2000`) ✅. Do not expect a redistributable binary. See [AGENTS.md §5](../../../AGENTS.md) on the Amix licensing boundary — the Amix media and environment are proprietary Commodore material; obtain them via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
+- The repository is **source-only** by necessity: building and running it requires a **licensed Amix SVR4** system (its X11R5 libraries/headers and the proprietary kernel interface to `/dev/va2000`) ✅. Do not expect a redistributable binary. See [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) on the Amix licensing boundary — the Amix media and environment are proprietary Commodore material; obtain them via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
 
 ## See also
 
@@ -120,8 +120,8 @@ The original Amix color X path is the **A2410** "Lowell" TIGA board driven by `o
 
 ## Sources
 
-- [`sources/research-brief.md`](../../../sources/research-brief.md) §6 — `asokero/xrtg-amix`: `Xrtg` X11R5 server, TrueColor RGB565 640×480 → 1920×1080, hardware blitter fills/copies + software cursor, DDX layering (`ddx/amix/` → RTG → `ddx/amix/rtg/va2000/` → `/dev/va2000`), input via the AMIX screen manager (`OpenScreen()`, `SIOCACTIVATE`), imake build with `config/amix.cf` (`BuildPex=NO`, SVR4 lib rules avoiding ranlib issues), dependency on the va2000 driver, MIT + X Consortium licensing.
-- [`sources/research-brief.md`](../../../sources/research-brief.md) §6 — `asokero/va2000-amix`: `/dev/va2000` char major 68 minor 0, 16-bit modes, console screen-type patches the screen manager relies on.
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 — `asokero/xrtg-amix`: `Xrtg` X11R5 server, TrueColor RGB565 640×480 → 1920×1080, hardware blitter fills/copies + software cursor, DDX layering (`ddx/amix/` → RTG → `ddx/amix/rtg/va2000/` → `/dev/va2000`), input via the AMIX screen manager (`OpenScreen()`, `SIOCACTIVATE`), imake build with `config/amix.cf` (`BuildPex=NO`, SVR4 lib rules avoiding ranlib issues), dependency on the va2000 driver, MIT + X Consortium licensing.
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 — `asokero/va2000-amix`: `/dev/va2000` char major 68 minor 0, 16-bit modes, console screen-type patches the screen manager relies on.
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — the X11R5 `Xrtg` server source (DDX `ddx/amix/`, RTG layer, VA2000 backend, `config/amix.cf`).
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — the framebuffer driver the server sits on.
 - [amigaunix.com — X11](https://www.amigaunix.com/doku.php/x11) — community reference for the historical X stack the RTG path replaces (🟡).

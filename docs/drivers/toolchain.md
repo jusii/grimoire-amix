@@ -117,7 +117,7 @@ Practical consequences:
 - The reliable native fallback is to build **inside the emulator or on real hardware** with the on-box `cc`/GCC (see [native compilers](#native-compilers-on-the-box)). Single-file drivers like the [VA2000 framebuffer driver](case-studies/va2000.md) build natively with `cc va2000.c` and never need the cross toolchain ✅.
 - If you do have a licensed Amix install, you can extract its headers/libs to form a sysroot, but the exact configure/build invocation for the cross GCC is **not documented** in any source we hold 🔴.
 
-This is tracked as open gap #1 in §13 of the [research brief](../../sources/research-brief.md).
+This is tracked as open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
 
 ## SVR4 packaging
 
@@ -149,7 +149,7 @@ pkgadd -d /tmp/MYpkg.pkg MYpkg
 
 ### How the installer itself uses packaging
 
-The Amix install path is package-driven ✅. The `root.adf` install scripts wrap the pkg machinery with **`amixpkg`** (e.g. `amixpkg -i -m -d -r /mnt -y standard`) and stream the distribution from tape (`dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`) ✅. The `amixpkg` wrapper is widely reported to be flaky/"broken" 🟡, but the underlying `pkgadd`/`pkgmk`/`pkgtrans` tools are the standard SVR4 ones. The installation flow is detailed in §9 of the [research brief](../../sources/research-brief.md); see also the [installation walkthrough](../getting-started/install-walkthrough.md).
+The Amix install path is package-driven ✅. The `root.adf` install scripts wrap the pkg machinery with **`amixpkg`** (e.g. `amixpkg -i -m -d -r /mnt -y standard`) and stream the distribution from tape (`dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`) ✅. The `amixpkg` wrapper is widely reported to be flaky/"broken" 🟡, but the underlying `pkgadd`/`pkgmk`/`pkgtrans` tools are the standard SVR4 ones. The installation flow is detailed in §9 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md); see also the [installation walkthrough](../getting-started/install-walkthrough.md).
 
 ### AmixBP and the zoo+cpio fallback
 
@@ -181,7 +181,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 
 ## Sources
 
-- [research brief](../../sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra cross-build), §11 (userland shells), and §13 (open gaps #1, #3).
+- [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra cross-build), §11 (userland shells), and §13 (open gaps #1, #3).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (kernel build flow; `rdbunix` historical name).
 - `isoriano1968/hydra-amix` repo (the `m68k-amix-gcc` / `CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"` / `elf2brel` in `stand/` / `make oldboot` flow): <https://github.com/isoriano1968/hydra-amix>
 - `asokero/va2000-amix` repo (native `cc va2000.c`; pre-POSIX `/bin/sh` gotchas — no `$(...)`, no `grep -q`): <https://github.com/asokero/va2000-amix>

@@ -142,7 +142,7 @@ the tool rewrites to match your stream — so it loads with no overrun and no ch
 
 ## Inspecting it yourself
 
-Use [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) — it is read-only and never modifies the image. Point it at **your own** copy (see [below](#where-to-get-the-image)):
+Use [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) — it is read-only and never modifies the image. Point it at **your own** copy (see [below](#where-to-get-the-image)):
 
 ```sh
 tools/inspect-adf.sh amix_21_boot.adf
@@ -223,7 +223,7 @@ Expected SHA-256: `0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65
 
 ## Sources
 
-- `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../../tools/inspect-adf.sh) — bootblock hex dump, `DOS\0` magic + checksum, bootstrap/kernel strings, `xdftool` "Invalid Root Block @880", binwalk false-positive "JBOOT" hits (reproduced locally; SHA-256 `0d8af1c0…65272`, see `sources/CHECKSUMS.txt`).
-- [`sources/research-brief.md`](../../sources/research-brief.md) §3 ("What the real boot.adf contains") and §10 ("boot.adf").
+- `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) — bootblock hex dump, `DOS\0` magic + checksum, bootstrap/kernel strings, `xdftool` "Invalid Root Block @880", binwalk false-positive "JBOOT" hits (reproduced locally; SHA-256 `0d8af1c0…65272`, see `sources/CHECKSUMS.txt`).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §3 ("What the real boot.adf contains") and §10 ("boot.adf").
 - amigaunix.com Downloads (image source): <https://www.amigaunix.com/doku.php/downloads>
 - Internet Archive, *Commodore Amiga Operating Systems — AMIX*: <https://archive.org/details/commodore-amiga-operating-systems-amix>

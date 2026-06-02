@@ -269,7 +269,7 @@ tools/gen-llms-full.sh
 
 Each page is wrapped with a `# FILE: <path>` banner. Missing pages are reported on stderr
 (`warning: missing <f> (skipped)`) and counted, so you can see at a glance which pages still need
-writing. Per the [contributor contract](../../AGENTS.md), **run this after any content change** so
+writing. Per the [contributor contract](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md), **run this after any content change** so
 `llms-full.txt` stays current — and update `llms.txt` and `docs/index.md` if you add, rename, or move a
 page. ✅
 

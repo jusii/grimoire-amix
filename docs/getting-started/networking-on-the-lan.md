@@ -21,7 +21,7 @@ The result, with the example values used throughout:
 It builds on the conceptual [networking page](../how-it-works/networking.md) (the SVR4 STREAMS stack, `aen0`, static-IP/no-DHCP, DNS-off-by-default) and [the Amiberry page](emulation-amiberry.md): **Amiberry 8.x fully runs and installs Amix** — its A3000 on-board SCSI emulates the disk (ID 6) and tape (ID 4) — and adds real A2065 networking. ✅
 
 > Substitute your own IP/gateway/DNS throughout. The host-side helpers in
-> [`tools/host-net/`](../../tools/host-net/) default to exactly these values and
+> [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) default to exactly these values and
 > autodetect your LAN interface.
 
 ## Why this works on Amiberry (and the design choice)
@@ -79,7 +79,7 @@ sudo iptables -I DOCKER-USER 1 -i $ETH -o tap0 -j ACCEPT
 ## Step 2 — Amiberry config
 
 In your machine's `.uae` (a complete working example is committed at
-[`tools/amix-amiberry.uae`](../../tools/amix-amiberry.uae)), the networking lines are:
+[`tools/amix-amiberry.uae`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amix-amiberry.uae)), the networking lines are:
 
 ```ini
 a2065=tap0
@@ -227,14 +227,14 @@ Useful for automation / agents driving Amix without a visible window:
   with `xdotool windowfocus <id>` + `xdotool type/key`, screenshot with
   `import -window root`). ✅
 - Once `aen0` is up, skip the console entirely and use the LAN: scripted shell via
-  [`tools/host-net/amixsh.py`](../../tools/host-net/amixsh.py) (telnet) and file
-  uploads via [`amixput.py`](../../tools/host-net/amixput.py) (FTP). ✅
+  [`tools/host-net/amixsh.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/host-net/amixsh.py) (telnet) and file
+  uploads via [`amixput.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/host-net/amixput.py) (FTP). ✅
 
 ## See also
 
 - [Networking (concepts)](../how-it-works/networking.md) — the SVR4 STREAMS stack, `aen0`, DNS-off-by-default, the `route` metric.
 - [Amix on Amiberry (status)](emulation-amiberry.md) — what runs vs. what needs WinUAE/FS-UAE.
-- [`tools/host-net/`](../../tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
+- [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
 - [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap.
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) — the community source that documents the `/etc/domain` "general weirdness".
 

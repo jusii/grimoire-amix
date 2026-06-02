@@ -8,7 +8,7 @@ status: draft
 
 [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix) is a modern, source-only **STREAMS/DLPI Ethernet driver** that brings the Hydra Systems *AmigaNet* card (an NE2000-class board built around the National Semiconductor **DP8390** chip) up as a first-class network interface under Amix 2.1p2a on a 68030 Amiga 3000 ✅. It registers at **`cdevsw` slot 47** under the tag `hya`, and once configured you plumb it the SVR4 way: `ifconfig hya0 plumb` ✅.
 
-This page is the worked example for [Writing a STREAMS driver](../writing-a-streams-driver.md): hydra-amix is the project's reference STREAMS network driver, mirroring the structure of the stock A2065 LANCE driver. Everything here is grounded in §6 of the [research brief](../../../sources/research-brief.md), which in turn draws on the repo's README and source ✅. The driver is **source-only** — it requires a licensed Amix SVR4 environment to build, so no binaries are distributed ✅.
+This page is the worked example for [Writing a STREAMS driver](../writing-a-streams-driver.md): hydra-amix is the project's reference STREAMS network driver, mirroring the structure of the stock A2065 LANCE driver. Everything here is grounded in §6 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), which in turn draws on the repo's README and source ✅. The driver is **source-only** — it requires a licensed Amix SVR4 environment to build, so no binaries are distributed ✅.
 
 > **Status note.** hydra-amix is a recent, AI-assisted hobby effort like its sibling RTG drivers. Treat the build recipe below as "works for the author against real Amix headers," not as a turnkey, publicly reproducible toolchain (see [Toolchain caveat](#toolchain-caveat)).
 
@@ -99,7 +99,7 @@ Notes on each step ✅:
 
 ### Toolchain caveat
 
-🔴 **There is no public, reproducible build recipe for the `m68k-amix-gcc` cross-compiler.** It appears to be a private build that needs the proprietary Amix SVR4 headers and libraries, which cannot be redistributed. Treat the commands above as the author's working invocation, not a recipe you can run from a clean machine without first obtaining a licensed Amix environment. This is tracked as an open gap in [Toolchain](../toolchain.md) and in §13 of the [research brief](../../../sources/research-brief.md). Because of this dependency, the repo is **source-only** — no prebuilt driver is distributed ✅.
+🔴 **There is no public, reproducible build recipe for the `m68k-amix-gcc` cross-compiler.** It appears to be a private build that needs the proprietary Amix SVR4 headers and libraries, which cannot be redistributed. Treat the commands above as the author's working invocation, not a recipe you can run from a clean machine without first obtaining a licensed Amix environment. This is tracked as an open gap in [Toolchain](../toolchain.md) and in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md). Because of this dependency, the repo is **source-only** — no prebuilt driver is distributed ✅.
 
 ## Why this is a good template
 
@@ -123,6 +123,6 @@ If you are writing another NE2000/DP8390-class or Zorro II network driver for Am
 ## Sources
 
 - [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix) — repo README and source (driver entry points, AutoConfig ID, register offsets, build commands). ✅
-- [research brief](../../../sources/research-brief.md) §6 (`isoriano1968/hydra-amix` case-study facts) and §13 (cross-toolchain gap). ✅/🔴
-- [research brief](../../../sources/research-brief.md) §11 (networking: SVR4 STREAMS TCP/IP, `aen0`) and §5 (driver model: `cdevsw`, STREAMS, `int2_tbl[]`). ✅
+- [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix` case-study facts) and §13 (cross-toolchain gap). ✅/🔴
+- [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §11 (networking: SVR4 STREAMS TCP/IP, `aen0`) and §5 (driver model: `cdevsw`, STREAMS, `int2_tbl[]`). ✅
 - AT&T SVR4 *Streams Programmer's Guide* / *Network Programmer's Guide* and the DLPI specification (for the `DL_*` primitives), as cited in the Ditto paper. ✅

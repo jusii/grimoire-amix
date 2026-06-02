@@ -9,7 +9,7 @@ status: draft
 Concise definitions of the Amix-, Amiga-, and SVR4-specific terms that recur across these docs.
 Each entry is one or two lines and links to the page that covers the term in depth. Confidence
 tags (✅ verified, 🟡 community-reported, 🔴 unverified/disputed) carry over from the
-[research brief](../../sources/research-brief.md) — they are *not* upgraded here.
+[research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — they are *not* upgraded here.
 
 Entries are alphabetical. Acronyms sort by their letters (so "RDB" sits under R, "s5" under S).
 
@@ -211,7 +211,7 @@ addresses are assigned by [AUTOCONFIG](#autoconfig) at reset ✅. See [hardware]
 
 ## Sources
 
-- [`sources/research-brief.md`](../../sources/research-brief.md) — sections 1, 2, 3, 4, 5, 6, 7, 9, 11 (the grounding source of every definition above)
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — sections 1, 2, 3, 4, 5, 6, 7, 9, 11 (the grounding source of every definition above)
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model, `cdevsw`/`bdevsw`, majors/minors, `spl`/clist, `rdbunix` (the Ditto paper)
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — miniroot, UFS, `viper_kludge`, install/partition logic, `relocunix`/`make bootpart`
 - `amix_21_boot.adf` analysis via `tools/inspect-adf.sh` — compressed kernel, HAT panic string

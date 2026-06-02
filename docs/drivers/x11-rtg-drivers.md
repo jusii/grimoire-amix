@@ -151,7 +151,7 @@ For the native compilers and SVR4 toolchain caveats (the bundled AT&T `cc`, GCC 
 
 The **new** `Xrtg` Amix code is **MIT-licensed**; the surrounding **X11R5** code retains the original **X
 Consortium** terms ✅. Building it also requires a licensed Amix system for the SVR4 headers and libraries —
-the proprietary Amix distribution is not redistributable (see [licensing](../../AGENTS.md)).
+the proprietary Amix distribution is not redistributable (see [licensing](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
 
 ## Input: the AMIX screen manager
 
@@ -195,7 +195,7 @@ historical desktop environment (OpenLook `olwm`/`olwsm`, `tvtwm`, the X11R5 font
 - [Toolchain](toolchain.md) — the native SVR4 `cc`/GCC and cross-build notes.
 
 ## Sources
-- Research brief [`sources/research-brief.md`](../../sources/research-brief.md) §6 (`asokero/xrtg-amix` and `asokero/va2000-amix` repo facts) and §11 (X11 / RTG path).
+- Research brief [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`asokero/xrtg-amix` and `asokero/va2000-amix` repo facts) and §11 (X11 / RTG path).
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — README and source tree (`ddx/amix/`, `ddx/amix/rtg/`, `ddx/amix/rtg/va2000/`, `config/amix.cf`); X11R5 / `imake` build; `BuildPex=NO`; `OpenScreen()` / `SIOCACTIVATE` input; TrueColor RGB565; MIT (new code) + X Consortium (X11R5) licensing.
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — README and source; `/dev/va2000` char major 68 minor 0; RTG screen type patched into `amiga/console/{scrdev.c,c0.c,screen.c}`; `relocunix` relink + `make bootpart`.
 - amigaunix.com — historical X11 context cross-referenced in [X11 & the Desktop](../how-it-works/x11-and-desktop.md) (🟡 community-reported).

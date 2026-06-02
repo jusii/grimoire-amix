@@ -16,3 +16,6 @@ tools/_work/
 
 # Local Claude Code project dir (settings / session cache) — not for publishing
 .claude/
+
+# MkDocs build output
+site/
