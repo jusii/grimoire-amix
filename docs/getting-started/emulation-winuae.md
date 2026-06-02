@@ -101,7 +101,7 @@ The tape image at SCSI ID 4 is the standard route, but a tape-free install is do
 ## See also
 - [Install walkthrough](install-walkthrough.md) — the full installer flow once the emulator boots.
 - [Running Amix in FS-UAE](emulation-fs-uae.md) — the same machine on a non-Windows host.
-- [Running Amix in Amiberry](emulation-amiberry.md) — currently **not working** (missing A3000 SCSI + tape).
+- [Running Amix in Amiberry](emulation-amiberry.md) — Amiberry 8.x also runs and installs Amix (A3000 SCSI disk + tape).
 - [How Amix uses the hardware](../how-it-works/hardware.md) — why the MMU, FPU, and SCSI IDs are mandatory.
 - [Quirks](../how-it-works/quirks.md) — the complete list of hard-coded limits.
 

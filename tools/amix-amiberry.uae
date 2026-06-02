@@ -1,0 +1,67 @@
+; amix-amiberry.uae -- a working Amiberry config for Amiga UNIX (Amix) 2.1 on an A3000.
+;
+; Verified on Amiberry 8.1.6 (2026-06): boots an installed Amix to login, AND installs
+; Amix from the distribution tape -- the A3000 on-board SCSI emulates the hard disk at
+; SCSI ID 6 and the tape at SCSI ID 4, which is exactly what the Amix installer needs.
+; (Requires Amiberry >= 8.0; older 5.7.x/7.x builds lacked A3000 SCSI + tape support.)
+;
+; HOW TO USE
+;   1. Drop this file in your Amiberry "Configurations" directory (or load it with -f).
+;   2. Point the paths below at YOUR copies (or set them in the GUI):
+;        kickstart_rom_file : an A3000 Kickstart 2.04 (r37.175) ROM
+;        hardfile2 / uaehf0 : your Amix RDB hard-disk image (or create a new hardfile)
+;        uaehf1 (tape)      : the Amix distribution tape image (only needed to install)
+;      Amix media is proprietary Commodore material -- obtain it yourself from
+;      https://www.amigaunix.com/doku.php/downloads (do not redistribute).
+;   3. INSTALL: also set floppy0 = amix_21_boot.adf, boot it, insert the root floppy when
+;      asked; the installer streams the distribution from the tape at SCSI ID 4.
+;      RUN an already-installed system: leave the floppies empty (boots from the HDF).
+;   4. NETWORKING: this config bridges the emulated A2065 to a host TAP (a2065=tap0) to
+;      make Amix a real host on your LAN -- see docs/getting-started/networking-on-the-lan.md
+;      and tools/host-net/. For simple outbound NAT instead, set:  a2065=slirp
+;
+; Mandatory or Amix will not boot: MMU on, JIT off, "More compatible" off, 68030 + FPU.
+
+use_gui=yes
+kickstart_rom_file=Kickstart v2.04 r37.175 (1991)(Commodore)(A3000).rom
+
+; --- CPU / MMU / FPU (mandatory) ---
+cpu_type=68020/68881
+cpu_model=68030
+fpu_model=68882
+mmu_model=68030
+cpu_compatible=false
+cachesize=0
+
+; --- Chipset / A3000 ---
+chipset=ecs
+chipset_compatible=A3000
+ntsc=false
+fatgary=0
+ramsey=13
+z3_autoconfig=true
+
+; --- RAM (4-16 MB Fast; 16 MB is the hard ceiling) ---
+chipmem_size=4
+a3000mem_size=8
+fastmem_size=0
+
+; --- A3000 on-board SCSI: hard disk at ID 6, tape at ID 4 ---
+scsi_a3000=true
+scsi_a3000_rom_file=:ENABLED
+hardfile2=rw,DH0:Amix.hdf,32,1,2,512,0,,scsi6_a3000
+uaehf0=hdf,rw,DH0:Amix.hdf,32,1,2,512,0,,scsi6_a3000
+uaehf1=tape0,rw,:amix_21_tape.zip,0,0,0,512,0,,scsi4_a3000,SCSI1
+
+; --- A2065 Ethernet (Amix interface aen0). Bridged to a host TAP for a real LAN host. ---
+; Host side: run tools/host-net/amix-lan-up.sh first. For NAT-only instead: a2065=slirp
+a2065_rom_file=:ENABLED
+a2065=tap0
+a2065_rom_options=mac=00:80:10:00:00:38
+bsdsocket_emu=false
+
+; --- Floppies: empty = boot the installed system from the HDF. ---
+; To install, set: floppy0=amix_21_boot.adf  (and attach the root/patch floppies when prompted).
+nr_floppies=0
+floppy0=
+floppy0type=-1

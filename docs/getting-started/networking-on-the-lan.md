@@ -18,7 +18,7 @@ The result, with the example values used throughout:
 | From the LAN | `ping 192.168.2.38`, `telnet 192.168.2.38` reach Amix |
 | From Amix | `ping www.google.com`, internet, NFS, etc. |
 
-It builds on the conceptual [networking page](../how-it-works/networking.md) (the SVR4 STREAMS stack, `aen0`, static-IP/no-DHCP, DNS-off-by-default) and updates [the Amiberry status page](emulation-amiberry.md): **a pre-installed Amix now boots and runs on Amiberry 8.x from an A3000 SCSI hardfile** — only the tape-based *install* still needs WinUAE/FS-UAE. ✅
+It builds on the conceptual [networking page](../how-it-works/networking.md) (the SVR4 STREAMS stack, `aen0`, static-IP/no-DHCP, DNS-off-by-default) and [the Amiberry page](emulation-amiberry.md): **Amiberry 8.x fully runs and installs Amix** — its A3000 on-board SCSI emulates the disk (ID 6) and tape (ID 4) — and adds real A2065 networking. ✅
 
 > Substitute your own IP/gateway/DNS throughout. The host-side helpers in
 > [`tools/host-net/`](../../tools/host-net/) default to exactly these values and
@@ -78,9 +78,8 @@ sudo iptables -I DOCKER-USER 1 -i $ETH -o tap0 -j ACCEPT
 
 ## Step 2 — Amiberry config
 
-In your machine's `.uae` (a working example is committed at
-[`tools/host-net/`](../../tools/host-net/); the file used here is `amix_net.uae`),
-the networking lines are:
+In your machine's `.uae` (a complete working example is committed at
+[`tools/amix-amiberry.uae`](../../tools/amix-amiberry.uae)), the networking lines are:
 
 ```ini
 a2065=tap0

@@ -67,12 +67,12 @@ The boot/root/patch floppies and the scanned manuals are **proprietary Commodore
 
 - The config is **community-verified against FS-UAE 3.1.66** 🟡, not primary-verified. Other FS-UAE versions may need accuracy tweaks.
 - If you prefer the reference emulator, use [WinUAE](emulation-winuae.md), which has had the MMU emulation Amix needs since **2.6.0 (2013)** ✅.
-- **Amiberry does not currently work** for Amix (missing A3000 SCSI + tape emulation; tracked as BlitterStudio/amiberry issue #1376) 🟡, and **QEMU** has no working Amiga-SCSI/hardware setup 🟡 — neither is an FS-UAE substitute today.
+- **Amiberry 8.x now works** for Amix too — its A3000 on-board SCSI emulates the disk (ID 6) and tape (ID 4), so it both installs and runs Amix (BlitterStudio/amiberry issue #1376 — implemented; older builds lacked it) ✅; see [Amix on Amiberry](emulation-amiberry.md). **QEMU** still has no working Amiga-SCSI/hardware setup 🟡.
 
 ## See also
 - [Running Amix in WinUAE](emulation-winuae.md) — the reference emulator and the full mandatory settings table.
 - [Install walkthrough](install-walkthrough.md) — the end-to-end boot/root/tape/patch install flow.
-- [Running Amix in Amiberry](emulation-amiberry.md) — why it is currently a non-starter.
+- [Running Amix in Amiberry](emulation-amiberry.md) — Amiberry 8.x runs and installs Amix too.
 - [Hardware and requirements](../how-it-works/hardware.md) — the SCSI-ID rules and 16 MB ceiling these settings exist to satisfy.
 - [Quirks](../how-it-works/quirks.md) — the hard-coded limits (ID 6 / ID 4, 16 MB, no JIT) summarized.
 
@@ -81,4 +81,4 @@ The boot/root/patch floppies and the scanned manuals are **proprietary Commodore
 - Master research brief, §9 "Installation flow" (tape at SCSI ID 4; `dd if=/dev/rmt/4hn | cpio`; `BPART`/`BOOTPART` from SCSI ID in the root.adf scripts).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) (FS-UAE configuration; install media).
 - [Internet Archive — Commodore Amiga Operating Systems: Amix](https://archive.org/details/commodore-amiga-operating-systems-amix) (disk images).
-- BlitterStudio/amiberry issue #1376 (Amiberry Amix support gap).
+- BlitterStudio/amiberry issue #1376 (A3000 SCSI + tape support for Amix — implemented in Amiberry 8.x).

@@ -80,6 +80,8 @@ This is why emulator configs pin the disk hardfile to **SCSI ID 6** and the tape
 
 The Amix kernel **predates the 68040 MMU** and has no support for it (or the later 68060). ✅ Consequently the **A4000 cannot officially run Amix** ✅ — its standard 68040 CPU is exactly the part the kernel cannot drive. This is a fundamental limit, not a missing driver you could add: the MMU model differs.
 
+> **The blocker is the 68040 CPU, not the AGA chipset.** "No A4000" is about the processor/MMU, *not* AGA. An **030-based AGA** configuration (an accelerated A4000/030, or AGA in emulation) boots Amix to the **text console** fine 🟡 — AGA is **console-only**, though: Amix's **X11** server targets the supported display hardware (the **A2410** TIGA card, or the ECS framebuffer), not AGA. So with AGA you get the console but not X. (Operator-reported, 2026-06.)
+
 ### No Zorro III — Zorro II only
 
 Amix supports **Zorro II expansion only**; it has **no Zorro III support**. ✅ The kernel's memory-mapping layer cannot address Zorro III space, and — critically — **that source was never shipped**, so the community cannot fix it. ✅ Any card you want to use must work in (or fall back to) **Zorro II** address ranges.
@@ -134,7 +136,7 @@ Every limit above maps onto a specific emulator setting. WinUAE (with MMU emulat
 - Disk hardfile at **SCSI ID 6**; tape image at **SCSI ID 4**.
 - A3000 Kickstart ROM (2.04 rev 37.175 or 3.1 40.68).
 
-The full, annotated config table lives in [the WinUAE emulation guide](../getting-started/emulation-winuae.md). FS-UAE works similarly; **Amiberry currently does not** (it lacks A3000 SCSI + tape emulation).
+The full, annotated config table lives in [the WinUAE emulation guide](../getting-started/emulation-winuae.md). FS-UAE works similarly, and **Amiberry 8.x** does too — its A3000 on-board SCSI emulates the disk (ID 6) and tape (ID 4) Amix needs (older Amiberry builds lacked this). See [Amix on Amiberry](../getting-started/emulation-amiberry.md).
 
 ## See also
 

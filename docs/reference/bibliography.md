@@ -182,9 +182,9 @@ These ground the [getting-started / emulation](../getting-started/emulation-winu
   [emulation under WinUAE](../getting-started/emulation-winuae.md).
 - **FS-UAE** documentation — verified by amigaunix.com against FS-UAE 3.1.66 🟡. See
   [emulation under FS-UAE](../getting-started/emulation-fs-uae.md).
-- **Amiberry issue #1376** — <https://github.com/BlitterStudio/amiberry/issues/1376> 🟡 — Amix
-  currently does not boot under Amiberry (missing A3000 SCSI + tape emulation); the issue was
-  closed-as-enhancement. Documented as "not currently working" in
+- **Amiberry issue #1376** — <https://github.com/BlitterStudio/amiberry/issues/1376> — request to add
+  A3000 SCSI controller + tape support for Amix; **implemented in Amiberry 8.x** (the 8.1.6 GUI mounts a
+  disk at A3000 SCSI ID 6 and a tape at ID 4), so Amiberry now both installs and runs Amix ✅. See
   [emulation under Amiberry](../getting-started/emulation-amiberry.md).
 
 ## The `llms.txt` convention

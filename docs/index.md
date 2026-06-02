@@ -56,7 +56,7 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 ### Getting started (emulation-first)
 [WinUAE](getting-started/emulation-winuae.md) ·
 [FS-UAE](getting-started/emulation-fs-uae.md) ·
-[Amiberry status](getting-started/emulation-amiberry.md) ·
+[Amix on Amiberry](getting-started/emulation-amiberry.md) ·
 [On your real LAN (Amiberry)](getting-started/networking-on-the-lan.md) ·
 [Install walkthrough](getting-started/install-walkthrough.md) ·
 [Real hardware](getting-started/real-hardware.md) ·

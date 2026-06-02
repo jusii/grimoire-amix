@@ -14,8 +14,8 @@ from the actual scripts on the install floppies ✅ — every step maps to somet
 **Before you start:** stand up an emulator first. This page assumes a working virtual A3000 with the
 correct CPU/MMU/FPU and two SCSI targets (a disk on ID 6, a tape on ID 4). Set that up with the
 [WinUAE setup guide](emulation-winuae.md) (the reference target) or the
-[FS-UAE setup guide](emulation-fs-uae.md). [Amiberry does not currently work](emulation-amiberry.md) for
-Amix, and there is no working QEMU recipe 🟡. For period-correct **real hardware** instead of emulation,
+[FS-UAE setup guide](emulation-fs-uae.md), or [Amiberry 8.x](emulation-amiberry.md) — which also emulates
+the A3000 SCSI disk + tape Amix needs. There is no working QEMU recipe 🟡. For period-correct **real hardware** instead of emulation,
 see [installing on real hardware](real-hardware.md).
 
 > **Licensing:** the boot/root/patch floppies and the distribution are proprietary Commodore material

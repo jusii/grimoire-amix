@@ -127,7 +127,7 @@ For the fuller networking picture (STREAMS TCP/IP, TLI + sockets, the A2065/Hydr
 
 Be honest with yourself about the trade-off:
 
-- **Emulation (WinUAE) is the reference target** and is what almost all current driver work is built and tested against. ✅ It is easier to set up, snapshot, and recover. Start there: [WinUAE](emulation-winuae.md), [FS-UAE](emulation-fs-uae.md). (Note that [Amiberry](emulation-amiberry.md) does **not** currently run Amix — it lacks A3000 SCSI + tape emulation. 🟡)
+- **Emulation (WinUAE) is the reference target** and is what almost all current driver work is built and tested against. ✅ It is easier to set up, snapshot, and recover. Start there: [WinUAE](emulation-winuae.md), [FS-UAE](emulation-fs-uae.md). (Note: [Amiberry](emulation-amiberry.md) **8.x** also runs and installs Amix now — it emulates the A3000 SCSI disk + tape. ✅)
 - **Real hardware** gives you authenticity and native I/O, but you inherit every hard limit on this page plus the sourcing problem for 68030 boards, FPUs, working SCSI/tape, and 10 Mbps networking.
 
 If your goal is to *develop* drivers or explore the system, emulation is the pragmatic choice. If your goal is to run Amix on the metal it was written for, this page is your checklist.
@@ -146,5 +146,5 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 - Research brief §9 (Installation flow: `dd if=/dev/rmt/4hn bs=256k | cpio -imdcu` and `… | zcat | cpio` variants reconstructed from `amix_21_root.adf` scripts; `viper_kludge` / `viper.README`; tape-free installs documented on comp.unix.amiga 🟡).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (install scripts: `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`, `/dev/rmt/4h`, `viper.README`) ✅.
 - Research brief §11 (Networking: A2065 `aen0`, static IP only, DNS off by default + relink recipe, `route add default … 1`, NFS, SLIP/PPP) ✅/🟡.
-- Research brief §8 (Emulation: WinUAE reference target, Amiberry not working — BlitterStudio/amiberry issue #1376) 🟡.
+- Research brief §8 (Emulation: WinUAE reference target; Amiberry 8.x adds A3000 SCSI + tape support — BlitterStudio/amiberry issue #1376, implemented). First-hand confirmation on Amiberry 8.1.6.
 - ZuluSCSI/flash-SCSI substitution, old hub / media-converter need, and the byte-level tape-free recipe: **community-reported (🟡)**, retro-Amiga community practice and comp.unix.amiga; not primary-verified in any Amix source.
