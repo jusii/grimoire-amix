@@ -3,6 +3,12 @@
 Developer- and LLM-oriented documentation for **Amiga Unix (Amix)** — Commodore's port of AT&T
 System V Release 4 (SVR4) to 68030 Amigas (the A3000UX and A2500UX).
 
+> ⚠️ **AI-assisted — verify before trusting.** This documentation was created with heavy use of LLM
+> tools; much of it is machine-authored and **not all of it has been proofread or tested on real
+> hardware.** Don't take everything here as fact. Pages carry confidence tags (✅ verified ·
+> 🟡 community-reported · 🔴 unverified) and cite their sources — check against those before relying on
+> anything. Corrections welcome.
+
 It covers three things the existing community wiki doesn't:
 
 1. **How Amix actually works** — kernel architecture, the boot path, hardware constraints.
