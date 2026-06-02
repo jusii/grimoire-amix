@@ -23,7 +23,8 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 ## Getting started (emulation-first)
 - [Running Amix in WinUAE](docs/getting-started/emulation-winuae.md): the exact config (MMU on, JIT off, SCSI 6/4).
 - [Running Amix in FS-UAE](docs/getting-started/emulation-fs-uae.md): the verified FS-UAE config.
-- [Amix on Amiberry (status)](docs/getting-started/emulation-amiberry.md): why it doesn't run yet.
+- [Amix on Amiberry (status)](docs/getting-started/emulation-amiberry.md): runs a pre-installed Amix on 8.x from an A3000 SCSI hardfile; only the tape *install* needs WinUAE/FS-UAE.
+- [Putting Amix on your real LAN (Amiberry)](docs/getting-started/networking-on-the-lan.md): verified recipe — A2065 on a routed TAP + proxy-ARP; static IP, gateway, DNS, internet, reachable inbound, persistent at boot.
 - [Installing Amix (Walkthrough)](docs/getting-started/install-walkthrough.md): boot+root+tape → partition → kernel → patch.
 - [Running Amix on Real Hardware](docs/getting-started/real-hardware.md): A3000UX/A2500UX, modern SCSI.
 - [First Login & a Quick Tour](docs/getting-started/first-login-and-tour.md): login, consoles, shells, X.

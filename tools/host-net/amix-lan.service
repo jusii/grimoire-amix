@@ -1,0 +1,16 @@
+[Unit]
+Description=Amix-on-LAN host networking (routed TAP + proxy-ARP for Amiberry a2065=tap0)
+Documentation=https://www.amigaunix.com/doku.php/networking
+# Docker manages the iptables FORWARD policy; come up after it so DOCKER-USER exists.
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Override defaults here with Environment=GUEST_IP=... ETH=... TAP_OWNER=... if needed.
+ExecStart=/usr/local/sbin/amix-lan-up.sh
+ExecStop=/usr/local/sbin/amix-lan-down.sh
+
+[Install]
+WantedBy=multi-user.target

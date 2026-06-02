@@ -26,6 +26,9 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 [Install walkthrough](getting-started/install-walkthrough.md) →
 [First login](getting-started/first-login-and-tour.md).
 
+**I want Amix on my network** → [Putting Amix on your real LAN](getting-started/networking-on-the-lan.md)
+(Amiberry A2065 → TAP + proxy-ARP; static IP, DNS, internet, persistent).
+
 **I want to write a driver** → [Driver model](drivers/driver-model.md) →
 [Kernel build](drivers/kernel-build.md) →
 [Char driver (par.c)](drivers/writing-a-char-driver.md) or
@@ -54,6 +57,7 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 [WinUAE](getting-started/emulation-winuae.md) ·
 [FS-UAE](getting-started/emulation-fs-uae.md) ·
 [Amiberry status](getting-started/emulation-amiberry.md) ·
+[On your real LAN (Amiberry)](getting-started/networking-on-the-lan.md) ·
 [Install walkthrough](getting-started/install-walkthrough.md) ·
 [Real hardware](getting-started/real-hardware.md) ·
 [First login & tour](getting-started/first-login-and-tour.md)

@@ -10,6 +10,16 @@ status: draft
 
 This page documents the current state so you don't burn time. If you have new information (a working config, a fixed build), it belongs here.
 
+> ✅ **Update (2026-06): a *pre-installed* Amix now boots and runs fully on Amiberry 8.1.6.**
+> With `scsi_a3000=true` and the RDB image attached as `hardfile2=...,scsi6_a3000`,
+> Amiberry 8.1.6 boots an installed Amix 2.1 to multiuser/login from the A3000 SCSI
+> hardfile — no floppy, no tape. The [#1376](https://github.com/BlitterStudio/amiberry/issues/1376)
+> limitation is specifically about the **tape-based install** (reading the distribution
+> from SCSI tape at ID 4); **do the install once on WinUAE/FS-UAE, then run the resulting
+> HDF on Amiberry**. Amiberry 8.x also gained **real A2065 networking** (TAP/PCAP backend),
+> so an Amiberry-hosted Amix can be a genuine host on your LAN — see
+> [Putting Amix on your real LAN](networking-on-the-lan.md) for the verified recipe.
+
 ## Current status: boots, can't install
 
 | Question | Answer | Tag |

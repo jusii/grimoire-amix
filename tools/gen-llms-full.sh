@@ -24,6 +24,7 @@ order=(
   docs/getting-started/emulation-winuae.md
   docs/getting-started/emulation-fs-uae.md
   docs/getting-started/emulation-amiberry.md
+  docs/getting-started/networking-on-the-lan.md
   docs/getting-started/install-walkthrough.md
   docs/getting-started/real-hardware.md
   docs/getting-started/first-login-and-tour.md

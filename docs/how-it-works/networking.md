@@ -64,28 +64,43 @@ The trailing `1` is the metric/hopcount, not an option flag. This is the single 
 
 ## DNS is off by default — turning it on
 
-By default the C library resolves names from **`/etc/hosts` only**; **DNS lookups are disabled** ✅. This is deliberate in the shipped configuration — the default `libsocket.so` does not call a name server. To get real DNS you swap in the DNS-capable socket library and stand up a resolver configuration 🟡:
+By default the C library resolves names from **`/etc/hosts` only**; **DNS lookups are disabled** ✅. This is deliberate in the shipped configuration — the stock `libsocket.so` does not call a name server. Enabling DNS means swapping in the DNS-capable library on **two** resolution paths and providing a resolver config. This procedure is now **first-hand verified** on a running Amix 2.1 ✅:
 
 ```sh
-# 1. Swap libsocket for the DNS-aware variant (the key step).
+# 1. gethostbyname() path (ping / telnet / ftp clients): swap libsocket -> libsockdns.
+cp /usr/lib/libsocket.so /usr/lib/libsocket.so.orig
 ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so
 
-# 2. Provide resolver config: your domain and one or more nameservers.
-cat > /etc/resolv.conf <<'EOF'
-domain example.com
-nameserver 192.168.0.1
-EOF
+# 2. TLI / netdir path: activate the DNS-enabled transport table.
+cp /etc/netconfig /etc/netconfig.TCP
+cp /etc/netconfig.DNS /etc/netconfig          # appends /usr/lib/resolv.so to tcp/udp/icmp/rawip
 
-# 3. (Optional) run a local caching/authoritative name server.
-in.named
+# 3. resolver config — nameservers ONLY (see the domain warning below).
+cat > /etc/resolv.conf <<'EOF'
+nameserver 192.168.0.1
+nameserver 192.168.0.2
+EOF
 ```
 
 Notes and caveats:
 
-- `/usr/lib/libsockdns.so` is the **DNS-enabled socket library**; relinking `libsocket.so` to it is what flips resolution from hosts-only to DNS ✅/🟡. `ln -f` replaces the existing symlink/file in place.
-- `/etc/netconfig` is the SVR4 transport table; it (together with the swap above) governs how name lookups are wired into the STREAMS transport providers 🟡.
-- `in.named` is the BIND name server daemon; run it only if this host is *serving* DNS. A pure client just needs the library swap and `/etc/resolv.conf` 🟡.
-- **Warning:** this whole procedure is community-reported (🟡), reconstructed from amigaunix.com's networking notes. The exact `libsocket`/`libsockdns` filenames and the need for the `/etc/netconfig` edit are credible but not primary-source-verified — verify against your own install before relying on it.
+- `/usr/lib/libsockdns.so` is the **DNS-enabled socket library**; hard-linking `libsocket.so` onto it is what flips `gethostbyname()` from hosts-only to DNS ✅. Use `ln -f` (atomic relink) so already-running daemons keep the old inode safely.
+- `/etc/netconfig.DNS` is a ready-made variant of the SVR4 transport table that appends **`/usr/lib/resolv.so`** to each provider; copying it over `/etc/netconfig` enables DNS on the TLI/`netdir_getbyname()` path ✅. Both files ship with the install.
+- `in.named` (BIND) is **only** needed if this host is *serving* DNS; a pure client needs just the two swaps above plus `/etc/resolv.conf` ✅.
+
+> 🛑 **Leave the domain UNSET — the `/etc/domain` "general weirdness".** If a default
+> domain is set, the resolver **appends it to every lookup, including fully-qualified
+> names** — so `www.google.com` is queried as `www.google.com.<yourdomain>`. If your
+> local zone has a wildcard, that resolves to the *wrong* address and never falls back
+> (the classic symptom is `ping` getting `ICMP Host Unreachable` for a name while the
+> literal IP works). The domain is set at `sysinit` from **`/etc/domain`** via
+> `domainname \`cat /etc/domain\``. Fix it by emptying the file (`cp /dev/null
+> /etc/domain`, or `echo nodomain > /etc/domain`) and `domainname ""` to apply now.
+> `options ndots:1` does **not** help — this resolver ignores it. ✅ (Documented as
+> "general weirdness" on [amigaunix.com](https://www.amigaunix.com/doku.php/networking)
+> and confirmed first-hand.)
+
+For a complete, reproducible LAN setup (static IP at boot, gateway, DNS, internet, reachable inbound — all surviving reboot) under Amiberry, see **[Putting Amix on your real LAN](../getting-started/networking-on-the-lan.md)**.
 
 ## NFS (server and client)
 
@@ -132,8 +147,9 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 | Bring Hydra up | `ifconfig hya0 plumb` then assign address | ✅ |
 | Default route (metric required) | `route add default <gw> 1` | ✅/🟡 |
 | Static name→IP, resolver fallback | `/etc/hosts` | ✅ |
-| Enable DNS | `ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so` + `/etc/resolv.conf` (+ `in.named` if serving) | 🟡 |
-| Transport table | `/etc/netconfig` | 🟡 |
+| Enable DNS (1/2) | `ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so` + `/etc/resolv.conf` (nameservers only) | ✅ |
+| Enable DNS (2/2) | `cp /etc/netconfig.DNS /etc/netconfig` (activates `/usr/lib/resolv.so`) | ✅ |
+| **Unset domain** (or DNS breaks) | `cp /dev/null /etc/domain; domainname ""` — else it's appended to every lookup | ✅ |
 | NFS export / mount | `share` / `shareall`; `mount -F nfs host:/path /mnt` | ✅ |
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
 | PPP | not available | ✅ |
