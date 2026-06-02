@@ -15,6 +15,14 @@ This is an **independent** resource that **cross-links** to
 [amigaunix.com](https://www.amigaunix.com/doku.php/home) (the established wiki for end-user, install,
 and historical material). We go deeper on development.
 
+**Start here → [docs/index.md](docs/index.md)** — the full map, with reading paths for running Amix,
+writing drivers, and building boot disks. A few entry points:
+[How Amix boots](docs/how-it-works/boot-process.md) ·
+[Kernel architecture](docs/how-it-works/kernel-architecture.md) ·
+[The driver model](docs/drivers/driver-model.md) ·
+[Reverse-engineering the boot floppy](docs/boot-disks/reverse-engineering-boot-adf.md) ·
+[Putting Amix on your real LAN](docs/getting-started/networking-on-the-lan.md).
+
 ## Built for humans *and* LLMs
 
 The docs are plain Markdown so they render on GitHub and ingest cleanly into AI agents. Conventions:
