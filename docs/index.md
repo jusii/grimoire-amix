@@ -11,6 +11,11 @@ Documentation for **Amiga Unix (Amix)** — Commodore's port of AT&T System V Re
 headings, exact commands, and inline source-confidence tags (✅ verified · 🟡 community-reported ·
 🔴 unverified/disputed).
 
+> ⚠️ **AI-assisted — verify before trusting.** This documentation was created with heavy use of LLM
+> tools; much of it is machine-authored and **not all of it has been proofread or tested on real
+> hardware.** Don't take everything here as fact — rely on the per-page confidence tags and the cited
+> sources. Corrections welcome.
+
 > **New here?** Read [What Amix Is](how-it-works/overview.md), then jump to
 > [Running Amix in WinUAE](getting-started/emulation-winuae.md) to get a system booting.
 >
