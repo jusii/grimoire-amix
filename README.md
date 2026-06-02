@@ -31,12 +31,12 @@ The docs are plain Markdown so they render on GitHub and ingest cleanly into AI 
 ```
 docs/            the documentation (start at docs/index.md)
   how-it-works/  what Amix is, hardware, boot, kernel, filesystems, networking, X11, quirks
-  getting-started/ emulation (WinUAE/FS-UAE), install walkthrough, real hardware, first login
+  getting-started/ emulation (WinUAE/FS-UAE/Amiberry), putting Amix on your LAN, install walkthrough, real hardware, first login
   drivers/       driver model, kernel build, char & STREAMS drivers, toolchain, case studies
   boot-disks/    boot/root/patch floppy anatomy + building custom driver disks
   reference/     versions, device list, command cheat sheet, bibliography
   contributing/  style guide, writing for LLMs
-tools/           reproducible scripts: inspect-adf, extract-kernel, build-bootfloppy, unpack-root, build-custom-bootdisk, gen-llms-full
+tools/           reproducible scripts: inspect-adf, extract-kernel, build-bootfloppy, unpack-root, build-custom-bootdisk, gen-llms-full; host-net/ (put Amix on your LAN)
 sources/         primary materials (gitignored binaries) + research-brief.md + checksums + provenance
 llms.txt         curated LLM index
 AGENTS.md        contributor contract
@@ -62,10 +62,16 @@ fact-checked against it); they will move to `status: reviewed` as humans verify 
 real hardware and emulators. Contributions and corrections welcome; see
 [`AGENTS.md`](AGENTS.md) and [`docs/contributing/style-guide.md`](docs/contributing/style-guide.md).
 
-## Licensing
+## License
 
-Documentation and tooling in this repo are original work. The Amix operating system, its install media
-(ADFs/HDFs/tapes), and Commodore's scanned manuals are **proprietary Commodore-Amiga material** —
-widely treated as abandonware but not licensed for redistribution. We do **not** ship those files; we
-cite and analyze them, and the tooling operates on **user-supplied** images. See
-[`sources/NOTES.md`](sources/NOTES.md).
+The documentation and tooling in this repo are original work, released under the
+**[MIT License](LICENSE)**.
+
+The Amix operating system, its install media (ADFs/HDFs/tapes), and Commodore's scanned manuals are
+**proprietary Commodore-Amiga material** — widely treated as abandonware but not licensed for
+redistribution. They are **not** included here; the tooling operates on **user-supplied** images, and
+we only cite and analyze them. Download them yourself from
+[amigaunix.com → Downloads](https://www.amigaunix.com/doku.php/downloads) or the
+[Internet Archive](https://archive.org/details/commodore-amiga-operating-systems-amix), and verify
+against [`sources/CHECKSUMS.txt`](sources/CHECKSUMS.txt). See [`sources/NOTES.md`](sources/NOTES.md)
+for full provenance.
