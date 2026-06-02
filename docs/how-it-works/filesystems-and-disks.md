@@ -6,7 +6,7 @@ status: draft
 
 # Filesystems & Disk Layout
 
-Amix stores everything on a single SCSI hard disk that **must** sit at **SCSI ID 6** ✅, partitioned with the Amiga **Rigid Disk Block (RDB)** scheme ✅ — the same on-disk partition table AmigaOS uses, which is what lets the Superkickstart ROM find and boot the disk. The installer carves out four partitions by default (root, swap, a 2 MB boot/bootstrap partition, and data) ✅. You choose a filesystem at install time: **s5** (System V; the default but discouraged) or **UFS** (Berkeley Fast File System; recommended, and what the install scripts actually default to) ✅. Disk device names like `/dev/dsk/c0d0s1` are not arbitrary — the **minor number encodes the SCSI address, LUN, and partition**, and the **major number selects the driver** (block major **18** for the SCSI disk, block major **16** for the floppy) ✅.
+Amix stores everything on a single SCSI hard disk — **ID 6 by convention** (the installer prompts for the disk target; ID 6 is simply what every manual and emulator assumes, and it gets baked into the device names once installed — see the note below) 🟡, partitioned with the Amiga **Rigid Disk Block (RDB)** scheme ✅ — the same on-disk partition table AmigaOS uses, which is what lets the Superkickstart ROM find and boot the disk. The installer carves out four partitions by default (root, swap, a 2 MB boot/bootstrap partition, and data) ✅. You choose a filesystem at install time: **s5** (System V; the default but discouraged) or **UFS** (Berkeley Fast File System; recommended, and what the install scripts actually default to) ✅. Disk device names like `/dev/dsk/c0d0s1` are not arbitrary — the **minor number encodes the SCSI address, LUN, and partition**, and the **major number selects the driver** (block major **18** for the SCSI disk, block major **16** for the floppy) ✅.
 
 If you just want the major/minor cheat sheet, jump to [Device name → SCSI address mapping](#device-name-scsi-address-mapping) or the [device list reference](../reference/device-list.md). For how the disk gets booted in the first place, see the [boot process](boot-process.md).
 
@@ -18,9 +18,9 @@ Practical consequences of the RDB choice:
 
 - The drive that holds Amix is addressed as a "UNIX rdb" — the installer probes for "a suitable UNIX rdb" before partitioning ✅.
 - Under emulation you present the disk as an **RDB-type hardfile** (e.g. `hard_drive_0_type = rdb` in [FS-UAE](../getting-started/emulation-fs-uae.md), an RDB hardfile in [WinUAE](../getting-started/emulation-winuae.md)) ✅.
-- 🔴 The **exact RDB partition type IDs** Amix assigns to its boot / swap / UFS partitions are not documented in any source we hold. Treat any specific type-ID claim as unverified.
+- The **exact RDB partition type IDs** are read from the installer script ✅: boot **`0x554e4900`** (`UNI\0`), UNIX root **`0x554e4901`** (`UNI\1`), swap **`0x72657376`** (`resv`), stamped with `/etc/rdb -F`. Kickstart 2.04's boot-priority algorithm *requires* the bootable partition to be `0x554e4900`. See the [root floppy anatomy](../boot-disks/anatomy-root-adf.md#rdb-partition-type-tags).
 
-**Note:** Because the SCSI disk ID is hard-coded to 6 ✅, every install lives at the same address. Likewise the tape used to load the distribution is hard-coded to **SCSI ID 4** ✅. See [Quirks](quirks.md) for the full list of hard-coded addresses.
+**Note:** The disk's SCSI ID is **baked into its device names** at install time — at the conventional ID 6 every path is `c6d0s…` — so although the installer accepts other targets, the ID is then fixed *in `/etc/vfstab`* (the SVR4 mount table) and the boot partition, and can't be changed without editing those 🟡. The tape, by contrast, is genuinely hard-wired to **SCSI ID 4** (`/dev/rmt/4h`) ✅. See [hardware](hardware.md#scsi-target-ids) and [Quirks](quirks.md).
 
 ## Default partition layout
 
@@ -57,7 +57,7 @@ You pick the filesystem type during installation ✅. Two choices ship:
 
 The recommendation is unambiguous in practice: the install scripts on the root floppy set the answer variable `ANS="ufs"` as their effective default ✅, and community consensus is that everyone uses UFS.
 
-Why does **s5** linger as a nominal default at all? 🟡 The most plausible explanation is **lineage**: Amix was a direct port of AT&T's **3B2 (WE32x00) SVR4 codebase** ✅, where the System V filesystem was the native default, and that default carried over even though UFS is the better choice on this hardware. The 3B2-lineage rationale is **community-reported, not primary-verified** 🟡 — see the [quirks page](quirks.md).
+Why does **s5** linger as a nominal default at all? 🟡 The most plausible explanation is **lineage**: Amix was a direct port of AT&T's **3B2 (WE32x00) SVR4 codebase** 🟡 (community-reported — amigaunix.com hedges "it appears that"), where the System V filesystem was the native default, and that default carried over even though UFS is the better choice on this hardware. The 3B2-lineage rationale is **community-reported, not primary-verified** 🟡 — see the [quirks page](quirks.md).
 
 **Recommendation:** choose **UFS** when the installer asks. UFS is also what the miniroot itself uses — the root floppy *is* a UFS filesystem (it carries `lost+found` and `fsck` strings) ✅, so the installer environment runs on UFS before your disk is even partitioned.
 
@@ -83,7 +83,7 @@ The block disk driver is **major 18** — the SCSI hard-disk driver ✅. A name 
 
 The Ditto driver paper's own `ls -l /dev` shows `/dev/dsk/c0d0s1` as **block major 18, minor 1**, where minor 1 means "SCSI addr 0, LUN 0, partition 1" ✅. In other words the **minor number packs the SCSI address, LUN, and partition number together** ✅ — there is no separate field; the driver decodes the minor on each access.
 
-Because the install disk is hard-wired to SCSI ID 6, real install paths look like `/dev/dsk/c6d0s<part>` (the `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` line above resolves to `c6` at install time) ✅.
+Because the install disk is conventionally at SCSI ID 6, real install paths look like `/dev/dsk/c6d0s<part>` (the `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` line above resolves to whatever target you pick — `c6` at the conventional ID 6) ✅.
 
 - `/dev/dsk/...` is the **block** interface (buffered, used for filesystems via `mount`).
 - `/dev/rdsk/...` is the matching **character/raw** interface (unbuffered, used by `fsck`, `dd`, partition tools) — standard SVR4 convention.
@@ -119,9 +119,9 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
 
 - [The boot process](boot-process.md) — how the Superkickstart ROM finds the RDB boot partition and decompresses the kernel.
 - [Device list](../reference/device-list.md) — the full table of `/dev` nodes and major numbers.
-- [Hardware & requirements](hardware.md) — why the SCSI IDs and the 16 MB RAM ceiling are fixed.
+- [Hardware & requirements](hardware.md) — the SCSI target IDs and the 16 MB RAM ceiling.
 - [Install walkthrough](../getting-started/install-walkthrough.md) — partitioning and filesystem choice in context.
-- [Quirks](quirks.md) — the hard-coded SCSI-ID-6 disk / ID-4 tape constraints and other gotchas.
+- [Quirks](quirks.md) — the SCSI-ID constraints (tape hard-coded at ID 4, disk ID 6 by convention) and other gotchas.
 
 ## Sources
 

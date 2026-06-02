@@ -21,7 +21,8 @@ authoritative community resource is [amigaunix.com](https://www.amigaunix.com/do
 ## Lineage: ported from the AT&T 3B2 codebase
 
 Amix was a **direct port of AT&T's 3B2 (WE32x00) SVR4 codebase**, not an evolution of a pre-existing
-68k Unix. ✅ Commodore chose the 3B2 source for licensing-cost reasons rather than starting from a
+68k Unix. 🟡 (amigaunix.com states this but hedges — "it appears that … 3B2 codebase"; corroborated by
+EAB/datagubbe, but no primary citation.) Commodore chose the 3B2 source for licensing-cost reasons rather than starting from a
 native m68k tree, which is why several defaults (for example the System V `s5` filesystem default —
 see [filesystems and disks](filesystems-and-disks.md)) look like 3B2 inheritances 🟡 (exact rationale
 unconfirmed). The port was led
@@ -64,13 +65,14 @@ fell through.
 
 ## History at a glance
 
-- ✅ **First public demo:** Uniforum, Dallas, **January 1988**, on an A2500UX — at that point still
-  SVR3, not SVR4.
+- 🟡 **First public demo:** Uniforum, Dallas, **January 1988**, on an A2500UX — at that point still
+  SVR3, not SVR4. (The 1988 Uniforum Dallas demo is documented; the *machine* and *month* are
+  community-reported, not in primary sources.)
 - ✅ **Commercial window:** roughly **1991–1992**.
 - ✅ **Support ended 1993.** Commodore filed for bankruptcy in April 1994.
 
 The SVR4 product line proper begins with the 1991 releases and ends with the **2.1** retail release of
-February 1992, after which only an unofficial patch series continued. The full timeline is below; the
+February 1992 🟡 (the *month* is community-reported — sources confirm only the year), after which only an unofficial patch series continued. The full timeline is below; the
 [versions reference](../reference/versions.md) carries the per-release detail.
 
 ## Version matrix
@@ -82,7 +84,7 @@ The releases, with confidence tags carried straight from the research brief:
 | SVR3.x precursors | 1988–89 | A2500UX demos (68020 → 68030); proprietary windowing, not yet SVR4 | 🟡 |
 | 1.1 | 1991 | First widely-referenced SVR4 release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | Color X via the A2410; archive.org carries 2.01 and 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** | **Last retail release.** Ships pre-formatted man pages only (nroff sources dropped) | ✅ |
+| **2.1** | **Feb 1992** 🟡 | **Last retail release** ✅ (month community-reported). Ships pre-formatted man pages only (nroff sources dropped) | ✅ |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | Unofficial but considered definitive; inet / NFS / Y2K fixes | ✅ |
 
 **Notes on the matrix:**

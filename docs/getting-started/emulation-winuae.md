@@ -40,14 +40,14 @@ All of the following are required for a *clean* boot. The four bolded rows are t
 | Fast RAM | **≤ 16 MB** | Kernel hard-codes a 16 MB ceiling; **more mis-maps the SCSI drive** ✅ |
 | Floppy **DF0** | `amix_2.1_boot.adf` | The bootable install floppy ✅ |
 | **SCSI ID 4** | Tape image | Install script reads the distribution from `/dev/rmt/4hn`, hard-coded ✅ |
-| **SCSI ID 6** | RDB hardfile, ~450–900 MB | The disk SCSI ID is hard-coded in the kernel and install scripts ✅ |
+| **SCSI ID 6** | RDB hardfile, ~450–900 MB | The conventional Amix disk target — the installer prompts for it, but use 6 (see [hardware](../how-it-works/hardware.md#scsi-target-ids)) ✅ |
 
 ### Why each gotcha bites
 
 - **MMU ON / JIT OFF** — these two are a pair. Amix is one of the very few classic-Amiga OSes that *requires* the MMU, and JIT and the MMU emulation do not coexist for it. JIT on → panic ✅.
 - **More Compatible OFF** — counter-intuitive, because for AmigaOS games you usually want it ON. For Amix it triggers a boot-time freeze 🟡.
 - **16 MB Fast RAM ceiling** — the kernel hard-codes the limit. Exceeding 16 MB does not just waste RAM; it **mis-maps the SCSI controller**, so the symptom looks like a disk problem, not a memory problem ✅.
-- **SCSI ID 4 = tape, ID 6 = disk** — these are not configurable. The install scripts on the root floppy reference `/dev/rmt/4h` for the tape and compute the boot partition from `c${SCSI}d0s${BOOTPART}` with the disk fixed at ID 6 ✅. Put the disk anywhere else and the installer will not find it.
+- **SCSI ID 4 = tape, ID 6 = disk.** The **tape ID 4 is hard-coded** (the scripts read `/dev/rmt/4h` and look nowhere else); the **disk ID 6 is convention** — the installer prompts for the disk target and computes the boot partition from `c${SCSI}d0s${BOOTPART}`. Use 6: it's the universal default and gets baked into the installed device names (`/etc/vfstab`), so you'd only have to undo it later. ✅/🟡
 
 See the [quirks page](../how-it-works/quirks.md) for the full list of hard-coded assumptions, and the [device list](../reference/device-list.md) for the `/dev/rmt/4h` and `/dev/dsk/c0d0s*` naming.
 

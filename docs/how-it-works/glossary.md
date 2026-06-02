@@ -15,8 +15,8 @@ Entries are alphabetical. Acronyms sort by their letters (so "RDB" sits under R,
 
 ## 3B2
 
-AT&T's WE32x00-based minicomputer line whose SVR4 codebase Commodore actually ported, for
-licensing-cost reasons, rather than starting from a pre-existing 68k port ✅. The 3B2 lineage is
+AT&T's WE32x00-based minicomputer line whose SVR4 codebase Commodore reportedly ported, for
+licensing-cost reasons, rather than starting from a pre-existing 68k port 🟡 (community-reported — amigaunix.com hedges "it appears that"; corroborated by EAB/datagubbe, no primary citation). The 3B2 lineage is
 the suspected reason Amix defaults to the [s5](#s5) filesystem at install even though everyone uses
 [UFS](#ufs) 🟡. See [How Amix works: overview](overview.md).
 

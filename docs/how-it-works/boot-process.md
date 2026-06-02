@@ -70,9 +70,9 @@ The installer's **default partition layout** is four partitions ✅:
 | **boot** | Holds the bootable kernel image | **2 MB**, fixed by `BOOTSIZE` (see below) ✅ |
 | data | Remaining user space | Keep partitions ≲1 GB 🟡 |
 
-**Warning:** The hardware addressing is rigid — the SCSI **hard disk must be ID 6** and the **tape must be ID 4**; both are hard-coded in the kernel and install scripts (e.g. `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` in the install scripts) ✅. Also keep total Fast RAM ≤ **16 MB**: the kernel hard-codes that ceiling and **>16 MB mis-maps the SCSI drive** ✅. Both are covered in [hardware](hardware.md) and the [quirks checklist](quirks.md).
+**Warning:** The **tape must be at SCSI ID 4** — hard-coded as the literal `/dev/rmt/4h` in the install scripts ✅. The **disk is ID 6 by convention**: the installer prompts for the disk target and templates the boot partition from it (`BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`), so any target works, but the chosen ID is then baked into the device names in `/etc/vfstab` 🟡. Also keep total Fast RAM ≤ **16 MB**: the kernel hard-codes that ceiling and **>16 MB mis-maps the SCSI drive** ✅. All covered in [hardware](hardware.md#scsi-target-ids) and the [quirks checklist](quirks.md).
 
-🔴 The exact **RDB partition type IDs** Amix uses to tag the boot vs swap vs UFS partitions are not documented in any source we hold — treat any specific type-ID claim as unverified.
+The **RDB partition type IDs** Amix stamps on each partition (via `/etc/rdb -F`) are now read directly from the installer script ✅: boot **`0x554e4900`** (`UNI\0`), UNIX root **`0x554e4901`** (`UNI\1`), swap **`0x72657376`** (`resv`). The installer's own comment notes the Kickstart 2.04 boot-priority algorithm *requires* the bootable UNIX partition to be type `0x554e4900`. Full decode on the [root floppy anatomy](../boot-disks/anatomy-root-adf.md#rdb-partition-type-tags) page.
 
 ### The 2 MB boot partition and BOOTLEN
 

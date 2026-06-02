@@ -41,7 +41,7 @@ Reading those rows:
 
 - **`/dev/console`** — character device, **major 0, minor 0**. The system console.
 - **`/dev/fd0`** — **block major 16**, the floppy driver.
-- **`/dev/dsk/c0d0s1`** — **block major 18**, the SCSI hard-disk driver. The minor `1` encodes SCSI address 0, LUN 0, partition 1. (Recall the Amix hard-coded SCSI layout: the boot disk must be **SCSI ID 6**, tape **ID 4** — see [Quirks](../how-it-works/quirks.md).) ✅
+- **`/dev/dsk/c0d0s1`** — **block major 18**, the SCSI hard-disk driver. The minor `1` encodes SCSI address 0, LUN 0, partition 1. (Recall the Amix SCSI layout: the tape is fixed at **ID 4**, and the boot disk is **ID 6** by convention — see [Quirks](../how-it-works/quirks.md).) ✅
 - **`/dev/par`** — **character major 21**, the Amiga parallel port (output-only Centronics). This is the paper's teaching driver; see [Writing a character driver](writing-a-char-driver.md). ✅
 
 For a fuller table of stock and community device numbers, see the [device list](../reference/device-list.md).

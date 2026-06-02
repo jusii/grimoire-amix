@@ -100,14 +100,14 @@ Key behaviours encoded here:
 
 - **Boot/bootstrap partition = 2 MB.** `BOOTSIZE=2` and `BOOTLEN=`expr $BOOTSIZE '*' 2048`` ⇒ a 2 MB partition is **4096 blocks** of 512 bytes. This is the small partition that holds the relocatable kernel the Superkickstart ROM boots. ✅
 - **Swap scales with disk size.** Disks larger than `BREAKPT=120` MB get `LGSWAP=30` MB of swap; smaller disks get `SMSWAP=18` MB. ✅
-- **SCSI IDs are hard-coded.** The tape is always **id 4** — the disk-selection loop explicitly rejects it: ✅
+- **The tape ID is fixed; the disk ID is prompted.** The tape is always **id 4** — the disk-selection loop explicitly rejects that target as tape-only: ✅
 
   ```sh
   if [ "$ask" = "4" ]; then
       echo "\nSCSI device 4 must be used for the tape drive"
   ```
 
-  The install script uses a `$SCSI` variable for the disk (so the prompt accepts other ids), but the kernel and system convention hard-code the disk at **id 6** ✅ (research brief §2: "hard-coded in kernel and install scripts"). In practice, **use id 6 for the disk**; deviating from this hard-codes a mismatch between the kernel and the installed partition layout. See the [quirks page](../how-it-works/quirks.md) for the full list of hard-coded SCSI assignments.
+  The install script uses a `$SCSI` *variable* for the disk, so the prompt **accepts other target ids** — ID 6 is a strong convention, not a kernel mandate 🟡. In practice, **use id 6 for the disk**: whatever target you pick is baked into the device names (`c${SCSI}d0s…`) written into `/etc/vfstab` (the SVR4 mount table) and the boot partition, so changing it after install means editing those by hand. (The tape, by contrast, is genuinely fixed at id 4 — the scripts hard-reference `/dev/rmt/4h`.) See the [quirks page](../how-it-works/quirks.md) and [hardware](../how-it-works/hardware.md#scsi-target-ids).
 
 - **Device paths are templated on the chosen SCSI id.** After partitioning, the script binds: ✅
 
@@ -251,12 +251,12 @@ Both require `binwalk`/`strings`; `inspect-adf.sh` additionally uses `xdftool` (
 - [Anatomy of the patch floppy](anatomy-patch-adf.md) — the self-extracting 2.1c patch disk.
 - [The build pipeline](build-pipeline.md) — how the boot/root/patch disks are produced and how to build add-on disks.
 - [Filesystems and disks](../how-it-works/filesystems-and-disks.md) — RDB scheme, s5 vs UFS, partition layout.
-- [Quirks](../how-it-works/quirks.md) — hard-coded SCSI ids, the 16 MB ceiling, and other landmines.
+- [Quirks](../how-it-works/quirks.md) — the SCSI ids (tape fixed at 4, disk 6 by convention), the 16 MB ceiling, and other landmines.
 
 ## Sources
 
 - `amix_21_root.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) — `binwalk` object table (30 m68k ELF objects, first at 0x6800; `tar` member at 0x17180; `/bin/sh` scripts at 0x35000/0x35400), ELF header bytes at 0x6800 (`ELFCLASS32`, `ELFDATA2MSB`, `ET_EXEC`, `EM_68K`), and `strings` dump of the install script (BOOTSIZE/BREAKPT/LGSWAP/SMSWAP, `BPART`/`UPART`/`SPART`, s5/ufs prompt, `ROOT_FSYS="s5" # Johann ROM`, RDB `-F` type tags `0x554e4900`/`0x554e4901`/`0x72657376`, `amixpkg` invocations, `/dev/rmt/4hn` tape pipelines).
 - `viper.README` and the `viper_kludge` runtime banner extracted from `amix_21_root.adf` (author Frank "Crash" Edwards; incompatibility with A3070/Caliper/Wangtek/Sankyo; RAM-only patch; pointer to `/usr/sys/amiga/alien/contrib`).
-- Master research brief, §9 (installation flow) and §10 (root.adf anatomy); §2 (hard-coded SCSI ids, RAM ceiling); §13 gap #8 (RDB partition type IDs).
+- Master research brief, §9 (installation flow) and §10 (root.adf anatomy); §2 (SCSI ids — tape hard-coded at 4, disk 6 by convention; RAM ceiling); §13 gap #8 (RDB partition type IDs).
 - SHA-256 cross-check: `sources/CHECKSUMS.txt`.
 - Disk image (not redistributed here): [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org Amiga UNIX](https://archive.org/details/commodore-amiga-operating-systems-amix).

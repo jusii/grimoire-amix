@@ -130,7 +130,7 @@ If you need IP over serial in practice, the community guidance is effectively "u
 
 Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card needs a driver compiled into `/unix`. The modern, fully worked example is the **Hydra AmigaNet** driver.
 
-- `hydra-amix` is a **STREAMS / DLPI** network driver for the Hydra card (an **NE2000 / DP8390** design), rev 1.2a, Zorro II, AutoConfig ID **1053/1 (`0x041D0001`)** ✅.
+- `hydra-amix` is a **STREAMS / DLPI** network driver for the Hydra card (an **NE2000 / DP8390** design), rev 1.2a, Zorro II, AutoConfig ID **2121/1 (`0x08490001`)** ✅.
 - It registers at **`cdevsw` slot 47** with the `hya` tag; you bring it up with `ifconfig hya0 plumb` and then assign an address as above ✅.
 - Its entry points (`hydraopen`, `hydrawput`, `hydraintr`, `setup_ne2000`) handle DLPI primitives (`DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ`) and the INT2 RX/TX interrupt; `hydraopen` even includes a **3-way card detect** with an **A2065 fallback emulation** path, and it deliberately mirrors the existing A2065 LANCE driver (`aen/`) ✅.
 - It is **cross-compiled** with `m68k-amix-gcc` (GCC 2.7.2.3, SVR4 target) and converted to Amix boot format via `elf2brel`; it is **source-only** because building it needs a licensed Amix tree ✅.
@@ -168,7 +168,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 
 - Research brief §11 "Networking, X11, userland" (STREAMS TCP/IP; `aen0`/A2065; static IP, no DHCP; DNS off by default + `libsockdns.so` swap, `in.named`, `/etc/resolv.conf`; `route add default <gw> 1`; NFS server+client; SLIP buggy; no PPP).
 - Research brief §2 "Hardware & requirements" (A2065 native; Hydra via `hydra-amix`; Ariadne I via Gateway 🟡).
-- Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x041D0001`, A2065 fallback, `m68k-amix-gcc`/`elf2brel`).
+- Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x08490001`, A2065 fallback, `m68k-amix-gcc`/`elf2brel`).
 - Research brief §4 "Kernel architecture" (monolithic SVR4; STREAMS, TLI + BSD sockets; no loadable modules).
 - Research brief §3 / §10 (`amix_21_boot.adf` string analysis — embedded NFS/RPC client string table), via `tools/inspect-adf.sh`.
 - Research brief §12 "Quirks checklist" (DNS off by default; SLIP reboot bug).

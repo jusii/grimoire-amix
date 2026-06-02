@@ -36,9 +36,9 @@ In the `c<addr>d<lun>s<part>` naming you will see on disk:
 - `c0d0s1` → controller/SCSI-address 0, drive/LUN 0, slice (partition) 1.
 - The boot/root logic uses this directly: root.adf computes `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
 
-Two **hard-coded SCSI target rules** the kernel and install scripts enforce (these are device-addressing facts, not just conventions) ✅:
+Two SCSI target rules — one genuinely fixed, one a strong convention ✅:
 
-- **Hard disk must be SCSI ID 6.**
+- **Hard disk: ID 6 by convention.** The installer prompts for the disk target and builds device names from it; ID 6 is the universal default, but it is baked into the `c6d0s…` names in `/etc/vfstab` once installed (so don't change it afterward — see [hardware](../how-it-works/hardware.md#scsi-target-ids)). 🟡
 - **Tape must be SCSI ID 4** — the raw tape node is `/dev/rmt/4h` (and `/dev/rmt/4hn` for the no-rewind variant used by the installer's `dd if=/dev/rmt/4hn …`) ✅.
 
 See [Quirks](../how-it-works/quirks.md) for why these IDs are fixed and what breaks if you ignore them.
@@ -89,7 +89,7 @@ Everything here is **Zorro II only** — Amix's memory-mapping layer cannot addr
 | **A2091** | A2000-family SCSI controller | ✅ |
 | **GVP Series II** | Needs a **kernel rebuild + an RDB `dummy_handler`** | 🟡 |
 
-The A2090/A2091 interrupt handlers (`a2090intr`, `a2091intr`) appear in the kernel's level-2 autovector table `int2_tbl[]` ✅ — concrete evidence these controllers are wired into the stock kernel. Remember the disk must sit at **SCSI ID 6** (above).
+The A2090/A2091 interrupt handlers (`a2090intr`, `a2091intr`) appear in the kernel's level-2 autovector table `int2_tbl[]` ✅ — concrete evidence these controllers are wired into the stock kernel. Remember the disk sits at **SCSI ID 6** by convention (above).
 
 ### Graphics
 
@@ -110,7 +110,7 @@ The A2410 is the *officially* supported color option; the VA2000 path is the mod
 | **Ariadne I** | — | Via Gateway! Vol.2 drivers | 🟡 |
 | **Hydra AmigaNet** | `hya0` (char 47) | Via the modern `hydra-amix` STREAMS/DLPI driver (NE2000/DP8390) | ✅ |
 
-Hydra's AutoConfig identity is **ID 1053/1 (`0x041D0001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. See [Networking](../how-it-works/networking.md).
+Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. See [Networking](../how-it-works/networking.md).
 
 ### Serial
 
@@ -127,7 +127,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - [The Amix device-driver model](../drivers/driver-model.md) — what major/minor numbers mean and how `cdevsw[]`/`bdevsw[]` work.
 - [Supported hardware & requirements](../how-it-works/hardware.md) — the CPU/RAM/SCSI/Zorro rules behind the card list.
 - [Building and installing a kernel](../drivers/kernel-build.md) — how a driver claims a major slot in `master.d/kernel.c`.
-- [Quirks](../how-it-works/quirks.md) — the hard-coded SCSI ID 6 / ID 4 rules and the 16 MB / Zorro III limits.
+- [Quirks](../how-it-works/quirks.md) — the SCSI ID rules (tape hard-coded at ID 4, disk ID 6 by convention) and the 16 MB / Zorro III limits.
 - [Versions](versions.md) — which Amix releases these numbers and cards apply to.
 
 ## Sources

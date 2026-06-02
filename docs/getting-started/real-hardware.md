@@ -1,6 +1,6 @@
 ---
 title: Running Amix on Real Hardware
-summary: A3000UX/A2500UX setup notes — required machines and ROMs, the hard-coded SCSI ID 6 disk / ID 4 tape rule, modern SCSI emulation (ZuluSCSI), tape-free installs, and 10 Mbps Ethernet realities.
+summary: A3000UX/A2500UX setup notes — required machines and ROMs, the SCSI rule (tape hard-coded at ID 4, disk ID 6 by convention), modern SCSI emulation (ZuluSCSI), tape-free installs, and 10 Mbps Ethernet realities.
 status: draft
 ---
 
@@ -35,7 +35,7 @@ An A2000 pre-configured for Unix. ✅ The "UX" suffix means it shipped with Amix
 
 - A2000 chassis + **A2630** accelerator (68030 @ 25 MHz + 68882 FPU).
 - **A2090** or **A2091** Zorro II SCSI controller (no on-board SCSI on the A2000).
-- First publicly demoed at Uniforum, Dallas, January 1988 (then running SVR3, not SVR4). ✅
+- First publicly demoed at Uniforum, Dallas, January 1988 (then running SVR3, not SVR4). 🟡 (event + year documented; the *machine* and *month* are community-reported)
 
 > **A2500UX has no Superkickstart.** The dual-boot-by-mouse-button behavior is an A3000UX feature of its boot ROM ✅. On an A2500UX you boot from the SCSI disk (or a boot floppy) the normal way.
 
@@ -49,7 +49,7 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 | **FPU** | **68881 or 68882** mandatory | No soft-float; the kernel and userland assume hardware FP |
 | **No 68040/68060** | A4000 **cannot** officially run Amix | Kernel predates the 68040 MMU |
 | **Fast RAM** | **4 MB minimum, 16 MB MAXIMUM** | Kernel hard-codes a 16 MB ceiling; **>16 MB mis-maps the SCSI drive** |
-| **SCSI disk** | **must be SCSI ID 6** | Hard-coded in kernel and install scripts |
+| **SCSI disk** | **ID 6** (convention) | Installer prompts for the disk target; ID 6 is the universal default, baked into device names once installed |
 | **SCSI tape** | **must be SCSI ID 4** | Hard-coded in install scripts (`/dev/rmt/4h`) |
 | **No Zorro III** | **Zorro II cards only** | The memory-mapping layer can't address Zorro III space, and that source wasn't shipped, so it can't be community-fixed |
 
@@ -57,7 +57,7 @@ For the full hardware story — supported SCSI/graphics/network/serial cards, th
 
 ### Why SCSI ID 6 and ID 4 matter so much
 
-The install scripts on the root floppy reference the disk as `/dev/dsk/c${SCSI}d0s${BOOTPART}` and stream the distribution from the tape at `/dev/rmt/4h` / `/dev/rmt/4hn`. ✅ The disk SCSI ID and the tape SCSI ID are not auto-detected — they are baked in. **Set your hard disk to SCSI ID 6 and your tape drive (or its substitute) to SCSI ID 4 before you do anything else.** Getting these wrong is the single most common reason a real-hardware install fails to find its disk or its distribution media. ✅
+The install scripts on the root floppy stream the distribution from the tape at the literal `/dev/rmt/4h` / `/dev/rmt/4hn`, and reference the disk through a `$SCSI` variable (`/dev/dsk/c${SCSI}d0s${BOOTPART}`). ✅ The **tape must be at ID 4** — the installer looks nowhere else for the distribution media. The **disk is ID 6 by convention**: the installer prompts for the disk target, so another ID would work, but pick 6 — the chosen ID is baked into the device names (`/etc/vfstab`) once installed, so changing it later means editing that file 🟡. **Set the tape to SCSI ID 4 and the disk to SCSI ID 6 before you start.** Getting the *tape* ID wrong is the single most common reason a real-hardware install can't find its distribution media. ✅/🟡
 
 This same ID rule is what the emulator configs reproduce: WinUAE/FS-UAE put the disk hardfile on SCSI ID 6 and the tape image on SCSI ID 4 (see [the WinUAE guide](emulation-winuae.md)).
 

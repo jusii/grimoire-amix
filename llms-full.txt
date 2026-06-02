@@ -32,7 +32,8 @@ authoritative community resource is [amigaunix.com](https://www.amigaunix.com/do
 ## Lineage: ported from the AT&T 3B2 codebase
 
 Amix was a **direct port of AT&T's 3B2 (WE32x00) SVR4 codebase**, not an evolution of a pre-existing
-68k Unix. ✅ Commodore chose the 3B2 source for licensing-cost reasons rather than starting from a
+68k Unix. 🟡 (amigaunix.com states this but hedges — "it appears that … 3B2 codebase"; corroborated by
+EAB/datagubbe, but no primary citation.) Commodore chose the 3B2 source for licensing-cost reasons rather than starting from a
 native m68k tree, which is why several defaults (for example the System V `s5` filesystem default —
 see [filesystems and disks](filesystems-and-disks.md)) look like 3B2 inheritances 🟡 (exact rationale
 unconfirmed). The port was led
@@ -75,13 +76,14 @@ fell through.
 
 ## History at a glance
 
-- ✅ **First public demo:** Uniforum, Dallas, **January 1988**, on an A2500UX — at that point still
-  SVR3, not SVR4.
+- 🟡 **First public demo:** Uniforum, Dallas, **January 1988**, on an A2500UX — at that point still
+  SVR3, not SVR4. (The 1988 Uniforum Dallas demo is documented; the *machine* and *month* are
+  community-reported, not in primary sources.)
 - ✅ **Commercial window:** roughly **1991–1992**.
 - ✅ **Support ended 1993.** Commodore filed for bankruptcy in April 1994.
 
 The SVR4 product line proper begins with the 1991 releases and ends with the **2.1** retail release of
-February 1992, after which only an unofficial patch series continued. The full timeline is below; the
+February 1992 🟡 (the *month* is community-reported — sources confirm only the year), after which only an unofficial patch series continued. The full timeline is below; the
 [versions reference](../reference/versions.md) carries the per-release detail.
 
 ## Version matrix
@@ -93,7 +95,7 @@ The releases, with confidence tags carried straight from the research brief:
 | SVR3.x precursors | 1988–89 | A2500UX demos (68020 → 68030); proprietary windowing, not yet SVR4 | 🟡 |
 | 1.1 | 1991 | First widely-referenced SVR4 release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | Color X via the A2410; archive.org carries 2.01 and 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** | **Last retail release.** Ships pre-formatted man pages only (nroff sources dropped) | ✅ |
+| **2.1** | **Feb 1992** 🟡 | **Last retail release** ✅ (month community-reported). Ships pre-formatted man pages only (nroff sources dropped) | ✅ |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | Unofficial but considered definitive; inet / NFS / Y2K fixes | ✅ |
 
 **Notes on the matrix:**
@@ -156,7 +158,7 @@ status: draft
 
 # Supported Hardware & Requirements
 
-Amix runs on exactly two officially-supported Amigas — the **A3000UX** and the **A2500UX** — and on close equivalents you assemble from the same parts. The non-negotiable requirements are a **68020 or 68030 with a real MMU**, a **68881/68882 FPU**, **4–16 MB of Fast RAM**, and SCSI disks wired to specific, hard-coded target IDs. There is **no 68040/68060 support** (so no A4000) and **no Zorro III support** — Amix is **Zorro II only**. ✅ (This whole page is uniformly ✅ unless a claim is tagged otherwise.)
+Amix runs on exactly two officially-supported Amigas — the **A3000UX** and the **A2500UX** — and on close equivalents you assemble from the same parts. The non-negotiable requirements are a **68020 or 68030 with a real MMU**, a **68881/68882 FPU**, **4–16 MB of Fast RAM**, and SCSI disks wired to specific target IDs (the tape's ID 4 is hard-coded; the disk's ID 6 is a strong convention — see below). There is **no 68040/68060 support** (so no A4000) and **no Zorro III support** — Amix is **Zorro II only**. ✅ (This whole page is uniformly ✅ unless a claim is tagged otherwise.)
 
 If you are setting up an emulator instead of real iron, jump to [the WinUAE emulation guide](../getting-started/emulation-winuae.md), which encodes all of these limits as concrete config values. For the device-node side (major/minor numbers, `/dev` paths) see [the device list](../reference/device-list.md).
 
@@ -191,7 +193,7 @@ An Amiga 2500 sold pre-loaded with Amix. The "UX" suffix means *shipped with Ami
 | CPU/FPU board | **A2630** (68030 @ 25 MHz + 68882) |
 | SCSI controller | A2090 or A2091 |
 
-The first public Amix demo was an A2500UX at Uniforum, Dallas, January 1988 — running SVR3 at that point. ✅ Early demo hardware used a 68020 that later transitioned to the 68030. 🟡 See [the overview](overview.md) for the full lineage.
+The first public Amix demo was an A2500UX at Uniforum, Dallas, January 1988 — running SVR3 at that point. 🟡 (The 1988 Uniforum Dallas demo is documented; the specific *machine* and *month* are community-reported, not in primary sources.) Early demo hardware used a 68020 that later transitioned to the 68030. 🟡 See [the overview](overview.md) for the full lineage.
 
 ## Minimum requirements and hard limits
 
@@ -213,18 +215,20 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 In emulation this translates directly to "set Fast RAM ≤ 16 MB." See [the WinUAE config table](../getting-started/emulation-winuae.md).
 
-### SCSI target IDs are hard-coded
+### SCSI target IDs
 
-The kernel and the installer assume fixed SCSI target IDs. You do not get to choose them. ✅
+The installer and the installed system assume specific SCSI target IDs. One is genuinely fixed; the other is a strong convention. ✅
 
 | Device | SCSI target ID | Why |
 |---|---|---|
-| **Hard disk** | **ID 6** | Hard-coded in kernel and install scripts |
-| **Tape drive** | **ID 4** | Hard-coded; the installer streams the distribution from here |
+| **Hard disk** | **ID 6** (convention) | The installer *prompts* for the disk target and builds device names from it (`c${SCSI}d0s…`); ID 6 is what every manual and emulator assumes. Not a kernel mandate — see the note below. 🟡 |
+| **Tape drive** | **ID 4** (required) | The installer hard-references the literal `/dev/rmt/4h` and looks nowhere else for the tape ✅ |
 
-Evidence is in the install media itself: `amix_21_root.adf` references the tape as `/dev/rmt/4h` and computes the boot partition device as `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` keyed on the disk target. ✅ (Analysis via `tools/inspect-adf.sh amix_21_root.adf`.)
+Evidence is in the install media itself: `amix_21_root.adf` references the tape as the literal `/dev/rmt/4h` but computes the boot partition device from a `$SCSI` *variable* — `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` — keyed on whatever disk target you pick. ✅ (Analysis via `tools/inspect-adf.sh amix_21_root.adf`.)
 
-This is why emulator configs pin the disk hardfile to **SCSI ID 6** and the tape image to **SCSI ID 4** — get either wrong and the install fails. See [the WinUAE guide](../getting-started/emulation-winuae.md).
+This is why emulator configs pin the disk hardfile to **SCSI ID 6** and the tape image to **SCSI ID 4**. Get the *tape* wrong and the install fails; the disk will install at another ID, but ID 6 is the path of least resistance — see below. See [the WinUAE guide](../getting-started/emulation-winuae.md).
+
+**The disk does *not* have to be at ID 6 — but don't move it after install.** The root-floppy installer prompts for the disk's SCSI target and templates every device path from it (`/dev/dsk/c${SCSI}d0s…`); it only *reserves* ID 4 for the tape. So Amix installs fine on a disk at another target, and the Superkickstart ROM still boots it (it finds the bootable disk through the **RDB partition table**, not a fixed SCSI ID). The reason everyone uses 6 — and the reason it *feels* mandatory — is that whatever target you install at gets **baked into the device names** (`c6d0s…` at ID 6), which are then written into **`/etc/vfstab`** (the SVR4 filesystem mount table — what BSD calls `fstab`) and the boot partition. Change the disk's SCSI ID *after* install and those `c6d0s…` names no longer match the hardware, so the system can't find root or swap until you edit `/etc/vfstab` (and re-point the boot partition) accordingly. 🟡 (operator-reported; mechanism confirmed against the installer's `c${SCSI}d0s…` templating and amigaunix.com, which says "preferably … ID 6" for the disk but "won't look anywhere else than SCSI4" for the tape). The **tape, by contrast, is genuinely fixed at ID 4**.
 
 ### No 68040/68060 — and therefore no A4000
 
@@ -383,9 +387,9 @@ The installer's **default partition layout** is four partitions ✅:
 | **boot** | Holds the bootable kernel image | **2 MB**, fixed by `BOOTSIZE` (see below) ✅ |
 | data | Remaining user space | Keep partitions ≲1 GB 🟡 |
 
-**Warning:** The hardware addressing is rigid — the SCSI **hard disk must be ID 6** and the **tape must be ID 4**; both are hard-coded in the kernel and install scripts (e.g. `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` in the install scripts) ✅. Also keep total Fast RAM ≤ **16 MB**: the kernel hard-codes that ceiling and **>16 MB mis-maps the SCSI drive** ✅. Both are covered in [hardware](hardware.md) and the [quirks checklist](quirks.md).
+**Warning:** The **tape must be at SCSI ID 4** — hard-coded as the literal `/dev/rmt/4h` in the install scripts ✅. The **disk is ID 6 by convention**: the installer prompts for the disk target and templates the boot partition from it (`BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`), so any target works, but the chosen ID is then baked into the device names in `/etc/vfstab` 🟡. Also keep total Fast RAM ≤ **16 MB**: the kernel hard-codes that ceiling and **>16 MB mis-maps the SCSI drive** ✅. All covered in [hardware](hardware.md#scsi-target-ids) and the [quirks checklist](quirks.md).
 
-🔴 The exact **RDB partition type IDs** Amix uses to tag the boot vs swap vs UFS partitions are not documented in any source we hold — treat any specific type-ID claim as unverified.
+The **RDB partition type IDs** Amix stamps on each partition (via `/etc/rdb -F`) are now read directly from the installer script ✅: boot **`0x554e4900`** (`UNI\0`), UNIX root **`0x554e4901`** (`UNI\1`), swap **`0x72657376`** (`resv`). The installer's own comment notes the Kickstart 2.04 boot-priority algorithm *requires* the bootable UNIX partition to be type `0x554e4900`. Full decode on the [root floppy anatomy](../boot-disks/anatomy-root-adf.md#rdb-partition-type-tags) page.
 
 ### The 2 MB boot partition and BOOTLEN
 
@@ -599,7 +603,7 @@ status: draft
 
 # Filesystems & Disk Layout
 
-Amix stores everything on a single SCSI hard disk that **must** sit at **SCSI ID 6** ✅, partitioned with the Amiga **Rigid Disk Block (RDB)** scheme ✅ — the same on-disk partition table AmigaOS uses, which is what lets the Superkickstart ROM find and boot the disk. The installer carves out four partitions by default (root, swap, a 2 MB boot/bootstrap partition, and data) ✅. You choose a filesystem at install time: **s5** (System V; the default but discouraged) or **UFS** (Berkeley Fast File System; recommended, and what the install scripts actually default to) ✅. Disk device names like `/dev/dsk/c0d0s1` are not arbitrary — the **minor number encodes the SCSI address, LUN, and partition**, and the **major number selects the driver** (block major **18** for the SCSI disk, block major **16** for the floppy) ✅.
+Amix stores everything on a single SCSI hard disk — **ID 6 by convention** (the installer prompts for the disk target; ID 6 is simply what every manual and emulator assumes, and it gets baked into the device names once installed — see the note below) 🟡, partitioned with the Amiga **Rigid Disk Block (RDB)** scheme ✅ — the same on-disk partition table AmigaOS uses, which is what lets the Superkickstart ROM find and boot the disk. The installer carves out four partitions by default (root, swap, a 2 MB boot/bootstrap partition, and data) ✅. You choose a filesystem at install time: **s5** (System V; the default but discouraged) or **UFS** (Berkeley Fast File System; recommended, and what the install scripts actually default to) ✅. Disk device names like `/dev/dsk/c0d0s1` are not arbitrary — the **minor number encodes the SCSI address, LUN, and partition**, and the **major number selects the driver** (block major **18** for the SCSI disk, block major **16** for the floppy) ✅.
 
 If you just want the major/minor cheat sheet, jump to [Device name → SCSI address mapping](#device-name-scsi-address-mapping) or the [device list reference](../reference/device-list.md). For how the disk gets booted in the first place, see the [boot process](boot-process.md).
 
@@ -611,9 +615,9 @@ Practical consequences of the RDB choice:
 
 - The drive that holds Amix is addressed as a "UNIX rdb" — the installer probes for "a suitable UNIX rdb" before partitioning ✅.
 - Under emulation you present the disk as an **RDB-type hardfile** (e.g. `hard_drive_0_type = rdb` in [FS-UAE](../getting-started/emulation-fs-uae.md), an RDB hardfile in [WinUAE](../getting-started/emulation-winuae.md)) ✅.
-- 🔴 The **exact RDB partition type IDs** Amix assigns to its boot / swap / UFS partitions are not documented in any source we hold. Treat any specific type-ID claim as unverified.
+- The **exact RDB partition type IDs** are read from the installer script ✅: boot **`0x554e4900`** (`UNI\0`), UNIX root **`0x554e4901`** (`UNI\1`), swap **`0x72657376`** (`resv`), stamped with `/etc/rdb -F`. Kickstart 2.04's boot-priority algorithm *requires* the bootable partition to be `0x554e4900`. See the [root floppy anatomy](../boot-disks/anatomy-root-adf.md#rdb-partition-type-tags).
 
-**Note:** Because the SCSI disk ID is hard-coded to 6 ✅, every install lives at the same address. Likewise the tape used to load the distribution is hard-coded to **SCSI ID 4** ✅. See [Quirks](quirks.md) for the full list of hard-coded addresses.
+**Note:** The disk's SCSI ID is **baked into its device names** at install time — at the conventional ID 6 every path is `c6d0s…` — so although the installer accepts other targets, the ID is then fixed *in `/etc/vfstab`* (the SVR4 mount table) and the boot partition, and can't be changed without editing those 🟡. The tape, by contrast, is genuinely hard-wired to **SCSI ID 4** (`/dev/rmt/4h`) ✅. See [hardware](hardware.md#scsi-target-ids) and [Quirks](quirks.md).
 
 ## Default partition layout
 
@@ -650,7 +654,7 @@ You pick the filesystem type during installation ✅. Two choices ship:
 
 The recommendation is unambiguous in practice: the install scripts on the root floppy set the answer variable `ANS="ufs"` as their effective default ✅, and community consensus is that everyone uses UFS.
 
-Why does **s5** linger as a nominal default at all? 🟡 The most plausible explanation is **lineage**: Amix was a direct port of AT&T's **3B2 (WE32x00) SVR4 codebase** ✅, where the System V filesystem was the native default, and that default carried over even though UFS is the better choice on this hardware. The 3B2-lineage rationale is **community-reported, not primary-verified** 🟡 — see the [quirks page](quirks.md).
+Why does **s5** linger as a nominal default at all? 🟡 The most plausible explanation is **lineage**: Amix was a direct port of AT&T's **3B2 (WE32x00) SVR4 codebase** 🟡 (community-reported — amigaunix.com hedges "it appears that"), where the System V filesystem was the native default, and that default carried over even though UFS is the better choice on this hardware. The 3B2-lineage rationale is **community-reported, not primary-verified** 🟡 — see the [quirks page](quirks.md).
 
 **Recommendation:** choose **UFS** when the installer asks. UFS is also what the miniroot itself uses — the root floppy *is* a UFS filesystem (it carries `lost+found` and `fsck` strings) ✅, so the installer environment runs on UFS before your disk is even partitioned.
 
@@ -676,7 +680,7 @@ The block disk driver is **major 18** — the SCSI hard-disk driver ✅. A name 
 
 The Ditto driver paper's own `ls -l /dev` shows `/dev/dsk/c0d0s1` as **block major 18, minor 1**, where minor 1 means "SCSI addr 0, LUN 0, partition 1" ✅. In other words the **minor number packs the SCSI address, LUN, and partition number together** ✅ — there is no separate field; the driver decodes the minor on each access.
 
-Because the install disk is hard-wired to SCSI ID 6, real install paths look like `/dev/dsk/c6d0s<part>` (the `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` line above resolves to `c6` at install time) ✅.
+Because the install disk is conventionally at SCSI ID 6, real install paths look like `/dev/dsk/c6d0s<part>` (the `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` line above resolves to whatever target you pick — `c6` at the conventional ID 6) ✅.
 
 - `/dev/dsk/...` is the **block** interface (buffered, used for filesystems via `mount`).
 - `/dev/rdsk/...` is the matching **character/raw** interface (unbuffered, used by `fsck`, `dd`, partition tools) — standard SVR4 convention.
@@ -712,9 +716,9 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
 
 - [The boot process](boot-process.md) — how the Superkickstart ROM finds the RDB boot partition and decompresses the kernel.
 - [Device list](../reference/device-list.md) — the full table of `/dev` nodes and major numbers.
-- [Hardware & requirements](hardware.md) — why the SCSI IDs and the 16 MB RAM ceiling are fixed.
+- [Hardware & requirements](hardware.md) — the SCSI target IDs and the 16 MB RAM ceiling.
 - [Install walkthrough](../getting-started/install-walkthrough.md) — partitioning and filesystem choice in context.
-- [Quirks](quirks.md) — the hard-coded SCSI-ID-6 disk / ID-4 tape constraints and other gotchas.
+- [Quirks](quirks.md) — the SCSI-ID constraints (tape hard-coded at ID 4, disk ID 6 by convention) and other gotchas.
 
 ## Sources
 
@@ -860,7 +864,7 @@ If you need IP over serial in practice, the community guidance is effectively "u
 
 Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card needs a driver compiled into `/unix`. The modern, fully worked example is the **Hydra AmigaNet** driver.
 
-- `hydra-amix` is a **STREAMS / DLPI** network driver for the Hydra card (an **NE2000 / DP8390** design), rev 1.2a, Zorro II, AutoConfig ID **1053/1 (`0x041D0001`)** ✅.
+- `hydra-amix` is a **STREAMS / DLPI** network driver for the Hydra card (an **NE2000 / DP8390** design), rev 1.2a, Zorro II, AutoConfig ID **2121/1 (`0x08490001`)** ✅.
 - It registers at **`cdevsw` slot 47** with the `hya` tag; you bring it up with `ifconfig hya0 plumb` and then assign an address as above ✅.
 - Its entry points (`hydraopen`, `hydrawput`, `hydraintr`, `setup_ne2000`) handle DLPI primitives (`DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ`) and the INT2 RX/TX interrupt; `hydraopen` even includes a **3-way card detect** with an **A2065 fallback emulation** path, and it deliberately mirrors the existing A2065 LANCE driver (`aen/`) ✅.
 - It is **cross-compiled** with `m68k-amix-gcc` (GCC 2.7.2.3, SVR4 target) and converted to Amix boot format via `elf2brel`; it is **source-only** because building it needs a licensed Amix tree ✅.
@@ -898,7 +902,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 
 - Research brief §11 "Networking, X11, userland" (STREAMS TCP/IP; `aen0`/A2065; static IP, no DHCP; DNS off by default + `libsockdns.so` swap, `in.named`, `/etc/resolv.conf`; `route add default <gw> 1`; NFS server+client; SLIP buggy; no PPP).
 - Research brief §2 "Hardware & requirements" (A2065 native; Hydra via `hydra-amix`; Ariadne I via Gateway 🟡).
-- Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x041D0001`, A2065 fallback, `m68k-amix-gcc`/`elf2brel`).
+- Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x08490001`, A2065 fallback, `m68k-amix-gcc`/`elf2brel`).
 - Research brief §4 "Kernel architecture" (monolithic SVR4; STREAMS, TLI + BSD sockets; no loadable modules).
 - Research brief §3 / §10 (`amix_21_boot.adf` string analysis — embedded NFS/RPC client string table), via `tools/inspect-adf.sh`.
 - Research brief §12 "Quirks checklist" (DNS off by default; SLIP reboot bug).
@@ -1078,7 +1082,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 
 | # | Quirk | Tag | Deeper coverage |
 |---|---|---|---|
-| 1 | SCSI hard disk **must be ID 6**, tape **must be ID 4** — hard-coded | ✅ | [Filesystems & disks](filesystems-and-disks.md), [WinUAE setup](../getting-started/emulation-winuae.md) |
+| 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
 | 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive | ✅ | [Hardware](hardware.md) |
 | 3 | **No Zorro III** — memory-mapping layer can't address it; unfixable | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md) |
@@ -1095,11 +1099,11 @@ The rest of this page expands each item.
 
 ## Hardware & addressing quirks
 
-### 1. SCSI IDs are hard-coded: disk = 6, tape = 4 ✅
+### 1. SCSI IDs: tape fixed at 4, disk 6 by convention ✅/🟡
 
-The SCSI **hard disk must sit at ID 6** and the **tape drive must sit at ID 4**. These IDs are baked into the kernel *and* into the install scripts — they are not configurable knobs. The root-floppy install scripts reference `/dev/rmt/4h` (tape at ID 4) and compute the boot partition as `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` against the ID-6 disk ✅ ([`amix_21_root.adf`](https://www.amigaunix.com/) analysis via `tools/inspect-adf.sh`).
+The **tape drive must sit at ID 4** — the root-floppy install scripts hard-reference the literal `/dev/rmt/4h` and look nowhere else for it ✅. The **hard disk is ID 6 by convention**, not by kernel mandate: the installer *prompts* for the disk target and computes the boot partition from a `$SCSI` variable (`BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`), reserving only ID 4 for the tape — so Amix will install on a disk at another target 🟡. The catch is that the chosen ID is baked into the device names (`c6d0s…`) the installed system records in `/etc/vfstab` (the SVR4 mount table) and the boot partition, so **you can't change the disk's SCSI ID after install** without editing `/etc/vfstab` to match 🟡 ([`amix_21_root.adf`](https://www.amigaunix.com/) analysis via `tools/inspect-adf.sh`; see [hardware](hardware.md#scsi-target-ids)).
 
-**Consequence for emulation:** attach your hardfile (RDB) at SCSI ID 6 and your tape image at SCSI ID 4, or the installer will not find them. See the mandatory mapping in [the WinUAE setup](../getting-started/emulation-winuae.md) and [the FS-UAE setup](../getting-started/emulation-fs-uae.md). Disk geometry and partitioning are covered in [filesystems & disks](filesystems-and-disks.md).
+**Consequence for emulation:** attach your tape image at SCSI ID 4 (the installer looks only there) and your hardfile (RDB) at SCSI ID 6 — any target works for the disk, but 6 is the convention and saves you re-pointing `/etc/vfstab` later. See the mapping in [the WinUAE setup](../getting-started/emulation-winuae.md) and [the FS-UAE setup](../getting-started/emulation-fs-uae.md). Disk geometry and partitioning are covered in [filesystems & disks](filesystems-and-disks.md).
 
 ### 2. The 16 MB Fast RAM ceiling ✅
 
@@ -1196,7 +1200,7 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - `asokero/va2000-amix` (pre-POSIX `/bin/sh`, no `$(...)`, no `grep -q`; relink hygiene) — <https://github.com/asokero/va2000-amix>.
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (driver/kernel model behind the SCSI-ID and `/bin/sh` notes).
 - amigaunix.com DokuWiki — requirements, networking, x11, patch-disk, y2k-dst, tips-tricks, dual-boot pages (community-reported items): <https://www.amigaunix.com/doku.php/home>.
-- BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the hard-coded SCSI IDs and RAM ceiling).
+- BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the SCSI IDs and RAM ceiling).
 
 
 ================================================================================
@@ -1220,8 +1224,8 @@ Entries are alphabetical. Acronyms sort by their letters (so "RDB" sits under R,
 
 ## 3B2
 
-AT&T's WE32x00-based minicomputer line whose SVR4 codebase Commodore actually ported, for
-licensing-cost reasons, rather than starting from a pre-existing 68k port ✅. The 3B2 lineage is
+AT&T's WE32x00-based minicomputer line whose SVR4 codebase Commodore reportedly ported, for
+licensing-cost reasons, rather than starting from a pre-existing 68k port 🟡 (community-reported — amigaunix.com hedges "it appears that"; corroborated by EAB/datagubbe, no primary citation). The 3B2 lineage is
 the suspected reason Amix defaults to the [s5](#s5) filesystem at install even though everyone uses
 [UFS](#ufs) 🟡. See [How Amix works: overview](overview.md).
 
@@ -1470,14 +1474,14 @@ All of the following are required for a *clean* boot. The four bolded rows are t
 | Fast RAM | **≤ 16 MB** | Kernel hard-codes a 16 MB ceiling; **more mis-maps the SCSI drive** ✅ |
 | Floppy **DF0** | `amix_2.1_boot.adf` | The bootable install floppy ✅ |
 | **SCSI ID 4** | Tape image | Install script reads the distribution from `/dev/rmt/4hn`, hard-coded ✅ |
-| **SCSI ID 6** | RDB hardfile, ~450–900 MB | The disk SCSI ID is hard-coded in the kernel and install scripts ✅ |
+| **SCSI ID 6** | RDB hardfile, ~450–900 MB | The conventional Amix disk target — the installer prompts for it, but use 6 (see [hardware](../how-it-works/hardware.md#scsi-target-ids)) ✅ |
 
 ### Why each gotcha bites
 
 - **MMU ON / JIT OFF** — these two are a pair. Amix is one of the very few classic-Amiga OSes that *requires* the MMU, and JIT and the MMU emulation do not coexist for it. JIT on → panic ✅.
 - **More Compatible OFF** — counter-intuitive, because for AmigaOS games you usually want it ON. For Amix it triggers a boot-time freeze 🟡.
 - **16 MB Fast RAM ceiling** — the kernel hard-codes the limit. Exceeding 16 MB does not just waste RAM; it **mis-maps the SCSI controller**, so the symptom looks like a disk problem, not a memory problem ✅.
-- **SCSI ID 4 = tape, ID 6 = disk** — these are not configurable. The install scripts on the root floppy reference `/dev/rmt/4h` for the tape and compute the boot partition from `c${SCSI}d0s${BOOTPART}` with the disk fixed at ID 6 ✅. Put the disk anywhere else and the installer will not find it.
+- **SCSI ID 4 = tape, ID 6 = disk.** The **tape ID 4 is hard-coded** (the scripts read `/dev/rmt/4h` and look nowhere else); the **disk ID 6 is convention** — the installer prompts for the disk target and computes the boot partition from `c${SCSI}d0s${BOOTPART}`. Use 6: it's the universal default and gets baked into the installed device names (`/etc/vfstab`), so you'd only have to undo it later. ✅/🟡
 
 See the [quirks page](../how-it-works/quirks.md) for the full list of hard-coded assumptions, and the [device list](../reference/device-list.md) for the `/dev/rmt/4h` and `/dev/dsk/c0d0s*` naming.
 
@@ -1584,7 +1588,7 @@ Each FS-UAE line and what it does, with the equivalent in the [WinUAE config tab
 | *(implied by `A3000`)* | MMU enabled, FPU present. Amix **requires** a real MMU and a 68881/68882 FPU ✅. | **MMU = ON**, **FPU = 68882**, **JIT = OFF** (JIT causes kernel panics ✅). Set these explicitly in WinUAE; on the A3000 model FS-UAE wires the MMU/FPU in for you. Verify JIT stays off. |
 | `floppy_drive_0 = amix_2.1_boot.adf` | Inserts the Amix boot floppy in DF0; the Superkickstart ROM boots it and decompresses the install kernel ✅. | **DF0 = `amix_2.1_boot.adf`**. |
 | `hard_drive_0 = a3000ux.hdf` | Attaches your RDB hardfile as the system disk. | Hardfile (RDB), roughly **450–900 MB** 🟡. |
-| `hard_drive_0_controller = scsi6` | Puts that disk on the SCSI bus at **ID 6** ✅ — the only ID the kernel and install scripts accept for the hard disk. | **SCSI ID 6 = hardfile** (hard-coded in the kernel and install scripts ✅). |
+| `hard_drive_0_controller = scsi6` | Puts that disk on the SCSI bus at **ID 6** — the conventional Amix disk target (the installer prompts for it, but everything assumes 6) ✅. | **SCSI ID 6 = hardfile** (convention; see [hardware](../how-it-works/hardware.md#scsi-target-ids)). |
 | `hard_drive_0_type = rdb` | Tells FS-UAE the image is partitioned with the Amiga **Rigid Disk Block** scheme (not a single auto-mounted AmigaDOS partition) ✅. | Hardfile type / geometry = **RDB**. |
 | `motherboard_ram = 16384` | 16384 KB = **16 MB** of Fast RAM — the kernel's hard ceiling ✅. Going over mis-maps the SCSI drive ✅. | **Fast RAM ≤ 16 MB**. |
 
@@ -1604,7 +1608,7 @@ hard_drive_1 = a3000ux-tape.hdf
 hard_drive_1_controller = scsi4
 ```
 
-**Note:** the SCSI-ID rules are absolute and shared with WinUAE — **hard disk = ID 6, tape = ID 4** ✅, both hard-coded in the kernel and the root-floppy install scripts (the scripts reference `/dev/rmt/4h` and build `BPART` from the SCSI ID). Putting either device on a different ID will fail.
+**Note:** these IDs are shared with WinUAE — **disk = ID 6, tape = ID 4** ✅. The **tape ID 4 is hard-coded** (the scripts reference the literal `/dev/rmt/4h` and look nowhere else); the **disk ID 6 is convention** (the installer prompts for it and builds `BPART` from a `$SCSI` variable). Use 6 anyway — the ID is baked into the installed system's device names, so it's the path of least resistance. See [hardware](../how-it-works/hardware.md#scsi-target-ids).
 
 For the full install sequence (boot floppy → root floppy miniroot → stream the distribution from tape → build the kernel and write the boot partition → apply the patch disk), see the [install walkthrough](install-walkthrough.md). A tape-free install (writing a `cpio` image where the installer expects it) is reported on comp.unix.amiga 🟡 and is also covered there.
 
@@ -1671,11 +1675,12 @@ versions)
 
 ## The storage IDs that matter (and how to set them)
 
-Amix hard-codes its storage hardware — these are not configurable knobs:
+Amix has firm expectations about its storage hardware:
 
-- The hard disk **must be at SCSI ID 6** and the tape **at ID 4** ✅ — baked into the kernel and the
-  install scripts (`/dev/rmt/4h` for the tape; `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` for the boot
-  partition). See [root.adf anatomy](../boot-disks/anatomy-root-adf.md) and
+- The **tape must be at SCSI ID 4** — the install scripts hard-reference the literal `/dev/rmt/4h` and
+  look nowhere else. The **disk is ID 6 by convention** ✅/🟡: the installer prompts for the disk
+  target and builds `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` from it, so use 6 (it's baked into the
+  device names once installed). See [root.adf anatomy](../boot-disks/anatomy-root-adf.md) and
   [filesystems & disks](../how-it-works/filesystems-and-disks.md).
 - The standard install **streams the distribution from the tape at ID 4** ✅
   (`dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`).
@@ -1716,7 +1721,7 @@ genuine host on your LAN — static IP, gateway, DNS, internet. Full verified re
 ## Sources
 - First-hand, 2026-06, Amiberry **8.1.6**: an installed Amix 2.1 boots to login from the `scsi6_a3000` hardfile; the GUI *Hard drives/CD* page shows `A3000 SCSI:6 → HDF` and `A3000 SCSI:4 → TAPE` mounted (RW) with an "Add Tape Drive…" button; a full from-tape install completes on Amiberry 8.1.6 (confirmed first-hand, 2026-06). Working config: `scsi_a3000=true`, `hardfile2=…,scsi6_a3000`, `uaehf1=tape0,…,scsi4_a3000`.
 - [BlitterStudio/amiberry #1376](https://github.com/BlitterStudio/amiberry/issues/1376) — "Add A3000 SCSI controller and tape support for amix" (the requested support is present in 8.x).
-- Research brief §2 (SCSI disk ID 6 / tape ID 4 hard-coding) and §9 (`dd … /dev/rmt/4hn | cpio` install flow).
+- Research brief §2 (tape ID 4 hard-coded; disk ID 6 by convention) and §9 (`dd … /dev/rmt/4hn | cpio` install flow).
 - [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) project repository.
 
 
@@ -2026,8 +2031,9 @@ install will not complete.
 - **CPU:** 68020 or 68030 with a **real MMU** (not 68EC020/030) **plus** a 68881/68882 FPU. No soft-float.
 - **Emulator:** MMU **ON**, JIT **OFF** (JIT causes kernel panics), FPU 68882. See the
   [WinUAE config table](emulation-winuae.md).
-- **SCSI hard disk on ID 6** — hard-coded in kernel and scripts. The installer's `BPART` derives from
-  `/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
+- **SCSI hard disk on ID 6** — the conventional disk target (the installer prompts for it; ID 6 is the
+  default everything assumes, and the ID is baked into the device names once installed). The installer's
+  `BPART` derives from `/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
 - **SCSI tape on ID 4** — the distribution device is `/dev/rmt/4h` ✅.
 - **Fast RAM:** 4 MB minimum, **16 MB maximum** — the kernel hard-codes the ceiling, and exceeding it
   mis-maps the SCSI drive ✅. Set the emulator's Fast RAM to ≤ 16 MB.
@@ -2266,7 +2272,7 @@ Stock 2.1 has a **Y2K problem** ✅: a `setclk` `%02d` year-formatting bug plus 
 
 ---
 title: Running Amix on Real Hardware
-summary: A3000UX/A2500UX setup notes — required machines and ROMs, the hard-coded SCSI ID 6 disk / ID 4 tape rule, modern SCSI emulation (ZuluSCSI), tape-free installs, and 10 Mbps Ethernet realities.
+summary: A3000UX/A2500UX setup notes — required machines and ROMs, the SCSI rule (tape hard-coded at ID 4, disk ID 6 by convention), modern SCSI emulation (ZuluSCSI), tape-free installs, and 10 Mbps Ethernet realities.
 status: draft
 ---
 
@@ -2301,7 +2307,7 @@ An A2000 pre-configured for Unix. ✅ The "UX" suffix means it shipped with Amix
 
 - A2000 chassis + **A2630** accelerator (68030 @ 25 MHz + 68882 FPU).
 - **A2090** or **A2091** Zorro II SCSI controller (no on-board SCSI on the A2000).
-- First publicly demoed at Uniforum, Dallas, January 1988 (then running SVR3, not SVR4). ✅
+- First publicly demoed at Uniforum, Dallas, January 1988 (then running SVR3, not SVR4). 🟡 (event + year documented; the *machine* and *month* are community-reported)
 
 > **A2500UX has no Superkickstart.** The dual-boot-by-mouse-button behavior is an A3000UX feature of its boot ROM ✅. On an A2500UX you boot from the SCSI disk (or a boot floppy) the normal way.
 
@@ -2315,7 +2321,7 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 | **FPU** | **68881 or 68882** mandatory | No soft-float; the kernel and userland assume hardware FP |
 | **No 68040/68060** | A4000 **cannot** officially run Amix | Kernel predates the 68040 MMU |
 | **Fast RAM** | **4 MB minimum, 16 MB MAXIMUM** | Kernel hard-codes a 16 MB ceiling; **>16 MB mis-maps the SCSI drive** |
-| **SCSI disk** | **must be SCSI ID 6** | Hard-coded in kernel and install scripts |
+| **SCSI disk** | **ID 6** (convention) | Installer prompts for the disk target; ID 6 is the universal default, baked into device names once installed |
 | **SCSI tape** | **must be SCSI ID 4** | Hard-coded in install scripts (`/dev/rmt/4h`) |
 | **No Zorro III** | **Zorro II cards only** | The memory-mapping layer can't address Zorro III space, and that source wasn't shipped, so it can't be community-fixed |
 
@@ -2323,7 +2329,7 @@ For the full hardware story — supported SCSI/graphics/network/serial cards, th
 
 ### Why SCSI ID 6 and ID 4 matter so much
 
-The install scripts on the root floppy reference the disk as `/dev/dsk/c${SCSI}d0s${BOOTPART}` and stream the distribution from the tape at `/dev/rmt/4h` / `/dev/rmt/4hn`. ✅ The disk SCSI ID and the tape SCSI ID are not auto-detected — they are baked in. **Set your hard disk to SCSI ID 6 and your tape drive (or its substitute) to SCSI ID 4 before you do anything else.** Getting these wrong is the single most common reason a real-hardware install fails to find its disk or its distribution media. ✅
+The install scripts on the root floppy stream the distribution from the tape at the literal `/dev/rmt/4h` / `/dev/rmt/4hn`, and reference the disk through a `$SCSI` variable (`/dev/dsk/c${SCSI}d0s${BOOTPART}`). ✅ The **tape must be at ID 4** — the installer looks nowhere else for the distribution media. The **disk is ID 6 by convention**: the installer prompts for the disk target, so another ID would work, but pick 6 — the chosen ID is baked into the device names (`/etc/vfstab`) once installed, so changing it later means editing that file 🟡. **Set the tape to SCSI ID 4 and the disk to SCSI ID 6 before you start.** Getting the *tape* ID wrong is the single most common reason a real-hardware install can't find its distribution media. ✅/🟡
 
 This same ID rule is what the emulator configs reproduce: WinUAE/FS-UAE put the disk hardfile on SCSI ID 6 and the tape image on SCSI ID 4 (see [the WinUAE guide](emulation-winuae.md)).
 
@@ -2634,7 +2640,7 @@ Reading those rows:
 
 - **`/dev/console`** — character device, **major 0, minor 0**. The system console.
 - **`/dev/fd0`** — **block major 16**, the floppy driver.
-- **`/dev/dsk/c0d0s1`** — **block major 18**, the SCSI hard-disk driver. The minor `1` encodes SCSI address 0, LUN 0, partition 1. (Recall the Amix hard-coded SCSI layout: the boot disk must be **SCSI ID 6**, tape **ID 4** — see [Quirks](../how-it-works/quirks.md).) ✅
+- **`/dev/dsk/c0d0s1`** — **block major 18**, the SCSI hard-disk driver. The minor `1` encodes SCSI address 0, LUN 0, partition 1. (Recall the Amix SCSI layout: the tape is fixed at **ID 4**, and the boot disk is **ID 6** by convention — see [Quirks](../how-it-works/quirks.md).) ✅
 - **`/dev/par`** — **character major 21**, the Amiga parallel port (output-only Centronics). This is the paper's teaching driver; see [Writing a character driver](writing-a-char-driver.md). ✅
 
 For a fuller table of stock and community device numbers, see the [device list](../reference/device-list.md).
@@ -3578,7 +3584,7 @@ The `cdevsw[47]` entry therefore has a real `streamtab` in `d_str` (whose write-
 Hardware facts the driver depends on 🟡:
 
 - **Hydra rev 1.2a**, Zorro II.
-- AutoConfig ID **1053 / 1** = **`0x041D0001`** (manufacturer 1053, product 1).
+- AutoConfig ID **2121 / 1** = **`0x08490001`** (manufacturer 2121, product 1).
 - DP8390 NIC registers at **`base + 0xffe1`** (odd byte lane).
 - MAC-address PROM at **`base + 0xffc0`**.
 - **16 KB** on-board SRAM packet buffer.
@@ -3591,7 +3597,7 @@ The DP8390 is the NE2000 register-compatible Ethernet controller, which is why t
 `hydraopen` is the STREAMS open routine. Beyond the usual STREAMS open bookkeeping it performs **3-way card detection** 🟡, trying each method in turn:
 
 1. **bootinfo** — read the board address/parameters the bootstrap already discovered.
-2. **Zorro probe** — actively probe Zorro II AutoConfig space for ID `0x041D0001`.
+2. **Zorro probe** — actively probe Zorro II AutoConfig space for ID `0x08490001`.
 3. **A2065 fallback emulation** — if no Hydra is found, **fall back to emulating the A2065** LANCE Ethernet card 🟡.
 
 That A2065 fallback is the notable design choice: it lets the same `hya0` plumb path work on a machine that only has the stock [A2065 Ethernet](../how-it-works/networking.md) card, by emulating its behaviour rather than failing. This is possible because hydra deliberately **mirrors the existing A2065 LANCE driver** (`aen/` in the kernel source tree) — see [Mirroring the A2065 LANCE driver](#mirroring-the-a2065-lance-driver-aen) 🟡.
@@ -3687,7 +3693,7 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 
 ## Sources
 
-- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x041D0001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).
 - `isoriano1968/hydra-amix` repo: <https://github.com/isoriano1968/hydra-amix>
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>
@@ -3809,7 +3815,7 @@ Concrete IDs you will see decoded (all ✅ from the repos):
 | Board | mfr (vendor) | product | What the driver does with it |
 |---|---|---|---|
 | **MNT VA2000** | `0x6D6E` | `0x01` | 4 MB Zorro II window; framebuffer driver maps regs `0x000000`–`0x00FFFF`, FB `0x010000`–`0x3FFFFF` (see [VA2000 case study](case-studies/va2000.md)) |
-| **Hydra AmigaNet** | `1053` (`0x041D`) | `1` (`0x0001`) | combined AutoConfig ID `0x041D0001`; STREAMS/DLPI net driver `hya` (see [Hydra case study](case-studies/hydra.md)) |
+| **Hydra AmigaNet** | `2121` (`0x0849`) | `1` (`0x0001`) | combined AutoConfig ID `0x08490001`; STREAMS/DLPI net driver `hya` (see [Hydra case study](case-studies/hydra.md)) |
 
 So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **same** AutoConfig data: the kernel helper hands a driver its assigned base by product ID; the scanner walks the pools itself to list everything. If you are bringing up a new board, run `lszorro` first to confirm the board AutoConfigured and to read its real `(mfr, product)`, then wire those numbers into your driver's `autocon()` call and its [`cdevsw[]`/`bdevsw[]` slot](driver-model.md#the-kernel-level-view-switch-tables-in-kernelc).
 
@@ -3827,7 +3833,7 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (Zorro II only; no Zorro III mapping; supported expansion), §3 (AUTOCONFIG assigns Zorro II addresses at reset; `autocon()` consumed by the kernel), §5 (`autocon(product_id, dev, &board, &dummy)` 🟡 repo-confirmed; driver API surface), §6 (lszorro mechanism, ranges, nibble encoding, ID database; VA2000 and Hydra AutoConfig IDs).
 - `asokero/lszorro-amix` repo — `/dev/mem` `mmap()` scan, `0x80`-byte windows, I/O `0xE90000`–`0xEFFFFF` / mem `0x200000`–`0x9FFFFF`, AutoConfig nibble decode, 461-entry ID DB, register-only fingerprinting: <https://github.com/asokero/lszorro-amix>
 - `asokero/va2000-amix` repo — VA2000 AutoConfig mfr `0x6D6E` product `0x01`, 4 MB Zorro II window, `autocon()` usage: <https://github.com/asokero/va2000-amix>
-- `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x041D0001` (1053/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
+- `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x08490001` (2121/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model and kernel API context (see [bibliography](../reference/bibliography.md)).
 - amigaunix.com — historical and hardware reference: <https://www.amigaunix.com/doku.php/home>
 
@@ -4704,7 +4710,7 @@ The Hydra is a Zorro II Ethernet board in the NE2000 family ✅:
 | Bus | **Zorro II** only (no Zorro III — see [Quirks](../../how-it-works/quirks.md)) | ✅ |
 | Ethernet chip | National Semiconductor **DP8390** (NE2000-class NIC) | ✅ |
 | Media | **10Base2** (BNC / thin coax) and **10BaseT** (RJ-45) | ✅ |
-| AutoConfig ID | **1053 / 1**, i.e. manufacturer `1053` (0x041D), product `1` → combined **0x041D0001** | ✅ |
+| AutoConfig ID | **2121 / 1**, i.e. manufacturer `2121` (0x0849), product `1` → combined **0x08490001** | ✅ |
 
 Because it is a Zorro II AutoConfig board, the Amiga firmware assigns its base address at reset and Amix discovers it through the kernel AutoConfig interface — see [Zorro II AutoConfig for drivers](../zorro-autoconfig.md) for how Amix maps these boards. Zorro III is categorically unsupported by Amix, so a Zorro III network card could not be driven this way ✅.
 
@@ -4755,7 +4761,7 @@ A few things worth highlighting for anyone porting another NE2000-class card:
 `hydraopen` tries three strategies, in order, to find and identify the card before it configures it ✅:
 
 1. **bootinfo** — read board information already collected by the bootstrap / kernel AutoConfig pass.
-2. **Zorro probe** — actively scan Zorro II AutoConfig space for the Hydra's ID **0x041D0001** (see [Zorro AutoConfig](../zorro-autoconfig.md)).
+2. **Zorro probe** — actively scan Zorro II AutoConfig space for the Hydra's ID **0x08490001** (see [Zorro AutoConfig](../zorro-autoconfig.md)).
 3. **A2065 fallback emulation** — if no Hydra is found, fall back to driving an **A2065** (the stock Amiga LANCE Ethernet card) ✅.
 
 The A2065 fallback is the most interesting part: hydra-amix is built **mirroring the existing A2065 LANCE driver**, whose source lives in the `aen/` directory of the Amix kernel tree ✅. Because the new code is structured against that reference driver, it can fall back to emulating the A2065 path when the Hydra hardware is absent — useful for development and for systems that have the stock card instead. (`aen` is the device tag of the A2065 driver; its interface is `aen0`, the default Amix Ethernet device — see [Networking](../../how-it-works/networking.md).)
@@ -5151,14 +5157,14 @@ Key behaviours encoded here:
 
 - **Boot/bootstrap partition = 2 MB.** `BOOTSIZE=2` and `BOOTLEN=`expr $BOOTSIZE '*' 2048`` ⇒ a 2 MB partition is **4096 blocks** of 512 bytes. This is the small partition that holds the relocatable kernel the Superkickstart ROM boots. ✅
 - **Swap scales with disk size.** Disks larger than `BREAKPT=120` MB get `LGSWAP=30` MB of swap; smaller disks get `SMSWAP=18` MB. ✅
-- **SCSI IDs are hard-coded.** The tape is always **id 4** — the disk-selection loop explicitly rejects it: ✅
+- **The tape ID is fixed; the disk ID is prompted.** The tape is always **id 4** — the disk-selection loop explicitly rejects that target as tape-only: ✅
 
   ```sh
   if [ "$ask" = "4" ]; then
       echo "\nSCSI device 4 must be used for the tape drive"
   ```
 
-  The install script uses a `$SCSI` variable for the disk (so the prompt accepts other ids), but the kernel and system convention hard-code the disk at **id 6** ✅ (research brief §2: "hard-coded in kernel and install scripts"). In practice, **use id 6 for the disk**; deviating from this hard-codes a mismatch between the kernel and the installed partition layout. See the [quirks page](../how-it-works/quirks.md) for the full list of hard-coded SCSI assignments.
+  The install script uses a `$SCSI` *variable* for the disk, so the prompt **accepts other target ids** — ID 6 is a strong convention, not a kernel mandate 🟡. In practice, **use id 6 for the disk**: whatever target you pick is baked into the device names (`c${SCSI}d0s…`) written into `/etc/vfstab` (the SVR4 mount table) and the boot partition, so changing it after install means editing those by hand. (The tape, by contrast, is genuinely fixed at id 4 — the scripts hard-reference `/dev/rmt/4h`.) See the [quirks page](../how-it-works/quirks.md) and [hardware](../how-it-works/hardware.md#scsi-target-ids).
 
 - **Device paths are templated on the chosen SCSI id.** After partitioning, the script binds: ✅
 
@@ -5302,13 +5308,13 @@ Both require `binwalk`/`strings`; `inspect-adf.sh` additionally uses `xdftool` (
 - [Anatomy of the patch floppy](anatomy-patch-adf.md) — the self-extracting 2.1c patch disk.
 - [The build pipeline](build-pipeline.md) — how the boot/root/patch disks are produced and how to build add-on disks.
 - [Filesystems and disks](../how-it-works/filesystems-and-disks.md) — RDB scheme, s5 vs UFS, partition layout.
-- [Quirks](../how-it-works/quirks.md) — hard-coded SCSI ids, the 16 MB ceiling, and other landmines.
+- [Quirks](../how-it-works/quirks.md) — the SCSI ids (tape fixed at 4, disk 6 by convention), the 16 MB ceiling, and other landmines.
 
 ## Sources
 
 - `amix_21_root.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) — `binwalk` object table (30 m68k ELF objects, first at 0x6800; `tar` member at 0x17180; `/bin/sh` scripts at 0x35000/0x35400), ELF header bytes at 0x6800 (`ELFCLASS32`, `ELFDATA2MSB`, `ET_EXEC`, `EM_68K`), and `strings` dump of the install script (BOOTSIZE/BREAKPT/LGSWAP/SMSWAP, `BPART`/`UPART`/`SPART`, s5/ufs prompt, `ROOT_FSYS="s5" # Johann ROM`, RDB `-F` type tags `0x554e4900`/`0x554e4901`/`0x72657376`, `amixpkg` invocations, `/dev/rmt/4hn` tape pipelines).
 - `viper.README` and the `viper_kludge` runtime banner extracted from `amix_21_root.adf` (author Frank "Crash" Edwards; incompatibility with A3070/Caliper/Wangtek/Sankyo; RAM-only patch; pointer to `/usr/sys/amiga/alien/contrib`).
-- Master research brief, §9 (installation flow) and §10 (root.adf anatomy); §2 (hard-coded SCSI ids, RAM ceiling); §13 gap #8 (RDB partition type IDs).
+- Master research brief, §9 (installation flow) and §10 (root.adf anatomy); §2 (SCSI ids — tape hard-coded at 4, disk 6 by convention; RAM ceiling); §13 gap #8 (RDB partition type IDs).
 - SHA-256 cross-check: `sources/CHECKSUMS.txt`.
 - Disk image (not redistributed here): [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org Amiga UNIX](https://archive.org/details/commodore-amiga-operating-systems-amix).
 
@@ -6280,7 +6286,7 @@ of releases between 1988 and 1992, and the development line effectively ends at 
 on top of the last retail release. Two version strings that circulate online — **"2.2"** and
 **"2.1c, 1994"** — are *not real* and are flagged 🔴 below so you do not trust them.
 
-The single number that matters in practice today: the last retail release is **2.1 (February 1992)** ✅,
+The single number that matters in practice today: the last retail release is **2.1** ✅ (**February 1992** — the *month* is community-reported 🟡; sources confirm only the year),
 and the de-facto "final" state of the system is **2.1 patch 2a**, whose patched kernel reports itself
 as **2.1c** ✅. Almost everything written for modern emulation and the modern driver repos targets
 exactly this **2.1p2a / kernel 2.1c** combination.
@@ -6292,7 +6298,7 @@ exactly this **2.1p2a / kernel 2.1c** combination.
 | SVR3.x precursors | 1988–89 | AT&T System V **Release 3** | A2500UX demos; CPU stepped 68020 → 68030; proprietary windowing (pre-X) | 🟡 |
 | 1.1 | 1991 | SVR4 | First widely-referenced **SVR4** release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | SVR4 | Color X via the A2410 graphics card; archive.org carries the 2.01 and 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** | SVR4 | **Last retail release.** Ships **pre-formatted man pages only** — the `nroff` man sources were dropped | ✅ (installer exists locally) |
+| **2.1** | **Feb 1992** 🟡 | SVR4 | **Last retail release.** Ships **pre-formatted man pages only** — the `nroff` man sources were dropped | ✅ (installer exists locally; month 🟡) |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | SVR4 patch on 2.1 | Unofficial but treated as definitive; inet/NFS/Y2K fixes. Our `patch.adf` *is* this patch | ✅ (the patch ADF exists locally) |
 | "2.2" | — | — | **Does not exist** in any primary source; almost certainly confusion with 2.1c | 🔴 |
 | "2.1c, 1994" (gunkies) | — | — | The **1994 date is almost certainly wrong** — support ended in 1993 | 🔴 |
@@ -6304,16 +6310,18 @@ exactly this **2.1p2a / kernel 2.1c** combination.
 ## SVR4 vs the SVR3 precursors ✅/🟡
 
 Amix as people mean it today is the **SVR4** line (1.1 and the 2.x releases). The 1988–89 machines —
-demoed as the A2500UX, first shown publicly at **Uniforum, Dallas, January 1988** ✅ — ran AT&T
+demoed as the A2500UX, first shown publicly at **Uniforum, Dallas, January 1988** 🟡 (amigaunix.com
+places the demo at "the 1988 Uniforum Conference in Dallas" but does not pin the *machine* or *month*
+— those are community-reported) — ran AT&T
 **System V Release 3** with a *proprietary* windowing system, not X11. ✅ Treat "SVR3 Amix" and
 "SVR4 Amix" as two different products that share a name. The whole SVR4 codebase was a direct port of
-AT&T's **3B2 (WE32x00) SVR4** source ✅, which is why so much of the system behaves like a generic
+AT&T's **3B2 (WE32x00) SVR4** source 🟡 (community-reported; amigaunix.com hedges "it appears that"), which is why so much of the system behaves like a generic
 3B2-lineage SVR4 box rather than anything Amiga-specific. See
 [what Amix is](../how-it-works/overview.md) for the lineage in full.
 
 ## 2.1 — the last retail release ✅
 
-**Amix 2.1 (February 1992) is the last release Commodore sold.** ✅ It is the version every current
+**Amix 2.1 is the last release Commodore sold** ✅ — February 1992, though the *month* is community-reported 🟡. It is the version every current
 guide assumes, because its install media (boot / root / patch floppies) are the set that survived and
 gets emulated. One concrete, frequently-tripped-over change in 2.1: the distribution carries
 **pre-formatted man pages only** — the `nroff`/`troff` man *sources* were removed to save space ✅, so
@@ -6467,9 +6475,9 @@ In the `c<addr>d<lun>s<part>` naming you will see on disk:
 - `c0d0s1` → controller/SCSI-address 0, drive/LUN 0, slice (partition) 1.
 - The boot/root logic uses this directly: root.adf computes `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
 
-Two **hard-coded SCSI target rules** the kernel and install scripts enforce (these are device-addressing facts, not just conventions) ✅:
+Two SCSI target rules — one genuinely fixed, one a strong convention ✅:
 
-- **Hard disk must be SCSI ID 6.**
+- **Hard disk: ID 6 by convention.** The installer prompts for the disk target and builds device names from it; ID 6 is the universal default, but it is baked into the `c6d0s…` names in `/etc/vfstab` once installed (so don't change it afterward — see [hardware](../how-it-works/hardware.md#scsi-target-ids)). 🟡
 - **Tape must be SCSI ID 4** — the raw tape node is `/dev/rmt/4h` (and `/dev/rmt/4hn` for the no-rewind variant used by the installer's `dd if=/dev/rmt/4hn …`) ✅.
 
 See [Quirks](../how-it-works/quirks.md) for why these IDs are fixed and what breaks if you ignore them.
@@ -6520,7 +6528,7 @@ Everything here is **Zorro II only** — Amix's memory-mapping layer cannot addr
 | **A2091** | A2000-family SCSI controller | ✅ |
 | **GVP Series II** | Needs a **kernel rebuild + an RDB `dummy_handler`** | 🟡 |
 
-The A2090/A2091 interrupt handlers (`a2090intr`, `a2091intr`) appear in the kernel's level-2 autovector table `int2_tbl[]` ✅ — concrete evidence these controllers are wired into the stock kernel. Remember the disk must sit at **SCSI ID 6** (above).
+The A2090/A2091 interrupt handlers (`a2090intr`, `a2091intr`) appear in the kernel's level-2 autovector table `int2_tbl[]` ✅ — concrete evidence these controllers are wired into the stock kernel. Remember the disk sits at **SCSI ID 6** by convention (above).
 
 ### Graphics
 
@@ -6541,7 +6549,7 @@ The A2410 is the *officially* supported color option; the VA2000 path is the mod
 | **Ariadne I** | — | Via Gateway! Vol.2 drivers | 🟡 |
 | **Hydra AmigaNet** | `hya0` (char 47) | Via the modern `hydra-amix` STREAMS/DLPI driver (NE2000/DP8390) | ✅ |
 
-Hydra's AutoConfig identity is **ID 1053/1 (`0x041D0001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. See [Networking](../how-it-works/networking.md).
+Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. See [Networking](../how-it-works/networking.md).
 
 ### Serial
 
@@ -6558,7 +6566,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - [The Amix device-driver model](../drivers/driver-model.md) — what major/minor numbers mean and how `cdevsw[]`/`bdevsw[]` work.
 - [Supported hardware & requirements](../how-it-works/hardware.md) — the CPU/RAM/SCSI/Zorro rules behind the card list.
 - [Building and installing a kernel](../drivers/kernel-build.md) — how a driver claims a major slot in `master.d/kernel.c`.
-- [Quirks](../how-it-works/quirks.md) — the hard-coded SCSI ID 6 / ID 4 rules and the 16 MB / Zorro III limits.
+- [Quirks](../how-it-works/quirks.md) — the SCSI ID rules (tape hard-coded at ID 4, disk ID 6 by convention) and the 16 MB / Zorro III limits.
 - [Versions](versions.md) — which Amix releases these numbers and cards apply to.
 
 ## Sources
@@ -6782,7 +6790,7 @@ See the [quirks page](../how-it-works/quirks.md) for the clock-drift and Y2K det
 
 The distribution is streamed from **QIC tape at SCSI ID 4** ✅ — the tape device is hard-coded.
 The raw, no-rewind tape node is **`/dev/rmt/4hn`** ✅ (the `n` = no rewind on close; `4h` = unit 4,
-high density). The hard disk is fixed at **SCSI ID 6** ✅.
+high density). The hard disk is **ID 6 by convention** — the installer prompts for the disk target; the chosen ID is baked into the device names once installed 🟡.
 
 | Command | What it does | Tag |
 |---|---|---|

@@ -50,7 +50,7 @@ The `cdevsw[47]` entry therefore has a real `streamtab` in `d_str` (whose write-
 Hardware facts the driver depends on 🟡:
 
 - **Hydra rev 1.2a**, Zorro II.
-- AutoConfig ID **1053 / 1** = **`0x041D0001`** (manufacturer 1053, product 1).
+- AutoConfig ID **2121 / 1** = **`0x08490001`** (manufacturer 2121, product 1).
 - DP8390 NIC registers at **`base + 0xffe1`** (odd byte lane).
 - MAC-address PROM at **`base + 0xffc0`**.
 - **16 KB** on-board SRAM packet buffer.
@@ -63,7 +63,7 @@ The DP8390 is the NE2000 register-compatible Ethernet controller, which is why t
 `hydraopen` is the STREAMS open routine. Beyond the usual STREAMS open bookkeeping it performs **3-way card detection** 🟡, trying each method in turn:
 
 1. **bootinfo** — read the board address/parameters the bootstrap already discovered.
-2. **Zorro probe** — actively probe Zorro II AutoConfig space for ID `0x041D0001`.
+2. **Zorro probe** — actively probe Zorro II AutoConfig space for ID `0x08490001`.
 3. **A2065 fallback emulation** — if no Hydra is found, **fall back to emulating the A2065** LANCE Ethernet card 🟡.
 
 That A2065 fallback is the notable design choice: it lets the same `hya0` plumb path work on a machine that only has the stock [A2065 Ethernet](../how-it-works/networking.md) card, by emulating its behaviour rather than failing. This is possible because hydra deliberately **mirrors the existing A2065 LANCE driver** (`aen/` in the kernel source tree) — see [Mirroring the A2065 LANCE driver](#mirroring-the-a2065-lance-driver-aen) 🟡.
@@ -159,7 +159,7 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 
 ## Sources
 
-- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x041D0001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).
 - `isoriano1968/hydra-amix` repo: <https://github.com/isoriano1968/hydra-amix>
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>

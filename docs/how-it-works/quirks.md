@@ -14,7 +14,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 
 | # | Quirk | Tag | Deeper coverage |
 |---|---|---|---|
-| 1 | SCSI hard disk **must be ID 6**, tape **must be ID 4** — hard-coded | ✅ | [Filesystems & disks](filesystems-and-disks.md), [WinUAE setup](../getting-started/emulation-winuae.md) |
+| 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
 | 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive | ✅ | [Hardware](hardware.md) |
 | 3 | **No Zorro III** — memory-mapping layer can't address it; unfixable | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md) |
@@ -31,11 +31,11 @@ The rest of this page expands each item.
 
 ## Hardware & addressing quirks
 
-### 1. SCSI IDs are hard-coded: disk = 6, tape = 4 ✅
+### 1. SCSI IDs: tape fixed at 4, disk 6 by convention ✅/🟡
 
-The SCSI **hard disk must sit at ID 6** and the **tape drive must sit at ID 4**. These IDs are baked into the kernel *and* into the install scripts — they are not configurable knobs. The root-floppy install scripts reference `/dev/rmt/4h` (tape at ID 4) and compute the boot partition as `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` against the ID-6 disk ✅ ([`amix_21_root.adf`](https://www.amigaunix.com/) analysis via `tools/inspect-adf.sh`).
+The **tape drive must sit at ID 4** — the root-floppy install scripts hard-reference the literal `/dev/rmt/4h` and look nowhere else for it ✅. The **hard disk is ID 6 by convention**, not by kernel mandate: the installer *prompts* for the disk target and computes the boot partition from a `$SCSI` variable (`BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`), reserving only ID 4 for the tape — so Amix will install on a disk at another target 🟡. The catch is that the chosen ID is baked into the device names (`c6d0s…`) the installed system records in `/etc/vfstab` (the SVR4 mount table) and the boot partition, so **you can't change the disk's SCSI ID after install** without editing `/etc/vfstab` to match 🟡 ([`amix_21_root.adf`](https://www.amigaunix.com/) analysis via `tools/inspect-adf.sh`; see [hardware](hardware.md#scsi-target-ids)).
 
-**Consequence for emulation:** attach your hardfile (RDB) at SCSI ID 6 and your tape image at SCSI ID 4, or the installer will not find them. See the mandatory mapping in [the WinUAE setup](../getting-started/emulation-winuae.md) and [the FS-UAE setup](../getting-started/emulation-fs-uae.md). Disk geometry and partitioning are covered in [filesystems & disks](filesystems-and-disks.md).
+**Consequence for emulation:** attach your tape image at SCSI ID 4 (the installer looks only there) and your hardfile (RDB) at SCSI ID 6 — any target works for the disk, but 6 is the convention and saves you re-pointing `/etc/vfstab` later. See the mapping in [the WinUAE setup](../getting-started/emulation-winuae.md) and [the FS-UAE setup](../getting-started/emulation-fs-uae.md). Disk geometry and partitioning are covered in [filesystems & disks](filesystems-and-disks.md).
 
 ### 2. The 16 MB Fast RAM ceiling ✅
 
@@ -132,4 +132,4 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - `asokero/va2000-amix` (pre-POSIX `/bin/sh`, no `$(...)`, no `grep -q`; relink hygiene) — <https://github.com/asokero/va2000-amix>.
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (driver/kernel model behind the SCSI-ID and `/bin/sh` notes).
 - amigaunix.com DokuWiki — requirements, networking, x11, patch-disk, y2k-dst, tips-tricks, dual-boot pages (community-reported items): <https://www.amigaunix.com/doku.php/home>.
-- BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the hard-coded SCSI IDs and RAM ceiling).
+- BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the SCSI IDs and RAM ceiling).

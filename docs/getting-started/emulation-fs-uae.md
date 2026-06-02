@@ -35,7 +35,7 @@ Each FS-UAE line and what it does, with the equivalent in the [WinUAE config tab
 | *(implied by `A3000`)* | MMU enabled, FPU present. Amix **requires** a real MMU and a 68881/68882 FPU ✅. | **MMU = ON**, **FPU = 68882**, **JIT = OFF** (JIT causes kernel panics ✅). Set these explicitly in WinUAE; on the A3000 model FS-UAE wires the MMU/FPU in for you. Verify JIT stays off. |
 | `floppy_drive_0 = amix_2.1_boot.adf` | Inserts the Amix boot floppy in DF0; the Superkickstart ROM boots it and decompresses the install kernel ✅. | **DF0 = `amix_2.1_boot.adf`**. |
 | `hard_drive_0 = a3000ux.hdf` | Attaches your RDB hardfile as the system disk. | Hardfile (RDB), roughly **450–900 MB** 🟡. |
-| `hard_drive_0_controller = scsi6` | Puts that disk on the SCSI bus at **ID 6** ✅ — the only ID the kernel and install scripts accept for the hard disk. | **SCSI ID 6 = hardfile** (hard-coded in the kernel and install scripts ✅). |
+| `hard_drive_0_controller = scsi6` | Puts that disk on the SCSI bus at **ID 6** — the conventional Amix disk target (the installer prompts for it, but everything assumes 6) ✅. | **SCSI ID 6 = hardfile** (convention; see [hardware](../how-it-works/hardware.md#scsi-target-ids)). |
 | `hard_drive_0_type = rdb` | Tells FS-UAE the image is partitioned with the Amiga **Rigid Disk Block** scheme (not a single auto-mounted AmigaDOS partition) ✅. | Hardfile type / geometry = **RDB**. |
 | `motherboard_ram = 16384` | 16384 KB = **16 MB** of Fast RAM — the kernel's hard ceiling ✅. Going over mis-maps the SCSI drive ✅. | **Fast RAM ≤ 16 MB**. |
 
@@ -55,7 +55,7 @@ hard_drive_1 = a3000ux-tape.hdf
 hard_drive_1_controller = scsi4
 ```
 
-**Note:** the SCSI-ID rules are absolute and shared with WinUAE — **hard disk = ID 6, tape = ID 4** ✅, both hard-coded in the kernel and the root-floppy install scripts (the scripts reference `/dev/rmt/4h` and build `BPART` from the SCSI ID). Putting either device on a different ID will fail.
+**Note:** these IDs are shared with WinUAE — **disk = ID 6, tape = ID 4** ✅. The **tape ID 4 is hard-coded** (the scripts reference the literal `/dev/rmt/4h` and look nowhere else); the **disk ID 6 is convention** (the installer prompts for it and builds `BPART` from a `$SCSI` variable). Use 6 anyway — the ID is baked into the installed system's device names, so it's the path of least resistance. See [hardware](../how-it-works/hardware.md#scsi-target-ids).
 
 For the full install sequence (boot floppy → root floppy miniroot → stream the distribution from tape → build the kernel and write the boot partition → apply the patch disk), see the [install walkthrough](install-walkthrough.md). A tape-free install (writing a `cpio` image where the installer expects it) is reported on comp.unix.amiga 🟡 and is also covered there.
 

@@ -32,11 +32,12 @@ versions)
 
 ## The storage IDs that matter (and how to set them)
 
-Amix hard-codes its storage hardware — these are not configurable knobs:
+Amix has firm expectations about its storage hardware:
 
-- The hard disk **must be at SCSI ID 6** and the tape **at ID 4** ✅ — baked into the kernel and the
-  install scripts (`/dev/rmt/4h` for the tape; `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` for the boot
-  partition). See [root.adf anatomy](../boot-disks/anatomy-root-adf.md) and
+- The **tape must be at SCSI ID 4** — the install scripts hard-reference the literal `/dev/rmt/4h` and
+  look nowhere else. The **disk is ID 6 by convention** ✅/🟡: the installer prompts for the disk
+  target and builds `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` from it, so use 6 (it's baked into the
+  device names once installed). See [root.adf anatomy](../boot-disks/anatomy-root-adf.md) and
   [filesystems & disks](../how-it-works/filesystems-and-disks.md).
 - The standard install **streams the distribution from the tape at ID 4** ✅
   (`dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`).
@@ -77,5 +78,5 @@ genuine host on your LAN — static IP, gateway, DNS, internet. Full verified re
 ## Sources
 - First-hand, 2026-06, Amiberry **8.1.6**: an installed Amix 2.1 boots to login from the `scsi6_a3000` hardfile; the GUI *Hard drives/CD* page shows `A3000 SCSI:6 → HDF` and `A3000 SCSI:4 → TAPE` mounted (RW) with an "Add Tape Drive…" button; a full from-tape install completes on Amiberry 8.1.6 (confirmed first-hand, 2026-06). Working config: `scsi_a3000=true`, `hardfile2=…,scsi6_a3000`, `uaehf1=tape0,…,scsi4_a3000`.
 - [BlitterStudio/amiberry #1376](https://github.com/BlitterStudio/amiberry/issues/1376) — "Add A3000 SCSI controller and tape support for amix" (the requested support is present in 8.x).
-- Research brief §2 (SCSI disk ID 6 / tape ID 4 hard-coding) and §9 (`dd … /dev/rmt/4hn | cpio` install flow).
+- Research brief §2 (tape ID 4 hard-coded; disk ID 6 by convention) and §9 (`dd … /dev/rmt/4hn | cpio` install flow).
 - [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) project repository.

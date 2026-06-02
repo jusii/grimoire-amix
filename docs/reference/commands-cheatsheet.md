@@ -206,7 +206,7 @@ See the [quirks page](../how-it-works/quirks.md) for the clock-drift and Y2K det
 
 The distribution is streamed from **QIC tape at SCSI ID 4** ✅ — the tape device is hard-coded.
 The raw, no-rewind tape node is **`/dev/rmt/4hn`** ✅ (the `n` = no rewind on close; `4h` = unit 4,
-high density). The hard disk is fixed at **SCSI ID 6** ✅.
+high density). The hard disk is **ID 6 by convention** — the installer prompts for the disk target; the chosen ID is baked into the device names once installed 🟡.
 
 | Command | What it does | Tag |
 |---|---|---|

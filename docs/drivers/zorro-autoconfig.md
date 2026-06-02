@@ -110,7 +110,7 @@ Concrete IDs you will see decoded (all ✅ from the repos):
 | Board | mfr (vendor) | product | What the driver does with it |
 |---|---|---|---|
 | **MNT VA2000** | `0x6D6E` | `0x01` | 4 MB Zorro II window; framebuffer driver maps regs `0x000000`–`0x00FFFF`, FB `0x010000`–`0x3FFFFF` (see [VA2000 case study](case-studies/va2000.md)) |
-| **Hydra AmigaNet** | `1053` (`0x041D`) | `1` (`0x0001`) | combined AutoConfig ID `0x041D0001`; STREAMS/DLPI net driver `hya` (see [Hydra case study](case-studies/hydra.md)) |
+| **Hydra AmigaNet** | `2121` (`0x0849`) | `1` (`0x0001`) | combined AutoConfig ID `0x08490001`; STREAMS/DLPI net driver `hya` (see [Hydra case study](case-studies/hydra.md)) |
 
 So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **same** AutoConfig data: the kernel helper hands a driver its assigned base by product ID; the scanner walks the pools itself to list everything. If you are bringing up a new board, run `lszorro` first to confirm the board AutoConfigured and to read its real `(mfr, product)`, then wire those numbers into your driver's `autocon()` call and its [`cdevsw[]`/`bdevsw[]` slot](driver-model.md#the-kernel-level-view-switch-tables-in-kernelc).
 
@@ -128,6 +128,6 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (Zorro II only; no Zorro III mapping; supported expansion), §3 (AUTOCONFIG assigns Zorro II addresses at reset; `autocon()` consumed by the kernel), §5 (`autocon(product_id, dev, &board, &dummy)` 🟡 repo-confirmed; driver API surface), §6 (lszorro mechanism, ranges, nibble encoding, ID database; VA2000 and Hydra AutoConfig IDs).
 - `asokero/lszorro-amix` repo — `/dev/mem` `mmap()` scan, `0x80`-byte windows, I/O `0xE90000`–`0xEFFFFF` / mem `0x200000`–`0x9FFFFF`, AutoConfig nibble decode, 461-entry ID DB, register-only fingerprinting: <https://github.com/asokero/lszorro-amix>
 - `asokero/va2000-amix` repo — VA2000 AutoConfig mfr `0x6D6E` product `0x01`, 4 MB Zorro II window, `autocon()` usage: <https://github.com/asokero/va2000-amix>
-- `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x041D0001` (1053/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
+- `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x08490001` (2121/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model and kernel API context (see [bibliography](../reference/bibliography.md)).
 - amigaunix.com — historical and hardware reference: <https://www.amigaunix.com/doku.php/home>

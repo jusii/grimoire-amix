@@ -6,7 +6,7 @@ status: draft
 
 # Supported Hardware & Requirements
 
-Amix runs on exactly two officially-supported Amigas — the **A3000UX** and the **A2500UX** — and on close equivalents you assemble from the same parts. The non-negotiable requirements are a **68020 or 68030 with a real MMU**, a **68881/68882 FPU**, **4–16 MB of Fast RAM**, and SCSI disks wired to specific, hard-coded target IDs. There is **no 68040/68060 support** (so no A4000) and **no Zorro III support** — Amix is **Zorro II only**. ✅ (This whole page is uniformly ✅ unless a claim is tagged otherwise.)
+Amix runs on exactly two officially-supported Amigas — the **A3000UX** and the **A2500UX** — and on close equivalents you assemble from the same parts. The non-negotiable requirements are a **68020 or 68030 with a real MMU**, a **68881/68882 FPU**, **4–16 MB of Fast RAM**, and SCSI disks wired to specific target IDs (the tape's ID 4 is hard-coded; the disk's ID 6 is a strong convention — see below). There is **no 68040/68060 support** (so no A4000) and **no Zorro III support** — Amix is **Zorro II only**. ✅ (This whole page is uniformly ✅ unless a claim is tagged otherwise.)
 
 If you are setting up an emulator instead of real iron, jump to [the WinUAE emulation guide](../getting-started/emulation-winuae.md), which encodes all of these limits as concrete config values. For the device-node side (major/minor numbers, `/dev` paths) see [the device list](../reference/device-list.md).
 
@@ -41,7 +41,7 @@ An Amiga 2500 sold pre-loaded with Amix. The "UX" suffix means *shipped with Ami
 | CPU/FPU board | **A2630** (68030 @ 25 MHz + 68882) |
 | SCSI controller | A2090 or A2091 |
 
-The first public Amix demo was an A2500UX at Uniforum, Dallas, January 1988 — running SVR3 at that point. ✅ Early demo hardware used a 68020 that later transitioned to the 68030. 🟡 See [the overview](overview.md) for the full lineage.
+The first public Amix demo was an A2500UX at Uniforum, Dallas, January 1988 — running SVR3 at that point. 🟡 (The 1988 Uniforum Dallas demo is documented; the specific *machine* and *month* are community-reported, not in primary sources.) Early demo hardware used a 68020 that later transitioned to the 68030. 🟡 See [the overview](overview.md) for the full lineage.
 
 ## Minimum requirements and hard limits
 
@@ -63,18 +63,20 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 In emulation this translates directly to "set Fast RAM ≤ 16 MB." See [the WinUAE config table](../getting-started/emulation-winuae.md).
 
-### SCSI target IDs are hard-coded
+### SCSI target IDs
 
-The kernel and the installer assume fixed SCSI target IDs. You do not get to choose them. ✅
+The installer and the installed system assume specific SCSI target IDs. One is genuinely fixed; the other is a strong convention. ✅
 
 | Device | SCSI target ID | Why |
 |---|---|---|
-| **Hard disk** | **ID 6** | Hard-coded in kernel and install scripts |
-| **Tape drive** | **ID 4** | Hard-coded; the installer streams the distribution from here |
+| **Hard disk** | **ID 6** (convention) | The installer *prompts* for the disk target and builds device names from it (`c${SCSI}d0s…`); ID 6 is what every manual and emulator assumes. Not a kernel mandate — see the note below. 🟡 |
+| **Tape drive** | **ID 4** (required) | The installer hard-references the literal `/dev/rmt/4h` and looks nowhere else for the tape ✅ |
 
-Evidence is in the install media itself: `amix_21_root.adf` references the tape as `/dev/rmt/4h` and computes the boot partition device as `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` keyed on the disk target. ✅ (Analysis via `tools/inspect-adf.sh amix_21_root.adf`.)
+Evidence is in the install media itself: `amix_21_root.adf` references the tape as the literal `/dev/rmt/4h` but computes the boot partition device from a `$SCSI` *variable* — `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` — keyed on whatever disk target you pick. ✅ (Analysis via `tools/inspect-adf.sh amix_21_root.adf`.)
 
-This is why emulator configs pin the disk hardfile to **SCSI ID 6** and the tape image to **SCSI ID 4** — get either wrong and the install fails. See [the WinUAE guide](../getting-started/emulation-winuae.md).
+This is why emulator configs pin the disk hardfile to **SCSI ID 6** and the tape image to **SCSI ID 4**. Get the *tape* wrong and the install fails; the disk will install at another ID, but ID 6 is the path of least resistance — see below. See [the WinUAE guide](../getting-started/emulation-winuae.md).
+
+**The disk does *not* have to be at ID 6 — but don't move it after install.** The root-floppy installer prompts for the disk's SCSI target and templates every device path from it (`/dev/dsk/c${SCSI}d0s…`); it only *reserves* ID 4 for the tape. So Amix installs fine on a disk at another target, and the Superkickstart ROM still boots it (it finds the bootable disk through the **RDB partition table**, not a fixed SCSI ID). The reason everyone uses 6 — and the reason it *feels* mandatory — is that whatever target you install at gets **baked into the device names** (`c6d0s…` at ID 6), which are then written into **`/etc/vfstab`** (the SVR4 filesystem mount table — what BSD calls `fstab`) and the boot partition. Change the disk's SCSI ID *after* install and those `c6d0s…` names no longer match the hardware, so the system can't find root or swap until you edit `/etc/vfstab` (and re-point the boot partition) accordingly. 🟡 (operator-reported; mechanism confirmed against the installer's `c${SCSI}d0s…` templating and amigaunix.com, which says "preferably … ID 6" for the disk but "won't look anywhere else than SCSI4" for the tape). The **tape, by contrast, is genuinely fixed at ID 4**.
 
 ### No 68040/68060 — and therefore no A4000
 

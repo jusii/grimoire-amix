@@ -47,8 +47,9 @@ install will not complete.
 - **CPU:** 68020 or 68030 with a **real MMU** (not 68EC020/030) **plus** a 68881/68882 FPU. No soft-float.
 - **Emulator:** MMU **ON**, JIT **OFF** (JIT causes kernel panics), FPU 68882. See the
   [WinUAE config table](emulation-winuae.md).
-- **SCSI hard disk on ID 6** — hard-coded in kernel and scripts. The installer's `BPART` derives from
-  `/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
+- **SCSI hard disk on ID 6** — the conventional disk target (the installer prompts for it; ID 6 is the
+  default everything assumes, and the ID is baked into the device names once installed). The installer's
+  `BPART` derives from `/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
 - **SCSI tape on ID 4** — the distribution device is `/dev/rmt/4h` ✅.
 - **Fast RAM:** 4 MB minimum, **16 MB maximum** — the kernel hard-codes the ceiling, and exceeding it
   mis-maps the SCSI drive ✅. Set the emulator's Fast RAM to ≤ 16 MB.

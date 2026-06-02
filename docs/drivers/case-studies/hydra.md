@@ -22,7 +22,7 @@ The Hydra is a Zorro II Ethernet board in the NE2000 family ✅:
 | Bus | **Zorro II** only (no Zorro III — see [Quirks](../../how-it-works/quirks.md)) | ✅ |
 | Ethernet chip | National Semiconductor **DP8390** (NE2000-class NIC) | ✅ |
 | Media | **10Base2** (BNC / thin coax) and **10BaseT** (RJ-45) | ✅ |
-| AutoConfig ID | **1053 / 1**, i.e. manufacturer `1053` (0x041D), product `1` → combined **0x041D0001** | ✅ |
+| AutoConfig ID | **2121 / 1**, i.e. manufacturer `2121` (0x0849), product `1` → combined **0x08490001** | ✅ |
 
 Because it is a Zorro II AutoConfig board, the Amiga firmware assigns its base address at reset and Amix discovers it through the kernel AutoConfig interface — see [Zorro II AutoConfig for drivers](../zorro-autoconfig.md) for how Amix maps these boards. Zorro III is categorically unsupported by Amix, so a Zorro III network card could not be driven this way ✅.
 
@@ -73,7 +73,7 @@ A few things worth highlighting for anyone porting another NE2000-class card:
 `hydraopen` tries three strategies, in order, to find and identify the card before it configures it ✅:
 
 1. **bootinfo** — read board information already collected by the bootstrap / kernel AutoConfig pass.
-2. **Zorro probe** — actively scan Zorro II AutoConfig space for the Hydra's ID **0x041D0001** (see [Zorro AutoConfig](../zorro-autoconfig.md)).
+2. **Zorro probe** — actively scan Zorro II AutoConfig space for the Hydra's ID **0x08490001** (see [Zorro AutoConfig](../zorro-autoconfig.md)).
 3. **A2065 fallback emulation** — if no Hydra is found, fall back to driving an **A2065** (the stock Amiga LANCE Ethernet card) ✅.
 
 The A2065 fallback is the most interesting part: hydra-amix is built **mirroring the existing A2065 LANCE driver**, whose source lives in the `aen/` directory of the Amix kernel tree ✅. Because the new code is structured against that reference driver, it can fall back to emulating the A2065 path when the Hydra hardware is absent — useful for development and for systems that have the stock card instead. (`aen` is the device tag of the A2065 driver; its interface is `aen0`, the default Amix Ethernet device — see [Networking](../../how-it-works/networking.md).)

@@ -11,7 +11,7 @@ of releases between 1988 and 1992, and the development line effectively ends at 
 on top of the last retail release. Two version strings that circulate online — **"2.2"** and
 **"2.1c, 1994"** — are *not real* and are flagged 🔴 below so you do not trust them.
 
-The single number that matters in practice today: the last retail release is **2.1 (February 1992)** ✅,
+The single number that matters in practice today: the last retail release is **2.1** ✅ (**February 1992** — the *month* is community-reported 🟡; sources confirm only the year),
 and the de-facto "final" state of the system is **2.1 patch 2a**, whose patched kernel reports itself
 as **2.1c** ✅. Almost everything written for modern emulation and the modern driver repos targets
 exactly this **2.1p2a / kernel 2.1c** combination.
@@ -23,7 +23,7 @@ exactly this **2.1p2a / kernel 2.1c** combination.
 | SVR3.x precursors | 1988–89 | AT&T System V **Release 3** | A2500UX demos; CPU stepped 68020 → 68030; proprietary windowing (pre-X) | 🟡 |
 | 1.1 | 1991 | SVR4 | First widely-referenced **SVR4** release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | SVR4 | Color X via the A2410 graphics card; archive.org carries the 2.01 and 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** | SVR4 | **Last retail release.** Ships **pre-formatted man pages only** — the `nroff` man sources were dropped | ✅ (installer exists locally) |
+| **2.1** | **Feb 1992** 🟡 | SVR4 | **Last retail release.** Ships **pre-formatted man pages only** — the `nroff` man sources were dropped | ✅ (installer exists locally; month 🟡) |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | SVR4 patch on 2.1 | Unofficial but treated as definitive; inet/NFS/Y2K fixes. Our `patch.adf` *is* this patch | ✅ (the patch ADF exists locally) |
 | "2.2" | — | — | **Does not exist** in any primary source; almost certainly confusion with 2.1c | 🔴 |
 | "2.1c, 1994" (gunkies) | — | — | The **1994 date is almost certainly wrong** — support ended in 1993 | 🔴 |
@@ -35,16 +35,18 @@ exactly this **2.1p2a / kernel 2.1c** combination.
 ## SVR4 vs the SVR3 precursors ✅/🟡
 
 Amix as people mean it today is the **SVR4** line (1.1 and the 2.x releases). The 1988–89 machines —
-demoed as the A2500UX, first shown publicly at **Uniforum, Dallas, January 1988** ✅ — ran AT&T
+demoed as the A2500UX, first shown publicly at **Uniforum, Dallas, January 1988** 🟡 (amigaunix.com
+places the demo at "the 1988 Uniforum Conference in Dallas" but does not pin the *machine* or *month*
+— those are community-reported) — ran AT&T
 **System V Release 3** with a *proprietary* windowing system, not X11. ✅ Treat "SVR3 Amix" and
 "SVR4 Amix" as two different products that share a name. The whole SVR4 codebase was a direct port of
-AT&T's **3B2 (WE32x00) SVR4** source ✅, which is why so much of the system behaves like a generic
+AT&T's **3B2 (WE32x00) SVR4** source 🟡 (community-reported; amigaunix.com hedges "it appears that"), which is why so much of the system behaves like a generic
 3B2-lineage SVR4 box rather than anything Amiga-specific. See
 [what Amix is](../how-it-works/overview.md) for the lineage in full.
 
 ## 2.1 — the last retail release ✅
 
-**Amix 2.1 (February 1992) is the last release Commodore sold.** ✅ It is the version every current
+**Amix 2.1 is the last release Commodore sold** ✅ — February 1992, though the *month* is community-reported 🟡. It is the version every current
 guide assumes, because its install media (boot / root / patch floppies) are the set that survived and
 gets emulated. One concrete, frequently-tripped-over change in 2.1: the distribution carries
 **pre-formatted man pages only** — the `nroff`/`troff` man *sources* were removed to save space ✅, so

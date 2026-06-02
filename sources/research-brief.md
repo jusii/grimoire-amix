@@ -31,8 +31,8 @@ SHA-256 of all four: see `sources/CHECKSUMS.txt`. Inspect any ADF with `tools/in
 ## 1. Identity, lineage, history
 
 - ✅ Amix = Commodore's port of **AT&T UNIX System V Release 4 (SVR4)** to the Motorola **68030** Amiga. Kernel platform string: `m68k-cbm-sysv4`. Monolithic kernel; **no AmigaOS compatibility layer**; does **not** use the Amiga custom chips (Agnus/Denise/Paula) — treats the machine as a generic 68030 Unix workstation.
-- ✅ Ported from AT&T's **3B2 (WE32x00) SVR4 codebase** (a licensing-cost choice), not a pre-existing 68k port. Port led by **Michael Ditto**, "Unix Systems Software Architect" at Commodore 1988–1991. Contemporaries call it "quick and dirty." (EAB thread on 3B2 codebase; datagubbe.se; Ditto paper opening line: "a direct port of the AT&T Unix System V operating system … essentially identical to … System V Release 4.")
-- ✅ First public demo: Uniforum, Dallas, **Jan 1988** (A2500UX, then SVR3). Commercial window ~**1991–1992**; support ended 1993; Commodore bankrupt Apr 1994.
+- Ported from AT&T's **3B2 (WE32x00) SVR4 codebase** (a licensing-cost choice), not a pre-existing 68k port 🟡 (community-reported — amigaunix.com hedges "it appears that"; corroborated by EAB/datagubbe, no primary citation; one OSnews commenter instead calls it a "SystemV 68K codebase" port). Port led by **Michael Ditto**, "Unix Systems Software Architect" at Commodore 1988–1991 ✅. Contemporaries call it "quick and dirty." (EAB thread on 3B2 codebase; datagubbe.se; Ditto paper opening line: "a direct port of the AT&T Unix System V operating system … essentially identical to … System V Release 4.")
+- First public demo: Uniforum, Dallas, **1988** 🟡 (amigaunix.com: "1988 Uniforum Conference in Dallas"; the A2500UX *machine* and *January* month are community-reported, not primary). Commercial window ~**1991–1992**; support ended 1993; Commodore bankrupt Apr 1994 ✅.
 - 🟡 Sun Microsystems twice explored OEM-selling the A3000UX as an entry workstation; deals fell through.
 
 ### Version matrix
@@ -41,7 +41,7 @@ SHA-256 of all four: see `sources/CHECKSUMS.txt`. Inspect any ADF with `tools/in
 | SVR3.x precursors | 1988–89 | A2500UX demos (68020→68030), proprietary windowing | 🟡 |
 | 1.1 | 1991 | First widely-referenced SVR4 release; mono X "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | Color X via A2410; archive.org has 2.01 & 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** | **Last retail release.** Pre-formatted man pages only (nroff sources dropped) | ✅ (installer exists) |
+| **2.1** | **Feb 1992** 🟡 | **Last retail release.** Pre-formatted man pages only (nroff sources dropped) | ✅ (installer exists; month 🟡) |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | Unofficial but considered definitive; inet/NFS/Y2K fixes. **Our patch.adf is this.** | ✅ |
 | "2.2" | — | **Does not exist** in any primary source; likely confusion with 2.1c | 🔴 |
 | "2.1c, 1994" (gunkies) | — | 1994 date almost certainly wrong (support ended 1993) | 🔴 |
@@ -59,7 +59,7 @@ SHA-256 of all four: see `sources/CHECKSUMS.txt`. Inspect any ADF with `tools/in
 ### Minimums / hard limits
 - ✅ **68020 or 68030 with a real MMU** + **68881/68882 FPU** (both mandatory; no soft-float; 68000 and MMU-less 68EC020/030 cannot run Amix).
 - ✅ **4 MB Fast RAM min; 16 MB Fast RAM MAX** — kernel hard-codes the ceiling; **>16 MB mis-maps the SCSI drive**.
-- ✅ SCSI **hard disk must be ID 6**; **tape must be ID 4** — hard-coded in kernel and install scripts. (Confirmed in root.adf: `/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`.)
+- **Tape must be ID 4** ✅ — hard-coded literal `/dev/rmt/4h` in the install scripts. **Disk is ID 6 by convention** 🟡 — the installer *prompts* for the disk target and templates `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` from `$SCSI` (only target 4 is reserved, for the tape), so Amix installs on other targets; but the chosen ID is baked into device names in `/etc/vfstab` + the boot partition, so it can't be changed post-install without editing those. (Verified against the installer's disk-selection loop + amigaunix.com — "preferably … ID 6" for the disk but "won't look anywhere else than SCSI4" for the tape; corrects an earlier "disk hard-coded in kernel" overclaim.)
 - ✅ **No 68040/68060** (kernel predates 68040 MMU) → **A4000 cannot officially run Amix**.
 - ✅ **No Zorro III** — memory-mapping layer can't address Zorro III space; that source was not shipped, so it can't be community-fixed. **Zorro II only.**
 
@@ -174,7 +174,7 @@ All target **Amix 2.1p2a**, Amiga 3000 / 68030, Zorro II. All are recent "AI-ass
 - Native `cc lszorro.c -o lszorro`. Opens **`/dev/mem`** (root), `mmap()` 128-byte (`0x80`) windows; scans I/O slots `0xE90000–0xEFFFFF` and memory `0x200000–0x9FFFFF`. Decodes AutoConfig nibble format (two nibbles per logical byte, upper nibble D15–D12, most fields ones-complement). 461-entry ID DB from the Linux kernel Zorro list. Detects register-only boards (e.g. VA2000) by fingerprint. Can't see RAM/accelerator boards (no AutoConfig ROM).
 
 ### `isoriano1968/hydra-amix` — STREAMS/DLPI network driver for Hydra AmigaNet (NE2000/DP8390)
-- Hydra rev 1.2a, Zorro II, AutoConfig **ID 1053/1 (0x041D0001)**; DP8390 regs at base+0xffe1 (odd byte lane), MAC PROM at base+0xffc0, 16 KB SRAM; 10Base2 + 10BaseT.
+- Hydra rev 1.2a, Zorro II, AutoConfig **ID 2121/1 (0x08490001)** (manuf 0x0849 = Hydra Systems, product 1; verified against driver source `ne2000.h` `NE8390_BOARD_ID 0x08490001` and amiga.resource.cx — corrects an earlier 1053/0x041D transcription error); DP8390 regs at base+0xffe1 (odd byte lane), MAC PROM at base+0xffc0, 16 KB SRAM; 10Base2 + 10BaseT.
 - Registers at **`cdevsw` slot 47** (`hya`); `ifconfig hya0 plumb` brings it up. Entry points: `hydraopen` (init + 3-way card detect: bootinfo / Zorro probe / **A2065 fallback emulation**), `hydrawput` (DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`), `hydraintr` (INT2 RX/TX), `setup_ne2000`. Lazy init (no `init_tbl` entry — configures at `ifconfig` time).
 - **Cross-compiled** with `m68k-amix-gcc` (GCC 2.7.2.3, SVR4 target): `make CC=m68k-amix-gcc CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"` → ELF → converted to Amix boot format via **`elf2brel`** in `stand/`; `make oldboot KERNEL=…`. Mirrors the existing A2065 LANCE driver (`aen/`). Source-only (needs licensed Amix).
 
@@ -208,7 +208,7 @@ All target **Amix 2.1p2a**, Amiga 3000 / 68030, Zorro II. All are recent "AI-ass
 | Fast RAM | ≤ 16 MB | kernel ceiling |
 | DF0 | `amix_2.1_boot.adf` | |
 | **SCSI ID 4** | tape image | install script hard-coded |
-| **SCSI ID 6** | hardfile (RDB), ~450–900 MB | disk hard-coded |
+| **SCSI ID 6** | hardfile (RDB), ~450–900 MB | disk convention (installer prompts; not kernel-fixed) |
 
 **FS-UAE** (amigaunix.com verified vs 3.1.66) snippet 🟡:
 ```
@@ -219,7 +219,7 @@ hard_drive_0_controller = scsi6
 hard_drive_0_type = rdb
 motherboard_ram = 16384
 ```
-**Amiberry**: the floppy-loaded **install kernel boots** (✅ observed 2026-06: reaches the `Insert floppy disk 2 (root file system)` prompt), but a **full install can't complete** — Amiberry lacks the A3000 SCSI + tape emulation the install needs (issue #1376, closed-as-enhancement). Use WinUAE/FS-UAE to install. **QEMU**: no working setup (no Amiga SCSI/hw). 🟡 default post-install login password "wasp".
+**Amiberry**: **8.x fully installs AND runs Amix** (✅ confirmed first-hand 2026-06 on Amiberry 8.1.6 — the GUI mounts an A3000 SCSI disk at ID 6 and a tape at ID 4, a full from-tape install completes, and an installed system boots to login). Issue #1376 (A3000 SCSI + tape support) is implemented in 8.x; *older* Amiberry builds only booted the floppy install kernel (to the `Insert floppy disk 2` prompt) but couldn't complete the install. **QEMU**: no working setup (no Amiga SCSI/hw). 🟡 default post-install login password "wasp".
 
 ---
 
@@ -268,7 +268,7 @@ OFS bootblock (`DOS\0` + valid checksum + 68k bootstrap) → bootstrap LZW-decom
 
 ## 12. Quirks checklist (for `docs/how-it-works/quirks.md`) ✅/🟡
 
-SCSI ID 6 disk / ID 4 tape hard-coded; 16 MB RAM ceiling; no Zorro III; no 68040/A4000; Superkickstart dual-boot via mouse button; DNS off by default; **Y2K**: `setclk` `%02d` year bug + kernel date cap 1999 (community-patched); SLIP reboot bug; X y/z + `/` keymap; `amixpkg` flaky; clock drift via SCSI interaction; `/bin/sh` pre-POSIX.
+tape ID 4 hard-coded (disk ID 6 by convention); 16 MB RAM ceiling; no Zorro III; no 68040/A4000; Superkickstart dual-boot via mouse button; DNS off by default; **Y2K**: `setclk` `%02d` year bug + kernel date cap 1999 (community-patched); SLIP reboot bug; X y/z + `/` keymap; `amixpkg` flaky; clock drift via SCSI interaction; `/bin/sh` pre-POSIX.
 
 ---
 
