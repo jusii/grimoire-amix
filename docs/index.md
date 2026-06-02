@@ -1,10 +1,10 @@
 ---
-title: Amix-docs
+title: grimoire-amix
 summary: Map of the Amix documentation — how Amix works, developing for it, and custom boot disks.
 status: reviewed
 ---
 
-# Amix-docs
+# grimoire-amix
 
 Documentation for **Amiga Unix (Amix)** — Commodore's port of AT&T System V Release 4 (SVR4) to
 68030 Amigas. Written for **both humans and LLM agents**: every page is plain Markdown with stable

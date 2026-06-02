@@ -1,6 +1,6 @@
 ---
 title: Style Guide
-summary: Prose, formatting, and structural conventions for Amix-docs pages.
+summary: Prose, formatting, and structural conventions for grimoire-amix pages.
 status: reviewed
 ---
 

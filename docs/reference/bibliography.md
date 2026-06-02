@@ -6,7 +6,7 @@ status: draft
 
 # Bibliography & Sources
 
-This page is the master source list behind Amix-docs. It splits into **primary sources** (the Ditto
+This page is the master source list behind grimoire-amix. It splits into **primary sources** (the Ditto
 driver paper, the three install floppies we analyse locally, the four modern driver repos, AT&T's
 SVR4 documentation, and the scanned Commodore manuals on archive.org) and **community / reference
 sources** (amigaunix.com, encyclopedias, blogs, Usenet, emulator issue trackers, and the emulator
@@ -122,7 +122,7 @@ here carry a 🟡 tag in the docs.
 ### amigaunix.com (the authoritative community resource)
 
 amigaunix.com is a DokuWiki and the most authoritative community resource for end-user, historical,
-and install-media material. Amix-docs **cross-links** to it rather than duplicating it — we go deeper
+and install-media material. grimoire-amix **cross-links** to it rather than duplicating it — we go deeper
 on development. The pages we cite:
 
 - Home / portal — <https://www.amigaunix.com/doku.php/home>

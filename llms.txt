@@ -1,4 +1,4 @@
-# Amix-docs
+# grimoire-amix
 
 > Developer- and LLM-oriented documentation for **Amiga Unix (Amix)** — Commodore's port of AT&T
 > System V Release 4 (SVR4) to 68030 Amigas (A3000UX / A2500UX). It explains how Amix works, how to
