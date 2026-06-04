@@ -77,13 +77,17 @@ licensed Amix install and headers).
 | <https://github.com/asokero/va2000-amix> | ✅ Char framebuffer driver for the MNT VA2000 RTG card (`/dev/va2000`, char major 68) | [va2000](../drivers/case-studies/va2000.md) |
 | <https://github.com/asokero/xrtg-amix> | ✅ X11R5 server (`Xrtg`) for the VA2000 (needs the va2000 driver) | [xrtg](../drivers/case-studies/xrtg.md) |
 | <https://github.com/asokero/lszorro-amix> | ✅ Userspace `lspci`-style Zorro II scanner | [lszorro](../drivers/case-studies/lszorro.md) |
-| <https://github.com/isoriano1968/hydra-amix> | ✅ STREAMS/DLPI network driver for the Hydra AmigaNet card (`cdevsw` slot 47, `hya`) | [hydra](../drivers/case-studies/hydra.md) |
+| <https://github.com/isoriano1968/hydra-amix> | ✅ STREAMS/DLPI network driver for the Hydra AmigaNet card (`cdevsw` slot 47, `hya`); now also carries a slice of the Amix `/usr/sys` kernel + boot source tree | [hydra](../drivers/case-studies/hydra.md) |
+| <https://github.com/vjouppi/hydra> | 🟡 Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics); cited by the hydra-amix README | [hydra](../drivers/case-studies/hydra.md) |
 
 🟡 An earlier research note claimed "asokero handle not found / isoriano1968 only does AmigaOS Mesa."
 That note is **wrong** — these four repos exist and are the project's centerpiece examples.
-🔴 No public, reproducible build recipe for the `m68k-amix-gcc` cross-compiler was found; it appears
-to be a private build needing Amix SVR4 headers/libs. See the [toolchain](../drivers/toolchain.md) page,
-which flags this as an open gap.
+🟢 The modern drivers build **natively on the box** (Hydra: `make`/`make force` with GCC 2.7.2.3, an
+amigaunix.com pkg). The `m68k-amix-gcc` *cross*-compiler still has no public build recipe 🔴, but that
+gap is **moot** — see the [toolchain](../drivers/toolchain.md) page.
+🔴 **Do not propagate:** the hydra-amix README states Amix was "later sold by Haage & Partner." This
+conflicts with the sourced history (Commodore; support ended 1993, bankruptcy 1994 — H&P is the
+AmigaOS-3.5/3.9 era, unrelated). Treat it as upstream lore, not fact. See [versions](versions.md).
 
 ### AT&T SVR4 documentation
 

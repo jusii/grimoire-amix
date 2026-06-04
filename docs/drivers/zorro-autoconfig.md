@@ -43,7 +43,7 @@ int autocon(int product_id, int dev, caddr_t *board, int *dummy);
 | `&board` | **out:** receives the assigned Zorro II base address (kernel-mapped) |
 | `&dummy` | **out:** an extra value the call fills in (e.g. a fallback / placeholder slot) |
 
-A driver typically calls `autocon()` from its `init` or `open` routine, then keeps the returned `board` pointer for all subsequent register access. For example, the [VA2000 framebuffer driver](case-studies/va2000.md) uses `autocon()` (alongside `uiomove()` and `copyin`/`copyout`) to locate its 4 MB Zorro II window before mapping the framebuffer ✅. The [Hydra DLPI driver](case-studies/hydra.md) layers a **three-way detect** on top — bootinfo, then a Zorro probe, then an A2065 fallback emulation — because it must cope with cards that don't always announce cleanly ✅.
+A driver typically calls `autocon()` from its `init` or `open` routine, then keeps the returned `board` pointer for all subsequent register access. For example, the [VA2000 framebuffer driver](case-studies/va2000.md) uses `autocon()` (alongside `uiomove()` and `copyin`/`copyout`) to locate its 4 MB Zorro II window before mapping the framebuffer ✅. The [Hydra DLPI driver](case-studies/hydra.md) layers a **three-method detect** on top — `autocon()`/bootinfo (with address validation), then a direct Zorro II I/O-slot probe, then a memory-space probe — because the bootinfo `ConfigDev` table can be corrupt on Amix 2.1p2 ✅.
 
 `autocon()` is part of the same Amix DDI/DKI surface a driver draws on (`copyin`/`copyout`, `uiomove`, `sleep`/`wakeup`, `spl2`/`splx`, …); see [Key kernel APIs in the driver model](driver-model.md#key-kernel-apis-the-driver-side).
 
@@ -120,7 +120,7 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 - [Case study: lszorro userspace Zorro scanner](case-studies/lszorro.md) — the full worked implementation.
 - [Hardware and requirements](../how-it-works/hardware.md) — Zorro II vs Zorro III, supported expansion boards.
 - [Case study: VA2000 framebuffer driver](case-studies/va2000.md) — `autocon()` in a real char driver.
-- [Case study: Hydra DLPI network driver](case-studies/hydra.md) — `autocon()` plus a three-way board-detect fallback.
+- [Case study: Hydra DLPI network driver](case-studies/hydra.md) — `autocon()` plus a three-method board-detect (validated bootinfo + direct probes).
 - [Building and installing a kernel](kernel-build.md) — relinking after you add a board's driver.
 
 ## Sources

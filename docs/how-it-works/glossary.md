@@ -29,7 +29,7 @@ sources/objects are dropped into a subdir under `/usr/sys` and added to that dir
 
 ## AUTOCONFIG
 
-The Amiga bus protocol that assigns [Zorro II](#zorro-ii--iii) board addresses at every reset ✅.
+The Amiga bus protocol that assigns [Zorro II](#zorro-ii-iii) board addresses at every reset ✅.
 Amix reads the assigned addresses through the kernel's [`autocon()`](#autocon) interface; Zorro II
 only ✅. The on-disk nibble format (two nibbles per logical byte, upper nibble D15–D12, most fields
 ones-complement) is decoded by the `lszorro` scanner ✅. See
@@ -53,7 +53,7 @@ the Amiga custom chips — it treats the machine as a generic 68030 Unix worksta
 ## cdevsw / bdevsw
 
 The two kernel **device switch tables**, declared in `conf.h` and instantiated in
-[`kernel.c`](#kernelc), indexed by [major number](#major--minor) ✅. `cdevsw[]` is for character
+[`kernel.c`](#kernelc), indexed by [major number](#major-minor) ✅. `cdevsw[]` is for character
 devices (`d_open/d_close/d_read/d_write/d_ioctl/d_mmap/d_segmap/d_poll/d_xpoll/d_xhalt`, plus
 `d_ttys`, `d_str`, `d_flag`); `bdevsw[]` is for block devices
 (`d_open/d_close/d_strategy/d_print/d_size/d_xpoll/d_xhalt/d_flag`) ✅. Unused slots get `nodev`,
@@ -70,14 +70,14 @@ The SVR4 character-list queue used to buffer slow byte-stream I/O; manipulated w
 **Data Link Provider Interface** — the SVR4 STREAMS service interface a link-layer network driver
 exposes (messages `DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ`) ✅. The
 [hydra](../drivers/case-studies/hydra.md) NE2000 driver is a DLPI STREAMS driver registered at
-[`cdevsw`](#cdevsw--bdevsw) slot 47 ✅. See [writing a STREAMS driver](../drivers/writing-a-streams-driver.md)
+[`cdevsw`](#cdevsw-bdevsw) slot 47 ✅. See [writing a STREAMS driver](../drivers/writing-a-streams-driver.md)
 and [networking](networking.md).
 
 ## elf2brel
 
-The converter in the kernel `stand/` directory that turns a cross-compiled ELF kernel into Amix's
-boot ("brel") format ✅. Used in the [hydra](../drivers/case-studies/hydra.md) cross-build flow:
-`m68k-amix-gcc` → ELF → `elf2brel` → `make oldboot KERNEL=…` ✅. See the
+The converter in the kernel `boot/`/`stand/` directory that turns the (natively built) ELF kernel into Amix's
+boot ("brel") format ✅. Part of the on-box kernel build: native `cc`/GCC → ELF → `elf2brel` → `make force` ✅
+(used by e.g. the [hydra](../drivers/case-studies/hydra.md) driver). See the
 [toolchain](../drivers/toolchain.md).
 
 ## HAT
@@ -91,7 +91,7 @@ in WinUAE and cannot run on MMU-less CPUs or the 68040 (whose MMU the kernel pre
 ## kernel.c
 
 The kernel configuration file (`master.d/kernel.c`), provided in **source**, that holds the device
-switch tables ([`cdevsw[]`/`bdevsw[]`](#cdevsw--bdevsw)), the interrupt tables (`int2_tbl[]`, a
+switch tables ([`cdevsw[]`/`bdevsw[]`](#cdevsw-bdevsw)), the interrupt tables (`int2_tbl[]`, a
 level-6 table), and the boot-time init table (`init_tbl[]`/`io_init[]`) ✅. Adding a driver means
 editing `kernel.c` to add the entries, then rebuilding ✅. The full original file is **not** publicly
 archived; its schema is inferred from the Ditto paper plus the modern repos 🔴. See the
@@ -106,7 +106,7 @@ The Amix kernel platform / configure triple string ✅. GNU autodetect on Amix i
 ## major / minor
 
 The two numbers that identify a [`/dev`](../reference/device-list.md) node: the **major** selects the
-driver (an index into [`cdevsw[]`/`bdevsw[]`](#cdevsw--bdevsw)), the **minor** selects the sub-device;
+driver (an index into [`cdevsw[]`/`bdevsw[]`](#cdevsw-bdevsw)), the **minor** selects the sub-device;
 the kernel knows only the numbers, not the name ✅. Examples from the Ditto paper: `/dev/console` =
 char major 0 minor 0; `/dev/dsk/c0d0s1` = block major 18 minor 1 (SCSI driver); `/dev/fd0` = block
 major 16; `/dev/par` = char major 21 ✅. You create a node with `mknod /dev/<name> c|b <major> <minor>`
@@ -166,7 +166,7 @@ which equals `spl2()` ✅. See [writing a char driver](../drivers/writing-a-char
 
 The SVR4 modular I/O framework used for networking; a STREAMS driver is a distinct third driver
 class (a special character driver carrying a `streamtab`, the `d_str` field in
-[`cdevsw`](#cdevsw--bdevsw)) ✅. Amix networking (TCP/IP, [DLPI](#dlpi)) is STREAMS-based ✅. See
+[`cdevsw`](#cdevsw-bdevsw)) ✅. Amix networking (TCP/IP, [DLPI](#dlpi)) is STREAMS-based ✅. See
 [writing a STREAMS driver](../drivers/writing-a-streams-driver.md) and [networking](networking.md).
 
 ## Superkickstart

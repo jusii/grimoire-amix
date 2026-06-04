@@ -73,8 +73,9 @@ Keep the driver source in the tree too, so the object can be rebuilt later — t
 placing **the driver `.o` and ideally its source** in a subdir under `/usr/sys` and adding it to
 that directory's makefile ✅.
 
-For cross-compiled STREAMS drivers the flow differs (ELF → Amix boot format via `elf2brel`,
-`make oldboot`); see the [Hydra network-driver case study](case-studies/hydra.md) and
+STREAMS drivers like Hydra build natively too — `make` in the driver dir, then `make force` to
+relink (`elf2brel` converts the kernel to boot format as part of that); see the
+[Hydra network-driver case study](case-studies/hydra.md) and
 [writing a STREAMS driver](writing-a-streams-driver.md). The rest of this page covers the
 **native** path.
 
@@ -248,7 +249,7 @@ floppy* instead of a live disk, see
 - [Adding drivers to a boot disk](../boot-disks/adding-drivers-to-boot-disk.md) — same idea, but
   baked into install media.
 - [Writing a STREAMS driver](writing-a-streams-driver.md) and the
-  [Hydra case study](case-studies/hydra.md) — the cross-compiled (`elf2brel`, `make oldboot`) path.
+  [Hydra case study](case-studies/hydra.md) — the native on-box build (`make` / `make force`) for a STREAMS driver.
 - [Boot process](../how-it-works/boot-process.md) — how the bootstrap loads the kernel you wrote.
 
 ## Sources

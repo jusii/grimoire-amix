@@ -45,13 +45,14 @@ See [Quirks](../how-it-works/quirks.md) for why these IDs are fixed and what bre
 
 ### The hydra STREAMS driver (char 47)
 
-Hydra is a **STREAMS/DLPI network driver**, which in Amix is a special kind of character driver: it occupies a `cdevsw[]` slot (**47**, tag `hya`) but exposes a `streamtab` rather than ordinary `read()`/`write()` ✅. You do not normally `cat` its `/dev` node; you bring the interface up with:
+Hydra is a **STREAMS/DLPI network driver**, which in Amix is a special kind of character driver: it occupies a `cdevsw[]` slot (**47**, tag `hya`) but exposes a `streamtab` rather than ordinary `read()`/`write()` ✅. You do not normally `cat` its `/dev` node; Amix is SVR4.0 (no `ifconfig … plumb`), so you link the interface in with `slink`, then configure it:
 
 ```sh
-ifconfig hya0 plumb
+slink addaen /dev/hya0 hya0
+ifconfig hya0 <ip> netmask <mask> up -trailers
 ```
 
-Unlike most drivers, hydra has **no `init_tbl[]` entry** — it does lazy initialization at `ifconfig`-plumb time rather than at boot ✅. For the full driver internals see [the Hydra case study](../drivers/case-studies/hydra.md); for the networking stack it plugs into see [Networking](../how-it-works/networking.md).
+hydra has a boot-time `init_tbl[]` entry (`hydrainit`) that only *probes* for the board; the full init (MAC read, DP8390 programming) is deferred to open (`slink`) time ✅. For the full driver internals see [the Hydra case study](../drivers/case-studies/hydra.md); for the networking stack it plugs into see [Networking](../how-it-works/networking.md).
 
 ### The va2000 framebuffer (char 68)
 
@@ -72,7 +73,7 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev/mem` | Physical-memory device; `lszorro` opens it and `mmap()`s AutoConfig windows ✅ | ✅ |
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (not a `/dev` node — an `ifconfig` name) ✅ | ✅ |
-| `hya0` | Hydra network interface name (plumbed from the char-47 driver) ✅ | ✅ |
+| `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
 
 **Note:** `aen0` and `hya0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (the hydra driver was modelled on it) ✅.
 

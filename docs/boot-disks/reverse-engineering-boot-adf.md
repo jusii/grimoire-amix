@@ -20,9 +20,11 @@ the tools in [`../../tools/`](https://github.com/Jusii/grimoire-amix/tree/master
 
 - The kernel is stored as a **standard Unix `compress` (`.Z`, LZW, 16-bit, block mode)** stream at file
   offset **`0x2800`**. ✅ It decompresses to a **1,171,200-byte m68k ELF** kernel.
-- A small **`IBLK` boot descriptor at offset `0x2600`** tells the bootstrap the compressed length
-  (`+0x8`), the decompressed size (`+0xc`), and a **checksum (`+0x10`) = 16-bit folded byte-sum of the
-  compressed stream**. ✅ All three must describe *your* stream or the boot fails.
+- A 512-byte **`IBLK` boot descriptor (`struct infoblock`) at offset `0x2600`** tells the bootstrap the
+  compressed size (`ib_size`, `+0x8`), the decompressed size (`ib_fullsize`, `+0xc`), the **SVR4-`sum`
+  checksum** (`ib_chksum`, `+0x10`), and the text-bind address (`ib_bind`, `+0x14`). ✅ The size and
+  checksum fields must describe *your* stream or the boot fails. (Now confirmed against the published
+  Commodore `infoblock.h` / `boot2.c`.)
 - Therefore a custom bootable floppy = **`[donor bootblock+bootstrap] + [compress -b16 your-kernel.elf]
   + [zero pad to 880 KB]`**, **with the `IBLK` fields patched to the new stream**, built by
   [`build-bootfloppy.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-bootfloppy.sh). ✅ **Verified booting in an emulator**
@@ -112,17 +114,33 @@ need to rely on that, because the checksum is now **fully pinned** — see below
 
 The `cmp` against `$10(a3)` led to the descriptor. Searching the bootstrap for the known lengths finds a
 4-byte field holding the compressed length and, adjacent to it, the decompressed size; both sit inside a
-block tagged **`IBLK`** at offset `0x2600`:
+block tagged **`IBLK`** at offset `0x2600`.
 
-| Offset | Field | Original value |
-|---|---|---|
-| `0x2600` | magic | `"IBLK"` |
-| `0x2608` | **compressed length** | `0x000a32a2` = 668,322 |
-| `0x260c` | **decompressed size** | `0x0011df00` = 1,171,200 |
-| `0x2610` | **checksum** | `0x0000156d` |
+> **Now confirmed against the Commodore boot source.** A slice of the Amix `/usr/sys` tree —
+> including `amiga/boot/infoblock.h`, `makeiblk.c`, `chksum.c`, and the runtime bootstraps
+> `boot1.c`/`boot2.c` — was published in the [hydra-amix repo](https://github.com/isoriano1968/hydra-amix)
+> in 2026-06. It matches this black-box RE exactly, and fills in the details below (field names,
+> the 512-byte struct, the `ib_bind` field, and the precise checksum). ✅
 
-And the checksum resolves cleanly: **`0x156d` = the 16-bit folded sum of the *bytes of the compressed
-`.Z` stream*** (`fold16(sum(stream[0:comp_len]))`). ✅ That's the algorithm, confirmed by an exact match.
+The descriptor is a **512-byte `struct infoblock`** (Commodore, 1991) that **precedes each file** in the
+boot image; the kernel's lives at `0x2600`, so the kernel `.Z` stream begins exactly `0x200` later at
+**`0x2800`** — which is why those two offsets are `0x200` apart. The fields ✅ (`infoblock.h`):
+
+| Field | File offset | Meaning | Value here |
+|---|---|---|---|
+| `ib_ident[8]` | `0x2600` | magic `"IBLK\0"` | `"IBLK"` |
+| `ib_size` | `0x2608` | size of the following (compressed) kernel | `0x000a32a2` = 668,322 |
+| `ib_fullsize` | `0x260c` | decompressed kernel size (`>0` ⇒ the file is compressed) | `0x0011df00` = 1,171,200 |
+| `ib_chksum` | `0x2610` | **SVR4 `sum`-compatible** checksum of the file | `0x0000156d` |
+| `ib_bind` | `0x2614` | text binding address (`0xFFFFFFFF` = auto-bind) | auto |
+| `ib_pad[…]` | `0x2618`– | padding to 512 bytes | — |
+
+The checksum is the **SVR4 `sum` algorithm** (the `chksum.c` comment spells it out): add every byte into a
+32-bit accumulator, then **fold the high 16 bits into the low 16 — twice**. So `0x156d` = `sum16(compressed
+.Z stream)` over all `ib_size` bytes — exactly what our disassembly's two folds (lines above) compute, and
+exactly what `boot2.c` re-derives and compares against `ib_chksum`. ✅ (The same struct guards the level-2
+bootstrap itself: `boot1.c` validates *its* `IBLK` by the same mechanism — though there a checksum mismatch
+is **fatal** (`Alert … DeadEnd`), unlike the kernel's non-fatal warning in `boot2.c`.)
 
 This also explains a real failure. A first rebuild that kept the donor's `IBLK` **verbatim** but swapped
 in a re-compressed kernel **failed at boot with `WARNING! Kernel decompression overrun.`** Why: our
@@ -134,8 +152,8 @@ the overrun check. **Lesson: the `IBLK` fields must describe *your* stream.**
 ## Step 5 — rebuild (patch `IBLK`) and round-trip ✅
 
 [`build-bootfloppy.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-bootfloppy.sh) reuses the donor's bootblock+bootstrap, splices
-in `compress -b16` of your kernel, and **rewrites the `IBLK` fields** (`comp_len`, `decomp_size`, and the
-`checksum` = `fold16(sum(your .Z))`) — so there is no overrun and the checksum **matches** (no warning).
+in `compress -b16` of your kernel, and **rewrites the `IBLK` fields** (`ib_size`, `ib_fullsize`, and
+`ib_chksum` = the SVR4 `sum` of your `.Z`) — so there is no overrun and the checksum **matches** (no warning).
 It locates the genuine `IBLK` by checksum-consistency (several byte-sequences spell `IBLK` by accident)
 and self-tests by emulating the descriptor:
 
@@ -154,7 +172,7 @@ bootblock checksum (in the first 1 KB) stays valid (verified: recomputes to 0).
 - ✅ **Extract** the kernel from any `boot.adf` → ELF.
 - ✅ **Rebuild** a bootable floppy from a donor bootstrap + any kernel ELF that fits compressed; `IBLK`
   patched so it loads cleanly. The whole pipeline round-trips on the host.
-- ✅ **Checksum fully pinned** (`fold16` byte-sum of the compressed stream, stored at `IBLK+0x10`) — a
+- ✅ **Checksum fully pinned** (the SVR4 `sum` of the compressed stream, stored at `ib_chksum` / `IBLK+0x10`) — a
   rebuilt floppy matches it, so **no warning**. (It's also non-fatal regardless.)
 - ✅ **Verified in an emulator (Amiberry).** A rebuilt floppy (same kernel, re-`compress`'d, `IBLK`
   patched) boots and reaches the original's `Insert floppy disk 2 (root file system)` prompt — no
@@ -177,5 +195,11 @@ see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 - Primary analysis of `amix_21_boot.adf` (2026-06): `tools/inspect-adf.sh`, entropy mapping, `gzip`/`zcat`
   LZW decompression, capstone M68K disassembly; round-trip via `tools/extract-kernel.sh` +
   `tools/build-bootfloppy.sh`. Recorded in the research brief §3, §10, §13 — [`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
+- **Commodore boot source** (`Copyright 1991, CBM`), published 2026-06 in the
+  [hydra-amix repo](https://github.com/isoriano1968/hydra-amix) `usr/sys/amiga/boot/`: `infoblock.h`
+  (the `struct infoblock` / IBLK fields), `makeiblk.c` + `chksum.c` (the SVR4-`sum` checksum and how the
+  IBLK is built), `boot1.c`/`boot2.c` (the runtime bootstrap consuming `ib_size`/`ib_fullsize`/`ib_chksum`/`ib_bind`
+  and the overrun/checksum guards), and `decompress.c` (the LZW decoder + `rmask[]` table). These confirm
+  the black-box RE above. ✅ Proprietary Commodore material — referenced for interoperability, **not** redistributed.
 - Unix `compress`/`.Z` LZW format (magic `1f 9d`, flags byte = block-mode | maxbits).
 - ELF32 header fields for size recovery (`e_shoff`, `e_shnum`, `e_shentsize`).

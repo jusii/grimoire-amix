@@ -61,9 +61,9 @@ shutdown -i6                       # reboot
 
 `make bootpart` is the supported tool that emits the compressed+checksummed boot payload for you ✅.
 **Always keep the old `/unix` / boot kernel as a fallback** — a bad relink can leave the machine
-unbootable; the Ditto paper makes this explicit ✅. For a STREAMS/network driver the link step differs
-(cross-compiled ELF converted with `elf2brel`, then `make oldboot`); see the
-[Hydra case study](../drivers/case-studies/hydra.md).
+unbootable; the Ditto paper makes this explicit ✅. A STREAMS/network driver builds the same way —
+natively, `make` in the driver dir then `make force` to relink (`elf2brel` converts the kernel to
+boot format in the process); see the [Hydra case study](../drivers/case-studies/hydra.md).
 
 ## Surface (b): a custom bootable floppy — solved ✅🟡
 
@@ -164,7 +164,7 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
   ([`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)): the `compress`/LZW kernel at
   `0x2800` → m68k ELF, the 16-bit folded **non-fatal** checksum (bootstrap disassembly), and the
   host-verified round-trip via `tools/extract-kernel.sh` + `tools/build-bootfloppy.sh`.
-- Kernel relink flow (`/usr/sys` → `relocunix` → `make bootpart` / `make oldboot`; keep old `/unix`) —
+- Kernel relink flow (`/usr/sys` → `make force` / `relocunix` → `make bootpart`; keep old `/unix`) —
   Ditto paper; research brief §3, §5, §6.
 - Patch-disk self-extraction model — `amix_21_patch.adf` analysis; research brief §10;
   [`tools/build-custom-bootdisk.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-custom-bootdisk.sh).

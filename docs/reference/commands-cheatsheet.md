@@ -117,8 +117,8 @@ shutdown -i6 -g0 -y               # reboot into the new kernel
 
 **Kernel-image name 🟡.** The 1990 Ditto paper calls the built kernel **`rdbunix`**; modern 2.1
 systems and the community repos call it **`relocunix`** — treat this as a historical rename and
-verify per version (brief §13.3). Some repos also expose `make oldboot KERNEL=…` as the
-boot-floppy/legacy variant ✅.
+verify per version (brief §13.3). The modern repos relink with `make force` (full kernel) or
+`make bootpart KERNEL=…` (boot partition) ✅.
 
 **Before relinking, clean stale objects ✅** (from the va2000 driver notes) or the link picks up
 old code:
@@ -146,7 +146,7 @@ resolves names from `/etc/hosts` until you switch it on).
 |---|---|---|
 | `ifconfig aen0` | Show the A2065 Ethernet interface state | ✅ |
 | `ifconfig aen0 <ip> netmask <mask> up` | Bring the interface up with a static address | ✅ |
-| `ifconfig hya0 plumb` | Plumb the Hydra STREAMS NIC (lazy-init driver) | ✅ |
+| `slink addaen /dev/hya0 hya0` | Link the Hydra STREAMS NIC into IP (Amix SVR4.0 has no `ifconfig plumb`), then `ifconfig hya0 …` | ✅ |
 | `route add default <gw> 1` | Add a default route — **the trailing `1` (metric/hops) is required** | ✅ |
 | `netstat -rn` | Show the routing table | ✅ |
 
@@ -274,5 +274,5 @@ For the install in full, see the [install walkthrough](../getting-started/instal
   procedure (`/usr/sys` → `make` → `mknod` → reboot), `cdevsw`/`bdevsw`, `rdbunix`.
 - `asokero/va2000-amix` repo — `rm -f amiga/config/unix.o master.d/exp unix`, `cp relocunix /stand`,
   `make bootpart KERNEL=relocunix`, `mknod /dev/va2000 c 68 0`, pre-POSIX `/bin/sh` note.
-- `isoriano1968/hydra-amix` repo — `ifconfig hya0 plumb`, `make oldboot KERNEL=…`, STREAMS `cdevsw` slot 47.
+- `isoriano1968/hydra-amix` repo — `slink addaen /dev/hya0 hya0`, native `make` / `make force`, `mknod /dev/hya0 c 47 0`, STREAMS `cdevsw` slot 47.
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).

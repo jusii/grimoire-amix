@@ -131,20 +131,20 @@ If you need IP over serial in practice, the community guidance is effectively "u
 Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card needs a driver compiled into `/unix`. The modern, fully worked example is the **Hydra AmigaNet** driver.
 
 - `hydra-amix` is a **STREAMS / DLPI** network driver for the Hydra card (an **NE2000 / DP8390** design), rev 1.2a, Zorro II, AutoConfig ID **2121/1 (`0x08490001`)** ✅.
-- It registers at **`cdevsw` slot 47** with the `hya` tag; you bring it up with `ifconfig hya0 plumb` and then assign an address as above ✅.
-- Its entry points (`hydraopen`, `hydrawput`, `hydraintr`, `setup_ne2000`) handle DLPI primitives (`DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ`) and the INT2 RX/TX interrupt; `hydraopen` even includes a **3-way card detect** with an **A2065 fallback emulation** path, and it deliberately mirrors the existing A2065 LANCE driver (`aen/`) ✅.
-- It is **cross-compiled** with `m68k-amix-gcc` (GCC 2.7.2.3, SVR4 target) and converted to Amix boot format via `elf2brel`; it is **source-only** because building it needs a licensed Amix tree ✅.
+- It registers at **`cdevsw` slot 47** with the `hya` tag. **Amix is SVR4.0 — there is no `ifconfig … plumb`**; you link the interface in with `slink addaen /dev/hya0 hya0`, then `ifconfig hya0 <ip> netmask <m> up -trailers` ✅.
+- Its entry points (`hydraopen`, `hydrawput`, `hydraintr`, `setup_ne2000`) handle DLPI primitives (`DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ`) and the INT2 RX/TX interrupt; `hydraopen` runs a **three-method card detect** (`autocon()`/bootinfo with address validation, then direct Zorro II I/O-slot and memory probes — the bootinfo table can be corrupt on 2.1p2), and it deliberately mirrors the existing A2065 LANCE driver (`aen/`) ✅.
+- It is built **natively on the Amix box** (`make` in the driver dir, `make force` to relink the kernel) with **GCC 2.7.2.3** packaged on [amigaunix.com](https://amigaunix.com) — no cross-compiler; it is **source-only** because building needs a licensed Amix tree ✅.
 
 Full detail — the build line, the DLPI flow, and the LANCE-mirroring design — is on [the Hydra case study](../drivers/case-studies/hydra.md). The general procedure for writing this class of driver is on [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md), and the relink/boot-partition steps are on [the kernel build page](../drivers/kernel-build.md).
 
-> 🔴 **Toolchain gap:** there is no public, reproducible build recipe for the `m68k-amix-gcc` cross-compiler — it appears to be a private build requiring Amix SVR4 headers and libraries. Anyone planning to build `hydra-amix` (or any cross-compiled network driver) should expect to solve the toolchain problem first. See [the toolchain page](../drivers/toolchain.md).
+> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (a pkg on amigaunix.com) — no cross-compiler is needed. The `m68k-amix-gcc` *cross*-compiler still has no public, reproducible recipe 🔴, but that gap is **moot** for building network drivers on a real/emulated Amix. You do still need a licensed Amix install (kernel headers/libs aren't redistributable). See [the toolchain page](../drivers/toolchain.md).
 
 ## Quick reference
 
 | Task | Command / file | Tag |
 |---|---|---|
 | Bring A2065 up | `ifconfig aen0 <ip> netmask <mask> up` | ✅ |
-| Bring Hydra up | `ifconfig hya0 plumb` then assign address | ✅ |
+| Bring Hydra up | `slink addaen /dev/hya0 hya0`, then `ifconfig hya0 <ip> … up -trailers` (no `ifconfig plumb` on SVR4.0) | ✅ |
 | Default route (metric required) | `route add default <gw> 1` | ✅/🟡 |
 | Static name→IP, resolver fallback | `/etc/hosts` | ✅ |
 | Enable DNS (1/2) | `ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so` + `/etc/resolv.conf` (nameservers only) | ✅ |
@@ -168,11 +168,11 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 
 - Research brief §11 "Networking, X11, userland" (STREAMS TCP/IP; `aen0`/A2065; static IP, no DHCP; DNS off by default + `libsockdns.so` swap, `in.named`, `/etc/resolv.conf`; `route add default <gw> 1`; NFS server+client; SLIP buggy; no PPP).
 - Research brief §2 "Hardware & requirements" (A2065 native; Hydra via `hydra-amix`; Ariadne I via Gateway 🟡).
-- Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x08490001`, A2065 fallback, `m68k-amix-gcc`/`elf2brel`).
+- Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x08490001`, three-method autoconfig detect, native `make`/`make force` build with GCC 2.7.2.3 from amigaunix.com, `slink` bring-up).
 - Research brief §4 "Kernel architecture" (monolithic SVR4; STREAMS, TLI + BSD sockets; no loadable modules).
 - Research brief §3 / §10 (`amix_21_boot.adf` string analysis — embedded NFS/RPC client string table), via `tools/inspect-adf.sh`.
 - Research brief §12 "Quirks checklist" (DNS off by default; SLIP reboot bug).
-- Research brief §13 (open gap 🔴: no public `m68k-amix-gcc` build recipe).
+- Research brief §13 (🔴 no public `m68k-amix-gcc` cross-compiler recipe — moot for on-box driver builds).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (cites the SVR4 *Streams Programmer's Guide* and *Network Programmer's Guide*).
 - [github.com/isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix)
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).

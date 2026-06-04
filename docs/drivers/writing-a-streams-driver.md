@@ -6,7 +6,7 @@ status: draft
 
 # Writing a STREAMS / DLPI Driver (hydra)
 
-A network driver in Amix is **not** a `read`/`write` character driver — it is a **STREAMS** driver. It registers a `streamtab` in its `cdevsw[]` slot (via the `d_str` field) instead of `nostr`, exposes a **DLPI** (Data Link Provider Interface) message interface through a `put` routine, and is brought up with `ifconfig <iface> plumb` rather than by opening a device node directly ✅. The kernel's STREAMS framework, not the syscall layer, drives it.
+A network driver in Amix is **not** a `read`/`write` character driver — it is a **STREAMS** driver. It registers a `streamtab` in its `cdevsw[]` slot (via the `d_str` field) instead of `nostr`, exposes a **DLPI** (Data Link Provider Interface) message interface through a `put` routine, and is linked into the IP stack with **`slink`** rather than by opening a device node directly ✅. (Amix is SVR4.0 and **predates `ifconfig … plumb`** — that mechanism does not exist here; see [Bringing the interface up](#bringing-the-interface-up-slink).) The kernel's STREAMS framework, not the syscall layer, drives it.
 
 This page walks the third driver kind using the **`isoriano1968/hydra-amix`** driver — a STREAMS/DLPI driver for the **Hydra AmigaNet** Zorro II Ethernet card (NE2000 / DP8390 chipset) — as the worked example ✅. For the conceptual contrast with block and character drivers see [The Amix device-driver model](driver-model.md); for the networking stack the driver feeds see [Networking](../how-it-works/networking.md). The deep dive on this specific card is the [Hydra DLPI case study](case-studies/hydra.md).
 
@@ -20,14 +20,14 @@ Amix has three driver categories, not two ✅:
 |---|---|---|---|
 | **Block** | `strategy()` | n/a (uses `bdevsw[]`) | `mount` |
 | **Character** | `read()` / `write()` | `nostr` | open the `/dev` node |
-| **STREAMS** | a `put` routine on a `streamtab` | a real `struct streamtab *` | `ifconfig <iface> plumb` (network case) |
+| **STREAMS** | a `put` routine on a `streamtab` | a real `struct streamtab *` | `slink` (network case; Amix has no `ifconfig plumb`) |
 
 A STREAMS driver is *technically* a special character driver: it occupies a `cdevsw[]` slot like any char driver, but its `d_str` field points at a **`streamtab`** instead of the `nostr` stub ✅. That `streamtab` is what tells the kernel "route messages here through the STREAMS framework" rather than calling `d_read`/`d_write`. STREAMS is the SVR4 mechanism for layered, message-based I/O, and in Amix it is how **all networking** (TCP/IP, DLPI) is implemented ✅.
 
 Because the entry point is a message handler (`put`) and not `read`/`write`, the surrounding model differs from the [parallel-port char driver](writing-a-char-driver.md):
 
 - You do not `open()` `hya0` and `write()` packets to it. The TCP/IP stack pushes STREAMS messages down to your `put` routine.
-- Configuration happens at **plumb time** (`ifconfig hya0 plumb`), not at boot — see [Lazy init](#lazy-init-configure-at-plumb-time-not-boot).
+- The card is **probed at boot** (an `init_tbl`/`hydrainit` entry) but **fully initialized at open** (when `slink` opens the stream) — see [Init split](#init-split-probe-at-boot-full-init-on-open).
 - The driver speaks **DLPI primitives** (`DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ`, …) to the layer above it — see [The DLPI message interface](#the-dlpi-message-interface-hydrawput).
 
 ## Where hydra registers: cdevsw slot 47 (hya)
@@ -36,14 +36,14 @@ The Hydra driver installs into **`cdevsw` slot 47** under the short driver tag *
 
 | Routine | Role | Notes |
 |---|---|---|
-| `hydraopen` | STREAMS open | init + 3-way card detection (see below) 🟡 |
+| `hydraopen` | STREAMS open | init + multi-method card detection (see below) 🟡 |
 | `hydrawput` | STREAMS write-side `put` | handles DLPI primitives 🟡 |
 | `hydraintr` | INT2 interrupt handler | RX/TX completion 🟡 |
 | `setup_ne2000` | low-level DP8390/NE2000 setup helper | called during init 🟡 |
 
 The `cdevsw[47]` entry therefore has a real `streamtab` in `d_str` (whose write-side `put` procedure resolves to `hydrawput`), and `hydraopen` as its open routine. The interface name the kernel exposes is **`hya0`** (unit 0) 🟡.
 
-> **Note:** `cdevsw` slot 47 is what the brief and repo record for `hya` 🟡. When you add your own STREAMS driver, pick an unused major; see the [device list](../reference/device-list.md) for known assignments. The full original `master.d/kernel.c` is not publicly archived, so confirm free slots against your own `/usr/sys` 🔴.
+> **Note:** `cdevsw` slot 47 is what the brief and repo record for `hya` 🟡. When you add your own STREAMS driver, pick an unused major; see the [device list](../reference/device-list.md) for known assignments. A `master.d/kernel.c` (with `cdevsw`/`int2_tbl`/`init_tbl`) is now published in the [hydra-amix repo](https://github.com/isoriano1968/hydra-amix), so the wiring can be read directly 🟡 (whether it is the pristine original or a working copy is unconfirmed) — still confirm free slots against your own `/usr/sys`.
 
 ## The card: Hydra AmigaNet (NE2000 / DP8390)
 
@@ -58,17 +58,17 @@ Hardware facts the driver depends on 🟡:
 
 The DP8390 is the NE2000 register-compatible Ethernet controller, which is why the helper is called `setup_ne2000` 🟡. For how Zorro II boards are discovered at all, see [Zorro II autoconfig for drivers](zorro-autoconfig.md).
 
-## hydraopen: init + 3-way card detection
+## hydraopen: init + multi-method card detection
 
-`hydraopen` is the STREAMS open routine. Beyond the usual STREAMS open bookkeeping it performs **3-way card detection** 🟡, trying each method in turn:
+`hydraopen` is the STREAMS open routine. Beyond the usual STREAMS open bookkeeping it performs a **three-method card detect** (`hydraautoconfig`, run once and cached) 🟡, trying each in turn:
 
-1. **bootinfo** — read the board address/parameters the bootstrap already discovered.
-2. **Zorro probe** — actively probe Zorro II AutoConfig space for ID `0x08490001`.
-3. **A2065 fallback emulation** — if no Hydra is found, **fall back to emulating the A2065** LANCE Ethernet card 🟡.
+1. **`autocon()` / bootinfo** — read the board from the kernel's bootinfo `ConfigDev` autoconfig table, *with Zorro II address validation*.
+2. **Direct Zorro II I/O-slot probe** — read the MAC PROM at each 64 KB I/O slot across `0xE90000–0xEFFFFF`.
+3. **Zorro II memory-space probe** — scan `0x200000–0x9FFFFF` in 64 KB steps.
 
-That A2065 fallback is the notable design choice: it lets the same `hya0` plumb path work on a machine that only has the stock [A2065 Ethernet](../how-it-works/networking.md) card, by emulating its behaviour rather than failing. This is possible because hydra deliberately **mirrors the existing A2065 LANCE driver** (`aen/` in the kernel source tree) — see [Mirroring the A2065 LANCE driver](#mirroring-the-a2065-lance-driver-aen) 🟡.
+It uses several methods because the `autocon()` bootinfo table can be **corrupted** on Amix 2.1p2, so the driver validates the address and falls back to direct probes 🟡. (An earlier version had an **A2065-emulation fallback** — stand in for the stock LANCE card when no Hydra was present — but it was **removed**; the driver still *mirrors* the `aen/` A2065 driver's structure — see [Mirroring the A2065 LANCE driver](#mirroring-the-a2065-lance-driver-aen) — without emulating it.)
 
-After detection, `hydraopen` calls `setup_ne2000` to program the DP8390 and reads the MAC from the PROM at `base + 0xffc0` 🟡.
+After detection, `hydraopen` calls `hydra_initialize`, which reads the MAC from the PROM at `base + 0xffc0` (step-2, every other byte) via `get_ethernet_address`, then programs the DP8390 via `setup_ne2000` 🟡.
 
 ## The DLPI message interface (hydrawput)
 
@@ -93,48 +93,44 @@ This is why a STREAMS net driver has **no `read`/`write`**: the data path is the
 
 Adding a level-2 interrupt driver means contributing an entry to `int2_tbl[]` in `kernel.c`, exactly as a char driver would; see [the *_tbl arrays](driver-model.md#the-_tbl-arrays) and [Building and installing a kernel](kernel-build.md).
 
-## Lazy init: configure at plumb time, not boot
+## Init split: probe at boot, full-init on open
 
-Unlike most drivers, hydra has **no `init_tbl[]` (boot-time init) entry** 🟡. It uses **lazy initialization**: the card is detected and programmed when the interface is first plumbed, i.e. at `ifconfig hya0 plumb` time, by way of `hydraopen` — not once at boot 🟡.
+hydra registers a **boot-time `init_tbl[]` entry** (`hydrainit`) that calls the idempotent `hydraautoconfig()` to **probe for the board at boot** ✅. But the *heavy* setup — reading the MAC PROM and programming the DP8390 — is **deferred to open**: it runs the first time the interface is brought up, when `slink` opens the stream and `hydraopen` calls `hydra_initialize` 🟡. So "detect at boot, initialize on open," not all-at-boot.
 
-The practical consequence: the table edits in `kernel.c` for hydra add a `cdevsw[]` slot (47) with a `streamtab`, and an `int2_tbl[]` entry for `hydraintr`, but **no** `init_tbl[]`/`io_init[]` line. Compare the [VA2000 framebuffer driver](case-studies/va2000.md), which *does* add a `va2000init` to its init array because it must claim its Zorro window at boot ✅.
+The practical consequence: the table edits in `kernel.c` for hydra add a `cdevsw[]` slot (47) with a `streamtab`, an `int2_tbl[]` entry for `hydraintr`, **and** an `init_tbl[]`/`io_init[]` entry (`hydrainit`) — like the [VA2000 framebuffer driver](case-studies/va2000.md) (`va2000init`). The difference from VA2000 is *what* the init does: hydra's boot init only *probes*; it defers the real programming to open, whereas VA2000 must claim its Zorro window at boot ✅.
 
-## Bringing the interface up: ifconfig hya0 plumb
+## Bringing the interface up: slink
 
-A STREAMS network driver is activated by plumbing it into the protocol stack, not by opening a `/dev` node 🟡:
+Amix is **SVR4.0** and **has no `ifconfig … plumb`** — that operation came later in the SVR4 line ✅. A STREAMS network driver is linked into the IP stack with **`slink`**, then configured with `ifconfig` 🟡:
 
 ```sh
-# Plumb the STREAMS interface into the IP stack, then configure it.
-ifconfig hya0 plumb
-ifconfig hya0 <ip-address> netmask <mask> up
+# Link the STREAMS driver under IP (slink), then configure the interface.
+slink addaen /dev/hya0 hya0
+ifconfig hya0 <ip-address> netmask <mask> up -trailers
 ```
 
-`plumb` is the SVR4 operation that links the driver's stream under IP; it triggers `hydraopen`, the 3-way detection, and `setup_ne2000` 🟡. From there the interface behaves like any Amix Ethernet interface — see [Networking](../how-it-works/networking.md) for the rest (static IP only, DNS off by default, `route add default <gw> 1`, NFS).
+`slink addaen` is the Amix operation that links the driver's stream under IP (the same `addaen` form used for the stock A2065); it opens `/dev/hya0`, which triggers `hydraopen`, the multi-method detection, and `setup_ne2000` 🟡. The interface name matches the device minor (`hya0` for minor 0). From there the interface behaves like any Amix Ethernet interface — see [Networking](../how-it-works/networking.md) for the rest (static IP only, DNS off by default, `route add default <gw> 1`, NFS).
 
 ## Mirroring the A2065 LANCE driver (aen)
 
 The hydra driver was written to **mirror the existing A2065 LANCE Ethernet driver** in the kernel source tree, whose tag is **`aen`** (interface `aen0`) 🟡. This is the recommended way to write a new Amix net driver: start from the in-tree `aen/` driver as a template, because it already shows the correct `streamtab` shape, DLPI handling, and STREAMS plumbing for an Amix Ethernet provider 🟡.
 
-This mirroring is also what makes the [A2065 fallback emulation](#hydraopen-init--3-way-card-detection) in `hydraopen` natural — the two drivers share enough structure that hydra can stand in for `aen` when no Hydra board is present 🟡.
+Because the two drivers share so much structure, an early version of hydra could even *emulate* `aen` as a fallback when no Hydra board was present; that fallback has since been **removed** from the repo, but the shared structure is still why the in-tree `aen/` driver is the right template to start from 🟡.
 
-## Cross-building the driver
+## Building the driver (natively on Amix)
 
-hydra is **source-only** and **cross-compiled**; it needs a licensed Amix SVR4 toolchain to link against (kernel headers/libs are not redistributable) 🟡. The recorded build uses **`m68k-amix-gcc`** (GCC 2.7.2.3, SVR4 target) and the in-tree boot tooling:
+hydra is **source-only** and is **built natively on the Amix box — no cross-compiler** ✅. You still need a licensed Amix install (kernel headers/libs are not redistributable), which is why no binaries ship. The driver `Makefile` uses the on-box compiler (`cc`/`ld -r`); the build is just:
 
 ```sh
-# Cross-compile the driver objects (kernel build flags).
-make CC=m68k-amix-gcc CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"
+su
+cd /usr/sys/amiga/driver/hydra && make      # builds the relocatable 'exp' from hydra.o
+cd /usr/sys && make force                    # relinks the full kernel with the driver
+mknod /dev/hya0 c 47 0                        # create the device node
 ```
 
-The pipeline 🟡:
+The native compiler is **GCC 2.7.2.3 for Amix**, distributed as an installable **pkg on [amigaunix.com](https://amigaunix.com)** (the stock AT&T SVR4 `cc` also compiles kernel C) ✅. The kernel-image / boot-relocatable conversion (`elf2brel`, the `boot/`/`stand/` tooling) is part of this on-box kernel build, not a separate cross step. For the relink mechanics see [Building and installing a kernel](kernel-build.md), and keep the old `/unix` as a fallback.
 
-1. `m68k-amix-gcc` compiles/links the driver into an **ELF** object (target triple `m68k-cbm-sysv4`; autodetect yields `m68k-unknown-sysv4`) ✅.
-2. **`elf2brel`** (in the `stand/` directory of the build) converts that ELF into the **Amix boot relocatable format** the bootstrap expects 🟡.
-3. `make oldboot KERNEL=…` writes the resulting kernel image so it can be booted 🟡.
-
-For the compiler, the `_KERNEL`/`SVR4` flags, and the rest of the cross-build story see [Toolchain](toolchain.md) and the kernel-relink mechanics in [Building and installing a kernel](kernel-build.md).
-
-> **Warning:** there is **no public, reproducible build recipe** for the `m68k-amix-gcc` cross-compiler — it is a private build that needs the proprietary Amix SVR4 headers and libraries 🔴. Treat the toolchain as an open gap: you cannot currently reproduce this build from scratch without already having an Amix install to harvest headers/libs from. See the [licensing boundary](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — obtain media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution.
+> **Note:** the `m68k-amix-gcc` *cross*-compiler remains a private build with no public recipe 🔴 — but it is **not needed** to build this driver; hydra builds on-box with the amigaunix.com GCC pkg. See the [toolchain page](toolchain.md) and the [licensing boundary](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) (obtain Amix media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution).
 
 ## Checklist: adding a STREAMS net driver
 
@@ -142,9 +138,9 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 
 1. Write the driver mirroring the in-tree `aen/` LANCE driver: a `streamtab`, a write-side `put` routine, and an INT2 handler.
 2. Implement the DLPI primitives the stack needs at minimum: `DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ` (down, per the brief 🟡); what the interrupt path sends upstream is 🔴 not confirmed in primary sources — use the `aen/` driver as the template.
-3. In `master.d/kernel.c`: add a `cdevsw[]` slot at your major with `d_str` pointing at your `streamtab` (not `nostr`), and add your interrupt routine to `int2_tbl[]`. **No** `init_tbl[]` entry if you initialise lazily at plumb time.
-4. Cross-build with `m68k-amix-gcc`, convert with `elf2brel`, install with `make oldboot KERNEL=…` (or relink natively per [kernel build](kernel-build.md)). Keep the old `/unix` as a fallback ✅.
-5. Bring it up with `ifconfig <iface> plumb` then configure the address.
+3. In `master.d/kernel.c`: add a `cdevsw[]` slot at your major with `d_str` pointing at your `streamtab` (not `nostr`), add your interrupt routine to `int2_tbl[]`, and (like hydra) an `init_tbl[]` entry that *probes* the board at boot — deferring the heavy init to open if you wish.
+4. Build **natively on the Amix box**: `make` in the driver dir, then `cd /usr/sys && make force` to relink the kernel (per [kernel build](kernel-build.md)). Keep the old `/unix` as a fallback ✅.
+5. Create the node (`mknod /dev/<iface> c <major> 0`), then bring it up with `slink addaen /dev/<iface> <iface>` and `ifconfig <iface> <ip> netmask <m> up -trailers`.
 
 ## See also
 
@@ -152,14 +148,14 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 - [Writing a character driver](writing-a-char-driver.md) — the `read`/`write` contrast (the `par` driver).
 - [Hydra DLPI case study](case-studies/hydra.md) — the full device-level deep dive.
 - [Networking](../how-it-works/networking.md) — the STREAMS TCP/IP stack hydra feeds; A2065, static IP, DNS, NFS.
-- [Toolchain](toolchain.md) — `m68k-amix-gcc`, `elf2brel`, the SVR4 cross-build.
-- [Building and installing a kernel](kernel-build.md) — relink, boot-partition/`oldboot` install.
+- [Toolchain](toolchain.md) — the native on-box build, `elf2brel`, and the (separate) cross-compiler gap.
+- [Building and installing a kernel](kernel-build.md) — relink (`make force`) and boot-partition install.
 - [Zorro II autoconfig for drivers](zorro-autoconfig.md) — discovering the board (`autocon()`, AutoConfig IDs).
 - [Device list reference](../reference/device-list.md) — known major/minor and `cdevsw` slot assignments.
 
 ## Sources
 
-- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, 3-way detect with A2065 fallback, lazy init, mirrors `aen/` LANCE, `m68k-amix-gcc` + `elf2brel` + `make oldboot`, Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` / 16 KB SRAM / 10Base2 + 10BaseT), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`, plumb model), §7 (`m68k-amix-gcc` GCC 2.7.2.3, `m68k-cbm-sysv4` triple), §13 (🔴 no public `m68k-amix-gcc` recipe; 🔴 `kernel.c` not archived).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 from amigaunix.com, `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; `m68k-amix-gcc` cross-compiler not required), §13 (🔴 no public `m68k-amix-gcc` recipe — moot for on-box builds).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).
 - `isoriano1968/hydra-amix` repo: <https://github.com/isoriano1968/hydra-amix>
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>

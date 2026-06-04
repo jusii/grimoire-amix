@@ -132,7 +132,7 @@ The two driver classes differ in how they move data ✅:
 
 ### STREAMS: the third kind
 
-**STREAMS** drivers are a distinct third category — technically a special character driver whose `cdevsw[]` entry points at a `streamtab` (the `d_str` field) instead of `nostr` ✅. STREAMS is the SVR4 mechanism for layered, message-based I/O and is how Amix does **networking** (TCP/IP, DLPI). A STREAMS network driver implements a `put` routine (e.g. `hydrawput`) rather than `read`/`write`, and is brought up with `ifconfig <iface> plumb` rather than opened directly. The full treatment is in [Writing a STREAMS driver](writing-a-streams-driver.md); the worked example is the [Hydra DLPI driver](case-studies/hydra.md), which registers at **`cdevsw` slot 47** (`hya`) ✅. For the networking stack itself see [Networking](../how-it-works/networking.md).
+**STREAMS** drivers are a distinct third category — technically a special character driver whose `cdevsw[]` entry points at a `streamtab` (the `d_str` field) instead of `nostr` ✅. STREAMS is the SVR4 mechanism for layered, message-based I/O and is how Amix does **networking** (TCP/IP, DLPI). A STREAMS network driver implements a `put` routine (e.g. `hydrawput`) rather than `read`/`write`, and is brought up with `slink` rather than opened directly (Amix is SVR4.0 and has no `ifconfig … plumb`). The full treatment is in [Writing a STREAMS driver](writing-a-streams-driver.md); the worked example is the [Hydra DLPI driver](case-studies/hydra.md), which registers at **`cdevsw` slot 47** (`hya`) ✅. For the networking stack itself see [Networking](../how-it-works/networking.md).
 
 ## Key kernel APIs (the driver side)
 

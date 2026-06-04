@@ -111,7 +111,7 @@ The name of the kernel image changed over the life of the project:
 - The **1990 Ditto paper** calls the built kernel image **`rdbunix`** ✅ (as cited in the paper).
 - **Amix 2.1 systems and the modern driver repos** call it **`relocunix`** ✅, and the `make bootpart` invocation is `make bootpart KERNEL=relocunix` ✅.
 
-Treat this as a **historical rename** and verify per version — `rdbunix` for the 1990-era toolchain, `relocunix` for 2.1 🟡. The hydra cross-compile path uses a related `make oldboot KERNEL=…` target after converting an ELF kernel with `elf2brel`; see [kernel build and install](../drivers/kernel-build.md) and [the hydra case study](../drivers/case-studies/hydra.md).
+Treat this as a **historical rename** and verify per version — `rdbunix` for the 1990-era toolchain, `relocunix` for 2.1 🟡. The hydra driver builds natively and relinks the kernel with `make force` (`elf2brel` converts the kernel to boot format in the process); see [kernel build and install](../drivers/kernel-build.md) and [the hydra case study](../drivers/case-studies/hydra.md).
 
 **Note:** Always keep the old working `/unix` (or boot partition image) as a fallback before writing a freshly built kernel — a broken boot partition means a machine that won't come up ✅.
 
