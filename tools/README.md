@@ -13,6 +13,18 @@ on **user-supplied** images (we don't redistribute Commodore's proprietary media
 | [`build-custom-bootdisk.sh`](build-custom-bootdisk.sh) | Build a **self-extracting add-on/driver disk** (1 KB `/sbin/sh` header + cpio payload), modeled on the real Amix patch disk. | 🟡 structure validated; **untested on real Amix** |
 | [`gen-llms-full.sh`](gen-llms-full.sh) | Concatenate all docs (reading order) into `../llms-full.txt` for LLM ingestion. | ✅ works |
 
+### Kernel-build & dev-loop tools (from the A4091-on-Amix project)
+
+These came out of the [A4091 / 53C710 driver](../docs/drivers/a4091-53c710-driver.md) work but are useful for **any** Amix kernel relink or emulator-driven dev loop. They are the project's own scripts (not Commodore material), reproduced here verbatim.
+
+| Script | What it does | Status |
+|---|---|---|
+| [`build-clean-kernel.sh`](build-clean-kernel.sh) | Relink the Amix kernel **until the `sum` checksum recurs** — dodges the intermittent (~70%) `ld` write-corruption (the ["D245 boot-breaker"](../docs/drivers/kernel-build.md)) by exploiting that a clean `ld` output is byte-deterministic. Runs **on the Amix box**. | ✅ first-party |
+| [`checkunix.c`](checkunix.c) | Native big-endian symtab integrity check for a kernel ELF (flags the out-of-range `st_shndx` that the D245 corruption produces). `cc -O -o checkunix checkunix.c`. | ✅ first-party |
+| [`relsim.py`](relsim.py) | Host-side reimplementation of the boot relocator `rel()` — the full offline D245 oracle (symtab **and** relocation records): `python3 tools/relsim.py relocunix`. | ✅ first-party |
+| [`amishot.sh`](amishot.sh) | Screenshot the running Amiberry's framebuffer via its IPC socket (`SCREENSHOT\t<path>` → `amiberry.sock`) — works under Wayland where `grim`/`gnome-screenshot` are blocked. See [headless Amiberry](../docs/getting-started/emulation-amiberry.md). | ✅ first-party |
+| [`host-net/amixsync.py`](host-net/amixsync.py) | Laptop↔Amix file bridge over **FTP** (push/pull; Amix is NFSv2-only). Companion to `host-net/amixsh.py` / `amixput.py`. | ✅ first-party |
+
 ## Quick start
 
 ```sh

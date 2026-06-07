@@ -241,6 +241,100 @@ floppy* instead of a live disk, see
 - **Boot-partition vs filesystem.** A kernel sitting on the filesystem is not enough; it must be
   written into the boot partition with `make bootpart` to actually boot ✅.
 
+## The "D245 boot-breaker" — an intermittent `ld` corruption
+
+This is a **load-bearing gotcha for anyone relinking the Amix kernel**, not just A4091 work. It was
+first-party reproduced locally on Amix 2.1c under Amiberry. If you ever see a kernel Guru at boot
+with `D245 4C41`, this section is the answer.
+
+### What it is *not* (a corrected misconception) 🔴
+
+🔴 Kernels that grew past a certain size Guru'd at boot with `D245 4C41`, and the cause was twice
+mis-attributed: first to the SCSI driver's **completion poll loop**, then to the **bootstrap
+relocator** misbehaving. **Both were wrong.** The constant `0xD2454C41` decodes as
+`"RELA" | AT_DeadEnd` — it is the **bootstrap relocator's own `Alert()`** in `amiga/boot/rel.c`,
+fired when `rel()` is handed a **corrupt kernel image** to relocate. So `D245` is a *symptom of a
+bad kernel binary*, not a bug in the relocator or in any driver. ✅
+
+The longword breaks down as: `0x52454C41` = ASCII `"RELA"`; setting bit 31 (`AT_DeadEnd`, the
+"unrecoverable" flag exec ORs into a deadly alert) yields `0xD2454C41`, displayed as `D245 4C41` in
+the Guru requester. ✅
+
+### What it actually is — `ld`'s write path corrupts the output ~70% of the time ✅
+
+✅ The real fault is an **intermittent corruption introduced when `ld` writes the linked kernel to
+disk**. About **70% of `make` runs** shift **one ~8 KB block of the output by 8 bytes**, at a
+random offset. If that shift lands in `.symtab` or `.rela.*`, the boot relocator chokes → `D245`:
+
+| Where the 8-byte shift lands | Effect at boot |
+|---|---|
+| `.symtab` | a reloc-referenced symbol gets a garbage `st_shndx` → `symvaddr` COMPLAIN → **D245** ✅ |
+| `.rela.*` | garbage relocation type/offset → `relocsection` COMPLAIN → **D245** ✅ |
+| `.text` / `.data` | wrong code/data, **no D245** — boots but is subtly broken / may wild-branch ✅ |
+
+✅ It is **code-independent**. The same source relinked 10× gave **3 byte-identical clean** builds
+(all `sum -r` = the same value) and **7 corrupt** builds, each with a *different* `sum`. Copying the
+*same* file with `cp`, `dd`, or FTP is **always clean**, which localises the corruption to `ld`'s
+own write path (emulated-disk or SVR4 `ld` buffer interaction).
+
+🟡 The **root layer is unconfirmed** — whether it originates in the emulated disk write, the SVR4
+`ld` buffering, or their interaction is not yet pinned down, and this has not been observed on real
+hardware. Keep it 🟡: it is reproduced in emulation but the underlying mechanism is inferred.
+
+### The fix — build until the checksum is stable ✅
+
+✅ A clean `ld` output is **byte-deterministic**; each corruption is **random and unique**.
+Therefore **a checksum (`sum -r`) that *recurs* is the deterministic clean kernel.**
+[`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
+(runs **on** the Amix box) relinks (link-only, no install) until a `sum -r` value repeats, then
+confirms with [`tools/checkunix.c`](https://github.com/Jusii/grimoire-amix/blob/master/tools/checkunix.c),
+leaving a verified-clean `relocunix`:
+
+```sh
+sh /root/build-clean-kernel.sh    # exit 0 = clean relocunix ready; 1 = could not stabilize in 25 builds
+```
+
+> **Never `make install` an unverified kernel.** A corrupt kernel written to the boot partition will
+> brick the boot disk (see the safety rule on the [boot process](../how-it-works/boot-process.md)
+> page). Always clean-gate first, and install onto a backup/throwaway disk. ✅
+
+Two complementary detectors exist:
+
+| Detector | What it checks | Trade-off |
+|---|---|---|
+| [`tools/checkunix.c`](https://github.com/Jusii/grimoire-amix/blob/master/tools/checkunix.c) | native big-endian `.symtab` integrity (flags out-of-range `st_shndx`) | **fast**, runs on the box, but **symtab-only** — misses `.rela`/`.text` shifts ✅ |
+| [`tools/relsim.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/relsim.py) | host-side reimplementation of the boot relocator `rel()` | **full offline `D245` oracle** — checks `.symtab` **and** relocation records ✅ |
+
+Build `checkunix` natively (`cc -O -o checkunix checkunix.c`) and run it on the box; run `relsim.py`
+on the host against a **pulled** kernel ELF:
+
+```sh
+# on the host, against a kernel pulled off the box:
+python3 tools/relsim.py relocunix
+```
+
+### Build-system corollary — `make` does not reliably recompile a changed `.c` ✅
+
+✅ Plain `cd /usr/sys; make` does **not** reliably pick up an edited source file: the per-subsystem
+`exp` prelink chain has **incomplete dependencies**, so a changed `.c` (or a changed `/stand/CONFIG`)
+is silently ignored. After editing, for example, `amiga/kernel/support.c`, you must `rm` the stale
+`.o` **and** the subsystem `exp` **and** `amiga/exp` before `make`:
+
+```sh
+cd /usr/sys
+rm amiga/kernel/support.o amiga/kernel/exp amiga/exp     # stale .o + subsystem exp + top-level exp
+make
+```
+
+Then **confirm the change took effect by the kernel `sum` changing** — if `sum -r relocunix` is
+unchanged, your edit was not compiled in. ✅
+
+Two more SVR4-box gotchas that bite build scripts ✅:
+
+- **`/tmp` is wiped on reboot** — keep build scripts and saved checksums in `/root`, not `/tmp`.
+- **SVR4 `grep` has no `\|` alternation** — use separate `grep` invocations instead of one
+  alternation pattern. (This is in addition to the pre-POSIX `/bin/sh` limits noted above.)
+
 ## See also
 
 - [Driver model overview](driver-model.md) — what `cdevsw`/`bdevsw`, majors/minors, and the
@@ -267,3 +361,16 @@ floppy* instead of a live disk, see
 - Master research brief §3 (boot process / kernel install flow), §4 (kernel architecture),
   §5 (driver model / "Adding a driver"), §6 (VA2000 patch set), §13 (open questions:
   `rdbunix`/`relocunix` rename).
+- The A4091-on-Amix project — `NOTES.md` §17–§18 (the `D245` boot-breaker: relocator `Alert()`
+  mechanism, the intermittent ~70% `ld`-write corruption, the build-until-stable gate; reproduced
+  locally ✅) and the handoff brief §5/§10, plus `src/`/`tools/`.
+- [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
+  — the relink-until-`sum -r`-recurs clean-gate that dodges the `D245` corruption.
+- [`tools/checkunix.c`](https://github.com/Jusii/grimoire-amix/blob/master/tools/checkunix.c)
+  — native big-endian `.symtab` integrity detector (`0x52454C41 | AT_DeadEnd` == `D245`; build with
+  `cc -O -o checkunix checkunix.c`).
+- [`tools/relsim.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/relsim.py)
+  — host-side reimplementation of the boot relocator `rel()`; the full offline `D245` oracle
+  (symtab **and** relocation records).
+- a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + SCRIPTS
+  assembler), referenced by the A4091-on-Amix work.

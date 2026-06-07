@@ -115,6 +115,70 @@ Treat this as a **historical rename** and verify per version — `rdbunix` for t
 
 **Note:** Always keep the old working `/unix` (or boot partition image) as a fallback before writing a freshly built kernel — a broken boot partition means a machine that won't come up ✅.
 
+## Booting Amix with root on an A4091 (and the rootdev dispatch trap)
+
+Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../drivers/a4091-53c710-driver.md) — a Zorro III board Amix shipped with **no driver** for — turned out to hinge not on the driver but on **how the kernel turns the compiled-in root device number into a SCSI card**. This section documents that dispatch path and the panic it produced. All findings here were reproduced locally in Amiberry on the real Amix 2.1c distribution unless tagged otherwise.
+
+### Where the root device comes from: `/stand/CONFIG` → `rootdev`
+
+The root device is **compiled into the kernel**, not discovered at boot. It is declared in `amiga/config/unix.c` and fed from the system configuration (`/stand/CONFIG`) via `-DROOTDEV` ✅:
+
+```c
+/* amiga/config/unix.c */
+dev_t    rootdev = ROOTDEV;     /* device of the root, from -DROOTDEV */
+```
+
+A concrete config variant (`amiga/config/c6s1unix.c`) spells out the device numbers it builds ✅:
+
+```c
+#define C6D0S1 makedevice(18, 22)
+dev_t    rootdev = C6D0S1;       /* root on card 0, target 6, slice 1 */
+
+struct bootobj swapfile = { "", "/dev/dsk/c6d0s2", ... };   /* swap */
+```
+
+So `rootdev = c6d0s1 = makedevice(18, 22)` (block major **18**, minor **22**), and swap is `c6d0s2`. The `cN` in a device name is **computed, not stored**: `cN = sdcard * 8 + sdunit` — so `c6d0s1` decodes to **card 0, target 6, slice 1**. The minor-number fields are decoded in `amiga/alien/sd.h` ✅:
+
+```c
+#define SDCARDS   2
+#define sdunit(dev)  ((dev)>>0 & 07)   /* SCSI target id 0-7         */
+#define sdcard(dev)  ((dev)>>3 & 01)   /* card index (queue[] slot)  */
+#define sdpart(dev)  ((dev)>>4 & 07)   /* slice/partition            */
+```
+
+The `sdcard` field is the index into the SCSI driver's per-card queue table (only `0` or `1`; `SDCARDS = 2`). Which physical board ends up at card 0 vs card 1 is decided at first root open — and that is exactly where the A4091 boot trap lived. For the full `/dev` major/minor scheme see [the device list reference](../reference/device-list.md).
+
+### 🔴 The mountroot panic was a dispatch bug, not a driver bug
+
+🔴 **What we believed, and why it was wrong:** booting an A4091-only machine panicked at `vfs_mountroot` with `s5mountroot VOP_OPEN error 5`. We assumed an **early-boot driver / `sptalloc`-timing** problem — that the new 53C710 driver couldn't read the disk that early in boot. **Wrong.** The A4091 driver reads perfectly *post-boot* (`rc=0`), and the panic produced **zero** driver diagnostics — meaning the driver was *never called* at all. ✅
+
+🔴 **What it actually is — the phantom A3000.** `autocon()` (`amiga/kernel/support.c`) hardcoded a **phantom A3000 internal SCSI** at `0xDD0000` whenever RAM > 7 MB, *regardless of whether that hardware exists* ✅:
+
+```c
+if (index==0 && end > (char *)0x07000000 && (pc==0x0202F003)) { *bp = 0xdd0000; return 1; }
+```
+
+`sd.c init()`/`insert()` sorts cards ascending by board base address. The phantom's `0xDD0000` sorts before the A4091's `0x40000000`, so:
+
+- `queue[0]` = card 0 = phantom A3000 (no hardware) → `a3091queue`
+- `queue[1]` = card 1 = A4091 → `a4091queue`
+
+The compiled-in `rootdev = c6d0s1` decodes to `sdcard = 0`, so the kernel sent the root read to the **non-existent A3000** (`a3091queue`, no hardware) → EIO → panic — **never reaching `a4091queue`** (which is why there were zero A4091 driver lines on the panic). ✅ This is documented in [the Zorro III autoconfig page](../drivers/zorro-autoconfig.md), which covers `autocon()` and the phantom-A3000 special case.
+
+✅ **The fix.** The phantom is replaced by a **chipset-gated WD33C93 probe** that makes the A4091 card 0 when no real A3000 SCSI is present. With the A4091 at card 0, the compiled-in `rootdev = c6d0s1`, `swap = c6d0s2`, and `/etc/vfstab` all resolve to the A4091, and **Amix boots fully from the A4091** — root read/write, swap active, multi-user. ✅ See the detection logic on [the Zorro III autoconfig page](../drivers/zorro-autoconfig.md).
+
+### The mountroot fstype probe sequence
+
+The panic surfaces through `vfs_mountroot`'s filesystem-type probe, which tries `s5` then `nfs`. The full console sequence is ✅:
+
+```
+s5mountroot VOP_OPEN error 5
+WARNING: nfs_mountroot called
+PANIC: vfs_mountroot: cannot mount root: errno 89
+```
+
+The first message comes from the `s5` probe, the second from the `nfs` fallback, and `errno 89` (`ENOSYS`/no more fstypes) is the final give-up. The important point for diagnosis: the **EIO is a genuine device read failure** (`VOP_OPEN error 5` = `EIO`), surfaced by whichever fstype happens to probe first — *not* a filesystem-format mismatch. The real root filesystem is **`ufs`**, confirmed by `/etc/vfstab` ✅. Seeing `s5mountroot` in the message does not mean the disk is s5; it means s5 was simply the first probe to hit the dead device.
+
 ## The install kernel on boot.adf
 
 During installation the kernel does **not** come from the hard disk's boot partition — it comes from the boot floppy (`amix_21_boot.adf`) in DF0. That floppy carries a special **NFS/RPC-capable install kernel** ✅: alongside the decompression/checksum strings, the bootstrap region contains a full **RPC/NFS client string table**, consistent with an installer that can pull the distribution over the network as well as from tape. The normal end-to-end install sequence (boot floppy → UFS miniroot on `root.adf` → tape at SCSI ID 4 → `make bootpart` → reboot) is described in [filesystems and disks](filesystems-and-disks.md) and the [install walkthrough](../getting-started/install-walkthrough.md).
@@ -148,6 +212,9 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - [Hardware and requirements](hardware.md) — Superkickstart ROM, SCSI ID 6/ID 4, the 16 MB ceiling.
 - [Quirks checklist](quirks.md) — the dual-boot button and other surprises in one place.
 - [Install walkthrough](../getting-started/install-walkthrough.md) — running the whole flow under emulation.
+- [The A4091 (53C710) SCSI driver](../drivers/a4091-53c710-driver.md) — the driver behind the root-on-A4091 boot.
+- [Zorro III autoconfig and `autocon()`](../drivers/zorro-autoconfig.md) — the phantom-A3000 special case and the chipset-gated A4091 detection.
+- [Device list reference](../reference/device-list.md) — the SCSI `/dev` major/minor scheme behind `cN d0 sN`.
 
 ## Sources
 
@@ -157,3 +224,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (the `rdbunix` kernel image name; statically linked monolithic kernel; `make` in `/usr/sys`).
 - Modern driver repos for the `relocunix` / `make bootpart KERNEL=relocunix` flow: <https://github.com/asokero/va2000-amix>, <https://github.com/isoriano1968/hydra-amix>.
 - amigaunix.com (Superkickstart dual-boot via right mouse button, hardware requirements): <https://www.amigaunix.com/>.
+- The A4091-on-Amix project — `NOTES.md` §16, §18, §19 (root-on-A4091 / mountroot dispatch trap, reproduced locally ✅) and `src/`/`tools/`.
+- `amiga/config/unix.c` (`rootdev = ROOTDEV`, `-DROOTDEV`) and `amiga/config/c6s1unix.c` (`C6D0S1 = makedevice(18,22)`, swap `c6d0s2`); `amiga/alien/sd.h` (`SDCARDS`, `sdunit`/`sdcard`/`sdpart` macros).
+- `src/kernel-patches/support.c` — the `autocon()` phantom-A3000 fix replaced by the chipset-gated WD33C93 probe; `src/kernel-patches/sd.c` — the `0x02020054,&a4091queue` registry row; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
+- a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).

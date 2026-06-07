@@ -39,6 +39,7 @@ order=(
   docs/drivers/case-studies/xrtg.md
   docs/drivers/case-studies/lszorro.md
   docs/drivers/case-studies/hydra.md
+  docs/drivers/a4091-53c710-driver.md
   docs/boot-disks/anatomy-boot-adf.md
   docs/boot-disks/anatomy-root-adf.md
   docs/boot-disks/anatomy-patch-adf.md

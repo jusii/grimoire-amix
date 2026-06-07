@@ -65,6 +65,76 @@ unbootable; the Ditto paper makes this explicit ✅. A STREAMS/network driver bu
 natively, `make` in the driver dir then `make force` to relink (`elf2brel` converts the kernel to
 boot format in the process); see the [Hydra case study](../drivers/case-studies/hydra.md).
 
+### Installing a kernel into the Amix boot partition ✅
+
+What `make bootpart` actually does, and how to do it by hand for a *different* disk — verified
+first-party on Amix 2.1c (the A4091 work used this exact pipeline to install a driver-modified
+kernel onto a separate boot disk).
+
+The full install flow from `/usr/sys` is two stages ✅:
+
+```sh
+cd /usr/sys
+make install          # stages the linked kernel to /stand (preserves the old one as /stand/OLDunix)
+cd /stand
+make bootpart         # writes the boot payload into BOOTPART (default /dev/dsk/c6d0s3)
+```
+
+`make bootpart` `dd`s a **concatenated five-part image** to the boot partition ✅ — each file
+preceded by its own **`IBLK` infoblock**:
+
+```sh
+# what `make bootpart` does, expanded (BOOTPART = /dev/dsk/c6d0s3 by default):
+( cat boot1.boot; ./makeiblk boot2.boot; cat boot2.boot; ./makeiblk unix; cat unix ) \
+  | dd conv=sync of=/dev/dsk/c6d0s3
+```
+
+`makeiblk` is the **same `IBLK` infoblock tool** that the boot-floppy format is built from — the
+512-byte `struct infoblock` (magic `IBLK`, compressed/decompressed lengths, checksum) that precedes
+each file the bootstrap loads. See
+[Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md#the-iblk-descriptor-and-the-overrun-trap)
+for the on-disk descriptor layout and the SVR4-`sum` checksum it carries. (On the boot partition the
+kernel is stored **uncompressed**; on the boot *floppy* it is `compress`'d. The `IBLK` framing is the
+same; only the payload differs.) ✅
+
+#### Targeting a *different* disk's boot partition ✅
+
+`make install` always writes **whatever disk the box booted from** (it resolves `BOOTPART` to the
+running root's boot slice — `c6d0s3`). To install a kernel onto **another** disk's boot partition —
+for example an A4091 disk mounted as card 1, whose boot slice is `c8d0s3` — run the pipeline **by
+hand** and never plain `make install` ✅:
+
+```sh
+cd /stand
+( cat boot1.boot; ./makeiblk boot2.boot; cat boot2.boot; ./makeiblk unix; cat unix ) \
+  | dd conv=sync of=/dev/dsk/c8d0s3
+```
+
+This is exactly the trick used to build an A4091-bootable disk from a separate A3000 build host: the
+build environment mounts both disks, links the kernel against the A3000 root, then writes the
+*A4091* disk's boot slice (`c8d0s3`) by hand. (`c8` = card 1, target 0; `c6` = card 0, target 6 —
+see the [A4091/53C710 driver](../drivers/a4091-53c710-driver.md) for the SCSI `cN` device-numbering
+scheme.) Plain `make install` here would have rewritten the *build host's* own boot partition. ✅
+
+#### ✅ Safety rule: never `make install` an unverified kernel onto your working disk
+
+`make install` / `make bootpart` **rewrites the boot partition in place**. If the kernel you install
+is corrupt, the next boot **bricks that disk** — the bootstrap relocator chokes and you get a
+`D245 4C41` Guru with no usable system. This is not hypothetical: the Amix kernel link suffers an
+intermittent (~70%) `ld` write-corruption that produces exactly such a kernel. Three rules ✅:
+
+1. **Always clean-gate the build** — relink until the kernel checksum recurs, which proves a clean
+   `ld` output, before you install it. See the
+   [D245 boot-breaker and the build-until-stable clean-gate](../drivers/kernel-build.md) on the
+   kernel-build page (and [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)).
+2. **Keep a backup HDF** of your working disk before any boot-partition write — recovery is a file
+   copy, not a reinstall.
+3. **Install onto a throwaway / clone disk**, not your daily driver — use the by-hand `c8d0s3`
+   pipeline above to target the clone, never `make install`.
+
+Never `make install` a test or diagnostic kernel (one with `printf` tracing, a half-finished driver,
+an unverified link) onto the disk you actually rely on. ✅
+
 ## Surface (b): a custom bootable floppy — solved ✅🟡
 
 The boot floppy is no longer a black box. From the [reverse-engineering writeup](reverse-engineering-boot-adf.md):
@@ -147,8 +217,11 @@ these are the remaining loose ends, none blocking:
   next validation.
 - 🟡 **Full install** through the tape stage needs A3000 SCSI/tape emulation (see
   [Amiberry status](../getting-started/emulation-amiberry.md)).
-- 🔴 **Exact RDB partition type IDs** Amix uses (boot vs swap vs UFS) are undocumented — relevant only
-  if you script creating a boot *partition* from scratch rather than letting the installer do it.
+- ✅ **RDB partition type IDs** Amix uses are now known — read from the installer (`/etc/rdb -F`): boot
+  `0x554e4900` (`UNI\0`), UNIX root `0x554e4901` (`UNI\1`), swap `0x72657376` (`resv`); see
+  [the boot process](../how-it-works/boot-process.md) and
+  [root floppy anatomy](anatomy-root-adf.md#rdb-partition-type-tags). Relevant if you script creating a
+  boot *partition* from scratch rather than letting the installer do it.
 
 If you boot-test a rebuilt floppy, or pin the checksum, please contribute the result back.
 
@@ -157,6 +230,8 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
 - [Building & installing a kernel](../drivers/kernel-build.md) — the relink all three surfaces share.
 - [Anatomy of the boot ADF](anatomy-boot-adf.md) / [patch ADF](anatomy-patch-adf.md) — the formats built here.
 - [The build pipeline](build-pipeline.md) — the `tools/` end-to-end.
+- [The A4091/53C710 driver](../drivers/a4091-53c710-driver.md) — the SCSI `cN` device-numbering scheme
+  and a worked case of installing a driver kernel onto a separate boot disk via `c8d0s3`.
 - [VA2000 case study](../drivers/case-studies/va2000.md) · [Hydra case study](../drivers/case-studies/hydra.md).
 
 ## Sources
@@ -166,6 +241,15 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
   host-verified round-trip via `tools/extract-kernel.sh` + `tools/build-bootfloppy.sh`.
 - Kernel relink flow (`/usr/sys` → `make force` / `relocunix` → `make bootpart`; keep old `/unix`) —
   Ditto paper; research brief §3, §5, §6.
+- **Installing a kernel into the boot partition** (the `make install` → `cd /stand; make bootpart`
+  flow; the five-part `boot1 + makeiblk(boot2) + boot2 + makeiblk(unix) + unix` `dd` to
+  BOOTPART = `/dev/dsk/c6d0s3`; the by-hand `c8d0s3` pipeline for a *different* disk; the
+  "never `make install` an unverified kernel" safety rule) — The A4091-on-Amix project,
+  `NOTES.md` §11 (build/install flow), §16 + §18 (boot-partition write bricks a disk; D245 `ld`
+  corruption), §19 (the by-hand `c8d0s3` install onto a separate disk) — reproduced locally ✅;
+  handoff §8;
+  [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
+  is the clean-gate that proves a kernel safe to install.
 - Patch-disk self-extraction model — `amix_21_patch.adf` analysis; research brief §10;
   [`tools/build-custom-bootdisk.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-custom-bootdisk.sh).
 - VA2000 / Hydra driver-install procedures — research brief §6; repos

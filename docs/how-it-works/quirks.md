@@ -26,6 +26,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 10 | **`amixpkg` is widely reported broken** (the wrapper, not `pkgadd`) | 🟡 | [Install walkthrough](../getting-started/install-walkthrough.md) |
 | 11 | **Clock drift** via SCSI interaction | 🟡 | [Networking](networking.md) |
 | 12 | **`/bin/sh` is pre-POSIX**: no `$(...)`, no `grep -q` | ✅ | [Driver model](../drivers/driver-model.md), [Writing a char driver](../drivers/writing-a-char-driver.md) |
+| 13 | **Enabling DNS adds ~3 min to every boot** unless the boot-time `ifconfig`s (`S69inet` `lo0`, `network-config` `aen0`) use **literal IPs** instead of hostnames | ✅ | [Networking](networking.md), [Networking on the LAN](../getting-started/networking-on-the-lan.md) |
 
 The rest of this page expands each item.
 
@@ -78,6 +79,32 @@ SLIP works but is **buggy: you must reboot between SLIP sessions** 🟡, and the
 ### 11. Clock drift via SCSI interaction 🟡
 
 The system clock **drifts**, reportedly because of an interaction with SCSI activity 🟡. On a networked box you'll want a time-sync workaround; combined with the Y2K issues below, treat timekeeping as something to actively manage rather than trust. See [networking](networking.md).
+
+### 13. Enabling DNS adds ~3 minutes to every boot ✅
+
+Turning DNS on (quirk 6 above) drops a hidden tax on the **boot path**: with DNS enabled the box stalls **~3 minutes** at `The system is coming up.  Please wait.` on *every* boot ✅ (reproduced locally on Amix 2.1c under Amiberry). Stock Amix, with DNS off, does not.
+
+The cause is two boot-time `ifconfig` calls that take **hostnames**, each forcing a `gethostbyname()` ✅:
+
+- `ifconfig lo0 localhost up` — in `/etc/rc2.d/S69inet`
+- ``ifconfig aen0 `uname -n` up -trailers`` — in `/etc/inet/network-config`
+
+Both run **before** the default route is installed (`route add default …` happens later, in `/etc/inet/rc.inet`). With DNS on, `gethostbyname()` tries DNS first, but there is no route to the nameservers yet, so each lookup burns the full resolver retransmit schedule — **~90 s each, ~180 s total** — before falling back to `/etc/hosts` ✅. With DNS off the same names resolve instantly from `/etc/hosts`, which is exactly why this trap appears **only after** you enable DNS.
+
+This is **independent of the `/etc/domain` weirdness** ✅: a box with an already-empty `/etc/domain` still hangs the full 180 s — the domain-append bug and this no-route hang are two different problems.
+
+**Fix (boot 210 s → 29 s; runtime DNS unaffected):** give both boot-time `ifconfig`s a **literal IP** so no resolver call happens before the network is up ✅:
+
+```
+# /etc/rc2.d/S69inet
+-   /usr/sbin/ifconfig lo0 localhost up
++   /usr/sbin/ifconfig lo0 127.0.0.1 up
+# /etc/inet/network-config
+-   /usr/sbin/ifconfig aen0 `uname -n` up -trailers
++   /usr/sbin/ifconfig aen0 <this-host-static-ip> up -trailers
+```
+
+`lo0` is always `127.0.0.1`; `aen0` uses the host's own static address (the one already in `/etc/hosts`). Configuring your own interface should never depend on a name service, so this is the correct design regardless — and DNS for clients/mail/etc. is untouched. Full procedure in [networking](networking.md) and [networking on the LAN](../getting-started/networking-on-the-lan.md).
 
 ## Time & Y2K quirks
 
@@ -133,3 +160,4 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (driver/kernel model behind the SCSI-ID and `/bin/sh` notes).
 - amigaunix.com DokuWiki — requirements, networking, x11, patch-disk, y2k-dst, tips-tricks, dual-boot pages (community-reported items): <https://www.amigaunix.com/doku.php/home>.
 - BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the SCSI IDs and RAM ceiling).
+- The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry isolated `S69inet` at 180 s; boot **210 s → 29 s** after switching the boot-time `ifconfig`s to literal IPs. Files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system (quirk 13).

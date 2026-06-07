@@ -41,6 +41,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [Case Study: xrtg-amix](docs/drivers/case-studies/xrtg.md): X11R5 server for the VA2000.
 - [Case Study: lszorro-amix](docs/drivers/case-studies/lszorro.md): userspace Zorro II scanner.
 - [Case Study: hydra-amix](docs/drivers/case-studies/hydra.md): STREAMS/DLPI Ethernet driver.
+- [Case Study: A4091 / 53C710 SCSI driver](docs/drivers/a4091-53c710-driver.md): booting Amix from a Zorro III A4091 — the 68030 TT-gap obstacle, sptalloc, the 53C710 SCRIPTS driver, and chipset-gated auto-detection (emulation-proven).
 
 ## Custom boot & install disks
 - [Anatomy of the Boot Floppy](docs/boot-disks/anatomy-boot-adf.md): bootblock + compressed kernel.

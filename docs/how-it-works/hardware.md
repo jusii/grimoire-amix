@@ -84,6 +84,17 @@ The Amix kernel **predates the 68040 MMU** and has no support for it (or the lat
 
 > **The blocker is the 68040 CPU, not the AGA chipset.** "No A4000" is about the processor/MMU, *not* AGA. An **030-based AGA** configuration (an accelerated A4000/030, or AGA in emulation) boots Amix to the **text console** fine 🟡 — AGA is **console-only**, though: Amix's **X11** server targets the supported display hardware (the **A2410** TIGA card, or the ECS framebuffer), not AGA. So with AGA you get the console but not X. (Operator-reported, 2026-06.)
 
+#### The AGA "white screen" was a Kickstart problem, not an Amix limit
+
+🔴/✅ **Corrected finding (A4091-on-Amix project, reproduced locally in Amiberry).** The earlier belief that "Amix won't boot on AGA — you just get a white screen" was **not** an Amix limitation. The white screen came from the **Kickstart 2.04 (A3000) ROM, which has no AGA support**. With **Kickstart 3.0 (A4000)** (r39.106) — or KS 3.1 A4000 — Amix boots on an AGA chipset fine, and its **console even works** ✅. KS 3.0 also runs on the A3000, so **one Kickstart *version* spans both machines** ✅. In other words, "Amix on AGA" needs an AGA-aware bootstrap ROM, nothing more.
+
+⚠️ **Do not conflate this with the 68040 limit above — they are separate facts.**
+
+- This AGA result is about the **chipset + bootstrap ROM**, and it was proven with an **030 + AGA emulation profile** (Amiberry `chipset=aga` + a 68030 CPU), **not** a real 68040 A4000 🟡.
+- A **real A4000 still has a 68040**, and Amix **still cannot run that CPU** (the MMU model differs — see above). The corrected finding does **not** mean "the A4000's 68040 works." It means: *the AGA chipset is fine with Amix once the bootstrap ROM understands AGA; the processor is the only remaining wall, and it is unmoved.*
+
+🟡 **Real-hardware validation is still pending** — a physical AGA-equipped, 68030-class machine (and a physical A4000+A4091) have not yet been booted; the result is emulation-proven only. The Kickstart matrix in [Amix on Amiberry](../getting-started/emulation-amiberry.md) encodes which ROM each chipset profile needs.
+
 ### No Zorro III — Zorro II only
 
 Amix supports **Zorro II expansion only**; it has **no Zorro III support**. ✅ The kernel's memory-mapping layer cannot address Zorro III space, and — critically — **that source was never shipped**, so the community cannot fix it. ✅ Any card you want to use must work in (or fall back to) **Zorro II** address ranges.
@@ -102,6 +113,7 @@ The following cards are known to work. Entries are ✅ unless tagged 🟡 (commu
 | A2090 | ✅ | A2500UX option |
 | A2091 | ✅ | A2500UX option |
 | GVP Series II | 🟡 | Needs a kernel rebuild + an RDB `dummy_handler` |
+| **A4091** | 🟡 | Zorro III SCSI-2 (NCR/Symbios **53C710**, AutoConfig product id `0x02020054`); driven by the modern [A4091 / 53C710 driver](../drivers/a4091-53c710-driver.md) — **boots Amix with root on the A4091** (emulation-proven; real-hardware pending) |
 
 ### Graphics
 
@@ -157,3 +169,5 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — `autocon()` Zorro II board discovery; device major/minor model.
 - Hardware/requirements pages on [amigaunix.com](https://www.amigaunix.com/doku.php/home) (community-reported items: GVP Series II, Picasso II/Piccolo/Domino, Ariadne I).
 - Card-specific repos: [`hydra-amix`](https://github.com/isoriano1968/hydra-amix), [`va2000-amix`](https://github.com/asokero/va2000-amix), [`xrtg-amix`](https://github.com/asokero/xrtg-amix).
+- The A4091-on-Amix project — `NOTES.md` §1, §7, §9 (reproduced locally in Amiberry on real Amix 2.1c ✅; real-hardware pending 🟡). A4091 product id `0x02020054`, the NCR/Symbios 53C710, and the chipset-gated (VPOSR `0xDFF004`) A3000-SCSI detection verified against `src/kernel-patches/sd.c` (the `scsicard[]` row), `src/kernel-patches/support.c` (the AGA/ECS chipset gate), and `src/a4091-wr.c` (the 53C710 driver).
+- a4091.device open-source project: [github.com/A4091/a4091-software](https://github.com/A4091/a4091-software) (A4091 autoboot ROM + the `ncr53cxxx` SCRIPTS assembler).

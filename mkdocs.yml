@@ -86,6 +86,7 @@ nav:
       - "Case study: xrtg": drivers/case-studies/xrtg.md
       - "Case study: lszorro": drivers/case-studies/lszorro.md
       - "Case study: hydra": drivers/case-studies/hydra.md
+      - "Case study: A4091 / 53C710 SCSI": drivers/a4091-53c710-driver.md
   - Boot & install disks:
       - Boot floppy anatomy: boot-disks/anatomy-boot-adf.md
       - Root floppy anatomy: boot-disks/anatomy-root-adf.md

@@ -169,6 +169,55 @@ nameserver 192.168.2.23
 EOF
 ```
 
+> **⚠️ Also fix the boot-time `ifconfig`s, or every boot gets ~3 min slower.** As
+> soon as DNS is enabled (the `libsockdns` link above), the two `ifconfig` calls
+> that bring up `lo0` and `aen0` at boot **each hang ~90 s** (~180 s total), because
+> they take **hostnames**, and `gethostbyname()` now tries **DNS first** — but they
+> run *before* the default route is installed (`route add default …` is later, in
+> [`/etc/inet/rc.inet`](#3b-default-route-in-etcinetrcinet)), so with no route to the
+> nameservers each lookup burns the full resolver retransmit schedule before falling
+> back to `/etc/hosts`. Stock (DNS-off) Amix resolves these names from `/etc/hosts`
+> instantly, which is exactly why the trap appears **only after** you enable DNS, and
+> why the [Step 3a `/etc/inet/hosts`](#3a-etcinethosts-the-key-to-boot-time-bring-up)
+> recipe is *not* enough on its own once DNS is on. The fix is to give both boot-time
+> `ifconfig`s a **literal IP** so no resolver call happens before the network is up
+> (boot **210 s → 29 s**; runtime DNS for clients/mail is untouched). ✅
+
+```sh
+# /etc/rc2.d/S69inet        -- the loopback bring-up
+-   /usr/sbin/ifconfig lo0 localhost up
++   /usr/sbin/ifconfig lo0 127.0.0.1 up
+
+# /etc/inet/network-config  -- the aen0 bring-up (replaces the `uname -n` from Step 3a)
+-   /usr/sbin/ifconfig aen0 `uname -n` up -trailers
++   /usr/sbin/ifconfig aen0 192.168.2.38 up -trailers   # this host's static IP, literal
+```
+
+`lo0` is always `127.0.0.1`; `aen0` uses this host's own static address (the same
+`.38` already in `/etc/inet/hosts`). Configuring your own interface should never
+depend on a name service, so this is the correct design regardless. ✅
+
+> **Editing gotchas for `/etc/rc2.d/S69inet` — read before you `sed`:**
+>
+> - **`S69inet` is a hardlink.** The same inode is also `/etc/init.d/inetinit`. Edit
+>   it **in place** so both names stay in sync — `sed` to a temp then `cat >` the
+>   original, or use `ed`. Do **not** `mv`/unlink and recreate, or you break the link
+>   and `inetinit` keeps the old (slow) behaviour:
+>   ```sh
+>   sed 's/ifconfig lo0 localhost up/ifconfig lo0 127.0.0.1 up/' \
+>       /etc/rc2.d/S69inet > /tmp/S69inet.new && cat /tmp/S69inet.new > /etc/rc2.d/S69inet
+>   ```
+> - **Never leave a backup named `S*` inside `/etc/rc2.d/`.** `rc2` runs
+>   `for f in /etc/rc2.d/S*` at boot, so a copy like `S69inet.bak` or `S69inet.orig`
+>   **gets executed too** (verified against the live `/etc/rc2` glob). Park backups
+>   **outside** that directory:
+>   ```sh
+>   cp /etc/rc2.d/S69inet /root/S69inet.orig     # NOT /etc/rc2.d/S69inet.orig
+>   ```
+> - This no-route boot hang is **independent of** the `/etc/domain` "general
+>   weirdness" below — a box with an already-empty `/etc/domain` still hangs the full
+>   180 s. They are two different problems; fix both. ✅
+
 > **Gotcha — leave the domain UNSET (`/etc/domain`).** This is the documented Amix
 > "[general weirdness](https://www.amigaunix.com/doku.php/networking)": if a domain
 > is set, the resolver **appends it to every lookup — even fully-qualified names** —
@@ -235,7 +284,7 @@ Useful for automation / agents driving Amix without a visible window:
 - [Networking (concepts)](../how-it-works/networking.md) — the SVR4 STREAMS stack, `aen0`, DNS-off-by-default, the `route` metric.
 - [Amix on Amiberry (status)](emulation-amiberry.md) — what runs vs. what needs WinUAE/FS-UAE.
 - [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
-- [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap.
+- [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap, and the **DNS-enable slow-boot** (literal-IP `ifconfig` fix).
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) — the community source that documents the `/etc/domain` "general weirdness".
 
 ## Sources
@@ -244,4 +293,5 @@ Useful for automation / agents driving Amix without a visible window:
 - Amiberry 8.0.0 release + PRs [#1784](https://github.com/BlitterStudio/amiberry/pull/1784) (TAP backend, `a2065=tap0`/`a2065=br0`), [#1777](https://github.com/BlitterStudio/amiberry/pull/1777) (PCAP bridged rewrite), [#1774](https://github.com/BlitterStudio/amiberry/pull/1774) (config parse fix). Source: `src/cfgfile.cpp`, `src/ethernet.cpp`, `src/osdep/amiberry_uaenet.cpp`, `src/a2065.cpp`.
 - Amix boot path: `/etc/inittab` (`S2::sysinit:/etc/sysinit`), `/etc/sysinit` (`domainname \`cat /etc/domain\``), `/etc/init.d/inetinit`, `/etc/inet/network-config` (`ifconfig aen0 \`uname -n\` up -trailers`), `/etc/inet/rc.inet` — read directly off the running system.
 - DNS enable: `/etc/netconfig.DNS` (adds `/usr/lib/resolv.so`), `/usr/lib/libsockdns.so` — present on the install; the `domain`-append behaviour matches [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) and was confirmed via a `gethostbyname()` probe.
+- DNS-enable slow-boot + literal-IP fix: The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅) — instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry, isolating the ~180 s hang to the two boot-time `gethostbyname()` calls; boot **210 s → 29 s** after the fix. `/etc/rc2.d/S69inet` (hardlinked to `/etc/init.d/inetinit`), `/etc/inet/network-config` (`ifconfig aen0 \`uname -n\`` → literal IP), `/etc/inet/rc.inet` (default route runs *after* `network-config`) — read directly off the running system; `for f in /etc/rc2.d/S*` glob confirms backup S\* files execute at boot.
 - Research brief §11 (networking) and the conceptual [networking page](../how-it-works/networking.md).

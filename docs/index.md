@@ -38,7 +38,7 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 [Kernel build](drivers/kernel-build.md) →
 [Char driver (par.c)](drivers/writing-a-char-driver.md) or
 [STREAMS driver (hydra)](drivers/writing-a-streams-driver.md) →
-[Toolchain](drivers/toolchain.md) → the [case studies](drivers/case-studies/va2000.md).
+[Toolchain](drivers/toolchain.md) → the [case studies](drivers/case-studies/va2000.md), incl. the [A4091 / 53C710 SCSI driver](drivers/a4091-53c710-driver.md) (booting Amix from a Zorro III card).
 
 **I want to ship drivers to users** → [Boot floppy anatomy](boot-disks/anatomy-boot-adf.md) →
 [Reverse-engineering the boot floppy](boot-disks/reverse-engineering-boot-adf.md) →
@@ -78,7 +78,8 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 Case studies: [va2000](drivers/case-studies/va2000.md) ·
 [xrtg](drivers/case-studies/xrtg.md) ·
 [lszorro](drivers/case-studies/lszorro.md) ·
-[hydra](drivers/case-studies/hydra.md)
+[hydra](drivers/case-studies/hydra.md) ·
+[A4091 / 53C710](drivers/a4091-53c710-driver.md)
 
 ### Custom boot & install disks
 [Boot floppy](boot-disks/anatomy-boot-adf.md) ·

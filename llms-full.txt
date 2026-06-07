@@ -236,6 +236,17 @@ The Amix kernel **predates the 68040 MMU** and has no support for it (or the lat
 
 > **The blocker is the 68040 CPU, not the AGA chipset.** "No A4000" is about the processor/MMU, *not* AGA. An **030-based AGA** configuration (an accelerated A4000/030, or AGA in emulation) boots Amix to the **text console** fine 🟡 — AGA is **console-only**, though: Amix's **X11** server targets the supported display hardware (the **A2410** TIGA card, or the ECS framebuffer), not AGA. So with AGA you get the console but not X. (Operator-reported, 2026-06.)
 
+#### The AGA "white screen" was a Kickstart problem, not an Amix limit
+
+🔴/✅ **Corrected finding (A4091-on-Amix project, reproduced locally in Amiberry).** The earlier belief that "Amix won't boot on AGA — you just get a white screen" was **not** an Amix limitation. The white screen came from the **Kickstart 2.04 (A3000) ROM, which has no AGA support**. With **Kickstart 3.0 (A4000)** (r39.106) — or KS 3.1 A4000 — Amix boots on an AGA chipset fine, and its **console even works** ✅. KS 3.0 also runs on the A3000, so **one Kickstart *version* spans both machines** ✅. In other words, "Amix on AGA" needs an AGA-aware bootstrap ROM, nothing more.
+
+⚠️ **Do not conflate this with the 68040 limit above — they are separate facts.**
+
+- This AGA result is about the **chipset + bootstrap ROM**, and it was proven with an **030 + AGA emulation profile** (Amiberry `chipset=aga` + a 68030 CPU), **not** a real 68040 A4000 🟡.
+- A **real A4000 still has a 68040**, and Amix **still cannot run that CPU** (the MMU model differs — see above). The corrected finding does **not** mean "the A4000's 68040 works." It means: *the AGA chipset is fine with Amix once the bootstrap ROM understands AGA; the processor is the only remaining wall, and it is unmoved.*
+
+🟡 **Real-hardware validation is still pending** — a physical AGA-equipped, 68030-class machine (and a physical A4000+A4091) have not yet been booted; the result is emulation-proven only. The Kickstart matrix in [Amix on Amiberry](../getting-started/emulation-amiberry.md) encodes which ROM each chipset profile needs.
+
 ### No Zorro III — Zorro II only
 
 Amix supports **Zorro II expansion only**; it has **no Zorro III support**. ✅ The kernel's memory-mapping layer cannot address Zorro III space, and — critically — **that source was never shipped**, so the community cannot fix it. ✅ Any card you want to use must work in (or fall back to) **Zorro II** address ranges.
@@ -254,6 +265,7 @@ The following cards are known to work. Entries are ✅ unless tagged 🟡 (commu
 | A2090 | ✅ | A2500UX option |
 | A2091 | ✅ | A2500UX option |
 | GVP Series II | 🟡 | Needs a kernel rebuild + an RDB `dummy_handler` |
+| **A4091** | 🟡 | Zorro III SCSI-2 (NCR/Symbios **53C710**, AutoConfig product id `0x02020054`); driven by the modern [A4091 / 53C710 driver](../drivers/a4091-53c710-driver.md) — **boots Amix with root on the A4091** (emulation-proven; real-hardware pending) |
 
 ### Graphics
 
@@ -309,6 +321,8 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — `autocon()` Zorro II board discovery; device major/minor model.
 - Hardware/requirements pages on [amigaunix.com](https://www.amigaunix.com/doku.php/home) (community-reported items: GVP Series II, Picasso II/Piccolo/Domino, Ariadne I).
 - Card-specific repos: [`hydra-amix`](https://github.com/isoriano1968/hydra-amix), [`va2000-amix`](https://github.com/asokero/va2000-amix), [`xrtg-amix`](https://github.com/asokero/xrtg-amix).
+- The A4091-on-Amix project — `NOTES.md` §1, §7, §9 (reproduced locally in Amiberry on real Amix 2.1c ✅; real-hardware pending 🟡). A4091 product id `0x02020054`, the NCR/Symbios 53C710, and the chipset-gated (VPOSR `0xDFF004`) A3000-SCSI detection verified against `src/kernel-patches/sd.c` (the `scsicard[]` row), `src/kernel-patches/support.c` (the AGA/ECS chipset gate), and `src/a4091-wr.c` (the 53C710 driver).
+- a4091.device open-source project: [github.com/A4091/a4091-software](https://github.com/A4091/a4091-software) (A4091 autoboot ROM + the `ncr53cxxx` SCRIPTS assembler).
 
 
 ================================================================================
@@ -432,6 +446,70 @@ Treat this as a **historical rename** and verify per version — `rdbunix` for t
 
 **Note:** Always keep the old working `/unix` (or boot partition image) as a fallback before writing a freshly built kernel — a broken boot partition means a machine that won't come up ✅.
 
+## Booting Amix with root on an A4091 (and the rootdev dispatch trap)
+
+Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../drivers/a4091-53c710-driver.md) — a Zorro III board Amix shipped with **no driver** for — turned out to hinge not on the driver but on **how the kernel turns the compiled-in root device number into a SCSI card**. This section documents that dispatch path and the panic it produced. All findings here were reproduced locally in Amiberry on the real Amix 2.1c distribution unless tagged otherwise.
+
+### Where the root device comes from: `/stand/CONFIG` → `rootdev`
+
+The root device is **compiled into the kernel**, not discovered at boot. It is declared in `amiga/config/unix.c` and fed from the system configuration (`/stand/CONFIG`) via `-DROOTDEV` ✅:
+
+```c
+/* amiga/config/unix.c */
+dev_t    rootdev = ROOTDEV;     /* device of the root, from -DROOTDEV */
+```
+
+A concrete config variant (`amiga/config/c6s1unix.c`) spells out the device numbers it builds ✅:
+
+```c
+#define C6D0S1 makedevice(18, 22)
+dev_t    rootdev = C6D0S1;       /* root on card 0, target 6, slice 1 */
+
+struct bootobj swapfile = { "", "/dev/dsk/c6d0s2", ... };   /* swap */
+```
+
+So `rootdev = c6d0s1 = makedevice(18, 22)` (block major **18**, minor **22**), and swap is `c6d0s2`. The `cN` in a device name is **computed, not stored**: `cN = sdcard * 8 + sdunit` — so `c6d0s1` decodes to **card 0, target 6, slice 1**. The minor-number fields are decoded in `amiga/alien/sd.h` ✅:
+
+```c
+#define SDCARDS   2
+#define sdunit(dev)  ((dev)>>0 & 07)   /* SCSI target id 0-7         */
+#define sdcard(dev)  ((dev)>>3 & 01)   /* card index (queue[] slot)  */
+#define sdpart(dev)  ((dev)>>4 & 07)   /* slice/partition            */
+```
+
+The `sdcard` field is the index into the SCSI driver's per-card queue table (only `0` or `1`; `SDCARDS = 2`). Which physical board ends up at card 0 vs card 1 is decided at first root open — and that is exactly where the A4091 boot trap lived. For the full `/dev` major/minor scheme see [the device list reference](../reference/device-list.md).
+
+### 🔴 The mountroot panic was a dispatch bug, not a driver bug
+
+🔴 **What we believed, and why it was wrong:** booting an A4091-only machine panicked at `vfs_mountroot` with `s5mountroot VOP_OPEN error 5`. We assumed an **early-boot driver / `sptalloc`-timing** problem — that the new 53C710 driver couldn't read the disk that early in boot. **Wrong.** The A4091 driver reads perfectly *post-boot* (`rc=0`), and the panic produced **zero** driver diagnostics — meaning the driver was *never called* at all. ✅
+
+🔴 **What it actually is — the phantom A3000.** `autocon()` (`amiga/kernel/support.c`) hardcoded a **phantom A3000 internal SCSI** at `0xDD0000` whenever RAM > 7 MB, *regardless of whether that hardware exists* ✅:
+
+```c
+if (index==0 && end > (char *)0x07000000 && (pc==0x0202F003)) { *bp = 0xdd0000; return 1; }
+```
+
+`sd.c init()`/`insert()` sorts cards ascending by board base address. The phantom's `0xDD0000` sorts before the A4091's `0x40000000`, so:
+
+- `queue[0]` = card 0 = phantom A3000 (no hardware) → `a3091queue`
+- `queue[1]` = card 1 = A4091 → `a4091queue`
+
+The compiled-in `rootdev = c6d0s1` decodes to `sdcard = 0`, so the kernel sent the root read to the **non-existent A3000** (`a3091queue`, no hardware) → EIO → panic — **never reaching `a4091queue`** (which is why there were zero A4091 driver lines on the panic). ✅ This is documented in [the Zorro III autoconfig page](../drivers/zorro-autoconfig.md), which covers `autocon()` and the phantom-A3000 special case.
+
+✅ **The fix.** The phantom is replaced by a **chipset-gated WD33C93 probe** that makes the A4091 card 0 when no real A3000 SCSI is present. With the A4091 at card 0, the compiled-in `rootdev = c6d0s1`, `swap = c6d0s2`, and `/etc/vfstab` all resolve to the A4091, and **Amix boots fully from the A4091** — root read/write, swap active, multi-user. ✅ See the detection logic on [the Zorro III autoconfig page](../drivers/zorro-autoconfig.md).
+
+### The mountroot fstype probe sequence
+
+The panic surfaces through `vfs_mountroot`'s filesystem-type probe, which tries `s5` then `nfs`. The full console sequence is ✅:
+
+```
+s5mountroot VOP_OPEN error 5
+WARNING: nfs_mountroot called
+PANIC: vfs_mountroot: cannot mount root: errno 89
+```
+
+The first message comes from the `s5` probe, the second from the `nfs` fallback, and `errno 89` (`ENOSYS`/no more fstypes) is the final give-up. The important point for diagnosis: the **EIO is a genuine device read failure** (`VOP_OPEN error 5` = `EIO`), surfaced by whichever fstype happens to probe first — *not* a filesystem-format mismatch. The real root filesystem is **`ufs`**, confirmed by `/etc/vfstab` ✅. Seeing `s5mountroot` in the message does not mean the disk is s5; it means s5 was simply the first probe to hit the dead device.
+
 ## The install kernel on boot.adf
 
 During installation the kernel does **not** come from the hard disk's boot partition — it comes from the boot floppy (`amix_21_boot.adf`) in DF0. That floppy carries a special **NFS/RPC-capable install kernel** ✅: alongside the decompression/checksum strings, the bootstrap region contains a full **RPC/NFS client string table**, consistent with an installer that can pull the distribution over the network as well as from tape. The normal end-to-end install sequence (boot floppy → UFS miniroot on `root.adf` → tape at SCSI ID 4 → `make bootpart` → reboot) is described in [filesystems and disks](filesystems-and-disks.md) and the [install walkthrough](../getting-started/install-walkthrough.md).
@@ -465,6 +543,9 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - [Hardware and requirements](hardware.md) — Superkickstart ROM, SCSI ID 6/ID 4, the 16 MB ceiling.
 - [Quirks checklist](quirks.md) — the dual-boot button and other surprises in one place.
 - [Install walkthrough](../getting-started/install-walkthrough.md) — running the whole flow under emulation.
+- [The A4091 (53C710) SCSI driver](../drivers/a4091-53c710-driver.md) — the driver behind the root-on-A4091 boot.
+- [Zorro III autoconfig and `autocon()`](../drivers/zorro-autoconfig.md) — the phantom-A3000 special case and the chipset-gated A4091 detection.
+- [Device list reference](../reference/device-list.md) — the SCSI `/dev` major/minor scheme behind `cN d0 sN`.
 
 ## Sources
 
@@ -474,6 +555,10 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (the `rdbunix` kernel image name; statically linked monolithic kernel; `make` in `/usr/sys`).
 - Modern driver repos for the `relocunix` / `make bootpart KERNEL=relocunix` flow: <https://github.com/asokero/va2000-amix>, <https://github.com/isoriano1968/hydra-amix>.
 - amigaunix.com (Superkickstart dual-boot via right mouse button, hardware requirements): <https://www.amigaunix.com/>.
+- The A4091-on-Amix project — `NOTES.md` §16, §18, §19 (root-on-A4091 / mountroot dispatch trap, reproduced locally ✅) and `src/`/`tools/`.
+- `amiga/config/unix.c` (`rootdev = ROOTDEV`, `-DROOTDEV`) and `amiga/config/c6s1unix.c` (`C6D0S1 = makedevice(18,22)`, swap `c6d0s2`); `amiga/alien/sd.h` (`SDCARDS`, `sdunit`/`sdcard`/`sdpart` macros).
+- `src/kernel-patches/support.c` — the `autocon()` phantom-A3000 fix replaced by the chipset-gated WD33C93 probe; `src/kernel-patches/sd.c` — the `0x02020054,&a4091queue` registry row; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
+- a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
 
 
 ================================================================================
@@ -834,6 +919,46 @@ Notes and caveats:
 > "general weirdness" on [amigaunix.com](https://www.amigaunix.com/doku.php/networking)
 > and confirmed first-hand.)
 
+> ⚠️ **Also fix the boot-time `ifconfig`s, or enabling DNS adds ~3 minutes to every
+> boot.** After enabling DNS via the procedure above, the box stalls **~3 minutes** at
+> `The system is coming up.  Please wait.` on *every* boot. Stock Amix (DNS off) does not.
+> Reproduced first-hand on Amix 2.1c under Amiberry, 2026-06-07 ✅.
+>
+> **Root cause** ✅: `/etc/rc2.d/S69inet` brings networking up with two `ifconfig` calls
+> that take **hostnames**, each forcing a `gethostbyname()`:
+> - `ifconfig lo0 localhost up` — in `S69inet` itself
+> - `ifconfig aen0 \`uname -n\` up -trailers` — in `/etc/inet/network-config`
+>
+> With DNS enabled, `gethostbyname()` tries **DNS first**, but these run *before* the
+> default route is installed (`route add default …` happens later, in
+> `/etc/inet/rc.inet`). With no route to the nameservers, each lookup burns the full
+> resolver retransmit schedule — **~90 s each, ~180 s total** — before falling back to
+> `/etc/hosts`. With DNS *off* (stock) the same names resolve instantly from `/etc/hosts`,
+> which is why the trap appears **only after** you enable DNS.
+>
+> This is **independent of the `/etc/domain` weirdness above** ✅ — a box with an
+> already-empty `/etc/domain` still hangs the full 180 s. They are two different problems;
+> fix both.
+
+**The fix — give both boot-time `ifconfig`s a literal IP** (boot **210 s → 29 s**; runtime DNS is unaffected) ✅. Configuring your own interface should never depend on a name service:
+
+```diff
+# /etc/rc2.d/S69inet
+-   /usr/sbin/ifconfig lo0 localhost up
++   /usr/sbin/ifconfig lo0 127.0.0.1 up
+
+# /etc/inet/network-config
+-   /usr/sbin/ifconfig aen0 `uname -n` up -trailers
++   /usr/sbin/ifconfig aen0 <this-host-static-ip> up -trailers
+```
+
+`lo0` is always `127.0.0.1`; `aen0` takes this host's own static address (the same one already in `/etc/hosts` — e.g. `192.168.2.38` in [the LAN setup](../getting-started/networking-on-the-lan.md)). Only the boot path stops calling the resolver; DNS for clients, mail, etc. is untouched ✅.
+
+> 🔗 **Edit `S69inet` in place** — it is a hardlink (the same inode is also
+> `/etc/init.d/inetinit`), so unlink/recreate would desync the two ✅. And never leave
+> backup copies named `S*` inside `/etc/rc2.d/` — `rc2`'s `for f in /etc/rc2.d/S*` glob
+> will run them at boot; park backups elsewhere ✅.
+
 For a complete, reproducible LAN setup (static IP at boot, gateway, DNS, internet, reachable inbound — all surviving reboot) under Amiberry, see **[Putting Amix on your real LAN](../getting-started/networking-on-the-lan.md)**.
 
 ## NFS (server and client)
@@ -884,6 +1009,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 | Enable DNS (1/2) | `ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so` + `/etc/resolv.conf` (nameservers only) | ✅ |
 | Enable DNS (2/2) | `cp /etc/netconfig.DNS /etc/netconfig` (activates `/usr/lib/resolv.so`) | ✅ |
 | **Unset domain** (or DNS breaks) | `cp /dev/null /etc/domain; domainname ""` — else it's appended to every lookup | ✅ |
+| **Fix slow boot after DNS** | literal IPs in boot `ifconfig`s: `lo0 127.0.0.1`, `aen0 <static-ip>` — else +180 s/boot | ✅ |
 | NFS export / mount | `share` / `shareall`; `mount -F nfs host:/path /mnt` | ✅ |
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
 | PPP | not available | ✅ |
@@ -910,6 +1036,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (cites the SVR4 *Streams Programmer's Guide* and *Network Programmer's Guide*).
 - [github.com/isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix)
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).
+- The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.
 
 
 ================================================================================
@@ -1094,6 +1221,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 10 | **`amixpkg` is widely reported broken** (the wrapper, not `pkgadd`) | 🟡 | [Install walkthrough](../getting-started/install-walkthrough.md) |
 | 11 | **Clock drift** via SCSI interaction | 🟡 | [Networking](networking.md) |
 | 12 | **`/bin/sh` is pre-POSIX**: no `$(...)`, no `grep -q` | ✅ | [Driver model](../drivers/driver-model.md), [Writing a char driver](../drivers/writing-a-char-driver.md) |
+| 13 | **Enabling DNS adds ~3 min to every boot** unless the boot-time `ifconfig`s (`S69inet` `lo0`, `network-config` `aen0`) use **literal IPs** instead of hostnames | ✅ | [Networking](networking.md), [Networking on the LAN](../getting-started/networking-on-the-lan.md) |
 
 The rest of this page expands each item.
 
@@ -1146,6 +1274,32 @@ SLIP works but is **buggy: you must reboot between SLIP sessions** 🟡, and the
 ### 11. Clock drift via SCSI interaction 🟡
 
 The system clock **drifts**, reportedly because of an interaction with SCSI activity 🟡. On a networked box you'll want a time-sync workaround; combined with the Y2K issues below, treat timekeeping as something to actively manage rather than trust. See [networking](networking.md).
+
+### 13. Enabling DNS adds ~3 minutes to every boot ✅
+
+Turning DNS on (quirk 6 above) drops a hidden tax on the **boot path**: with DNS enabled the box stalls **~3 minutes** at `The system is coming up.  Please wait.` on *every* boot ✅ (reproduced locally on Amix 2.1c under Amiberry). Stock Amix, with DNS off, does not.
+
+The cause is two boot-time `ifconfig` calls that take **hostnames**, each forcing a `gethostbyname()` ✅:
+
+- `ifconfig lo0 localhost up` — in `/etc/rc2.d/S69inet`
+- ``ifconfig aen0 `uname -n` up -trailers`` — in `/etc/inet/network-config`
+
+Both run **before** the default route is installed (`route add default …` happens later, in `/etc/inet/rc.inet`). With DNS on, `gethostbyname()` tries DNS first, but there is no route to the nameservers yet, so each lookup burns the full resolver retransmit schedule — **~90 s each, ~180 s total** — before falling back to `/etc/hosts` ✅. With DNS off the same names resolve instantly from `/etc/hosts`, which is exactly why this trap appears **only after** you enable DNS.
+
+This is **independent of the `/etc/domain` weirdness** ✅: a box with an already-empty `/etc/domain` still hangs the full 180 s — the domain-append bug and this no-route hang are two different problems.
+
+**Fix (boot 210 s → 29 s; runtime DNS unaffected):** give both boot-time `ifconfig`s a **literal IP** so no resolver call happens before the network is up ✅:
+
+```
+# /etc/rc2.d/S69inet
+-   /usr/sbin/ifconfig lo0 localhost up
++   /usr/sbin/ifconfig lo0 127.0.0.1 up
+# /etc/inet/network-config
+-   /usr/sbin/ifconfig aen0 `uname -n` up -trailers
++   /usr/sbin/ifconfig aen0 <this-host-static-ip> up -trailers
+```
+
+`lo0` is always `127.0.0.1`; `aen0` uses the host's own static address (the one already in `/etc/hosts`). Configuring your own interface should never depend on a name service, so this is the correct design regardless — and DNS for clients/mail/etc. is untouched. Full procedure in [networking](networking.md) and [networking on the LAN](../getting-started/networking-on-the-lan.md).
 
 ## Time & Y2K quirks
 
@@ -1201,6 +1355,7 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (driver/kernel model behind the SCSI-ID and `/bin/sh` notes).
 - amigaunix.com DokuWiki — requirements, networking, x11, patch-disk, y2k-dst, tips-tricks, dual-boot pages (community-reported items): <https://www.amigaunix.com/doku.php/home>.
 - BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the SCSI IDs and RAM ceiling).
+- The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry isolated `S69inet` at 180 s; boot **210 s → 29 s** after switching the boot-time `ifconfig`s to literal IPs. Files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system (quirk 13).
 
 
 ================================================================================
@@ -1711,18 +1866,129 @@ Amiberry 8.x added a real **A2065** Ethernet backend (TAP / PCAP), so an Amiberr
 genuine host on your LAN — static IP, gateway, DNS, internet. Full verified recipe:
 **[Putting Amix on your real LAN](networking-on-the-lan.md)**.
 
+## Running an A4091 under Amiberry
+
+Amiberry 8.x can also emulate the **A4091** — Commodore's Zorro III SCSI-2 host adapter built on the
+NCR/Symbios 53C710 — which Amix did not originally support. Pairing it with the
+[native 53C710 driver](../drivers/a4091-53c710-driver.md) lets Amix detect, use, and even **boot root
+from** an A4091 disk. ✅ (reproduced locally in Amiberry on Amix 2.1c)
+
+Expose the card with **`a4091_rom_file=`** pointing at the A4091 **autoboot ROM**
+(`amiga-boot-a4091.rom`, from the [`a4091-software`](https://github.com/A4091/a4091-software) repo) plus
+one or more `scsiN_a4091` hardfiles. A disk attached at **target 6** (`scsi6_a4091`) becomes a
+**`c6d0s1`-class** device **when the A4091 is the only SCSI card** (card index 0) ✅:
+
+```ini
+a4091_rom_file=scsi/amiga-boot-a4091.rom
+hardfile2=rw,DH0:/path/to/Amix-a4091.hdf,32,1,2,512,0,,scsi6_a4091
+uaehf0=hdf,rw,DH0:/path/to/Amix-a4091.hdf,32,1,2,512,0,,scsi6_a4091
+```
+
+> The product id the driver matches is **`0x02020054`** (Commodore `0x0202`, product `0x54`); the board
+> AutoConfigs at physical base **`0x40000000`** ✅. See the
+> [A4091/53C710 driver page](../drivers/a4091-53c710-driver.md) for the device-numbering scheme (when both
+> an A3000 SCSI and an A4091 are present, the A4091 sorts to card 1 and its disk shows up as
+> `c8d0s0`-class).
+
+> **Licensing.** The Amix HDFs **and** the A4091 ROM (`amiga-boot-a4091.rom`) are **not committed** to
+> this repo — supply your own. Get the A4091 autoboot ROM from the
+> [`a4091-software`](https://github.com/A4091/a4091-software) project (it ships the ROM image and the
+> `ncr53cxxx` SCRIPTS assembler), and your Amix disk image from your own install or
+> [amigaunix.com](https://www.amigaunix.com/doku.php/home).
+
+### The Kickstart matrix that matters
+
+Which machine profile + Kickstart combination boots is **not** about Amix itself — it's about whether the
+ROM supports the chipset. ✅
+
+| Machine profile | `chipset=` | Kickstart ROM | Amix boots? |
+|---|---|---|---|
+| A3000 | `ecs` | KS 2.04 (A3000) **or** KS 3.x | ✅ yes |
+| A4000 | `aga` | KS 2.04 | ❌ **white screen** — KS 2.04 has no AGA support |
+| A4000 | `aga` | **KS 3.0 (A4000)** r39.106, **or** KS 3.1 A4000 | ✅ yes |
+
+So for an **A4000/A4091** profile use `chipset=aga` **plus an A4000 3.x ROM** (KS 3.0 r39.106 or KS 3.1).
+The earlier "Amix won't run on AGA / white screen" belief was a Kickstart limitation, **not** an Amix one
+— with an A4000 3.x ROM, Amix boots on AGA and its console works. (KS 3.0 also runs on the A3000, so one
+KS *version* spans both machines.) 🔴/✅
+
+The project's working configs (in the A4091 repo; ROM/HDF paths point at user-supplied images):
+
+| Config file | Machine | Purpose |
+|---|---|---|
+| `amix-a4091-boot.uae` | A3000, `chipset=ecs`, KS 2.04, A3000 SCSI off | A4091-only boot (root on the A4091) |
+| `amix-a4091-boot-aga.uae` | A4000, `chipset=aga`, KS 3.0 r39.106 | A4000/AGA + A4091 boot |
+| `amix-dbg.uae` | A3000, `chipset=ecs`, `scsi_a3000=true` | A3000 root (`scsi6_a3000`) **+** A4091 as a second card (`scsi0_a4091`) — the build/diagnostic environment |
+
+## Headless / LLM-driven Amiberry
+
+For automation — CI, AFK agents, or an LLM driving the Amix console without a visible window — Amiberry can
+run fully headless. There are two complementary pieces: a way to **run and drive** the emulator with no
+real display, and a way to **screenshot** it that survives Wayland. (This recipe also underpins the
+[LAN networking guide](networking-on-the-lan.md), which uses it to bring up `aen0` over the console.)
+
+### Run + drive under Xvfb
+
+Start a virtual X server, launch Amiberry into it under software rendering **with a controlling TTY**, then
+drive the Amiga console with `xdotool`: ✅
+
+```sh
+# 1. virtual display
+Xvfb :77 -screen 0 1280x1024x24 -nolisten tcp &
+
+# 2. launch Amiberry into it. `script -qfc … /dev/null` gives it a controlling TTY
+#    (Amiberry misbehaves without one); software rendering avoids needing a GPU.
+DISPLAY=:77 SDL_RENDER_DRIVER=software \
+    script -qfc "amiberry -f /path/to/amix-a4091-boot.uae" /dev/null &
+
+# 3. find the Amiberry window id, then type / press keys into it
+WID=$(DISPLAY=:77 xdotool search --name Amiberry | head -1)
+DISPLAY=:77 xdotool windowfocus "$WID"          # focus BEFORE every XTEST burst
+DISPLAY=:77 xdotool type --window "$WID" 'root'
+DISPLAY=:77 xdotool key   --window "$WID" Return
+
+# 4. screenshot the whole virtual root
+DISPLAY=:77 import -window root /tmp/amix.png
+```
+
+> **Gotchas.** ✅
+> - **Controlling TTY required.** Launch Amiberry through `script -qfc "…" /dev/null` (or another PTY
+>   wrapper). Started bare under `Xvfb` it can refuse to run or behave oddly.
+> - **Focus before XTEST.** Run `xdotool windowfocus <id>` immediately before each `type`/`key` burst.
+>   Synthetic key events go to the focused window, and focus can drift — unfocused bursts silently land
+>   nowhere.
+
+### Screenshot via the IPC socket (Wayland-proof)
+
+Under Wayland/GNOME the usual capture tools (`grim`, `gnome-screenshot`, the Shell D-Bus screenshot API)
+are blocked, so `import -window root` is not available outside an X server. Instead ask Amiberry itself to
+render the shot through its **IPC socket** — this works regardless of display server.
+[`tools/amishot.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amishot.sh) sends the
+protocol command to the socket: ✅
+
+```sh
+tools/amishot.sh /tmp/shots/amix.png      # -> "OK  /tmp/shots/amix.png"
+```
+
+It connects to **`/run/user/<uid>/amiberry.sock`** and sends `SCREENSHOT\t<abspath>\n` (tab-separated,
+absolute path); Amiberry replies `OK\t<path>` or `ERROR\t<msg>`. The path must be absolute — the wrapper
+absolutises a relative argument and `mkdir -p`s its directory before sending.
+
 ## See also
 - [`tools/amix-amiberry.uae`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amix-amiberry.uae) — a complete, ready-to-edit working Amiberry config (A3000 / KS 2.04 / 68030+MMU / SCSI disk@6 + tape@4 / A2065).
 - [Install walkthrough](install-walkthrough.md) — the end-to-end tape install (works on Amiberry 8.x, WinUAE, and FS-UAE).
 - [Amix on WinUAE](emulation-winuae.md) / [Amix on FS-UAE](emulation-fs-uae.md) — the other UAE-family targets.
 - [Hardware & requirements](../how-it-works/hardware.md) — why the SCSI IDs and RAM ceiling are fixed.
 - [Putting Amix on your real LAN](networking-on-the-lan.md) — A2065 networking on Amiberry.
+- [The A4091 / 53C710 SCSI driver](../drivers/a4091-53c710-driver.md) — the native driver that makes the emulated A4091 usable (and bootable) under Amix.
 
 ## Sources
 - First-hand, 2026-06, Amiberry **8.1.6**: an installed Amix 2.1 boots to login from the `scsi6_a3000` hardfile; the GUI *Hard drives/CD* page shows `A3000 SCSI:6 → HDF` and `A3000 SCSI:4 → TAPE` mounted (RW) with an "Add Tape Drive…" button; a full from-tape install completes on Amiberry 8.1.6 (confirmed first-hand, 2026-06). Working config: `scsi_a3000=true`, `hardfile2=…,scsi6_a3000`, `uaehf1=tape0,…,scsi4_a3000`.
 - [BlitterStudio/amiberry #1376](https://github.com/BlitterStudio/amiberry/issues/1376) — "Add A3000 SCSI controller and tape support for amix" (the requested support is present in 8.x).
 - Research brief §2 (tape ID 4 hard-coded; disk ID 6 by convention) and §9 (`dd … /dev/rmt/4hn | cpio` install flow).
 - [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) project repository.
+- The A4091-on-Amix project — `NOTES.md` §9 (A4091-in-Amiberry config + the A3000(ECS)/A4000(AGA) Kickstart matrix) and §10 (the `amishot` IPC-socket screenshot tool), reproduced locally ✅. Config files `amix-a4091-boot.uae`, `amix-a4091-boot-aga.uae`, `amix-dbg.uae`; A4091 product id `0x02020054` verified in `src/a4091-blk.c`. Screenshot wrapper: [`tools/amishot.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amishot.sh).
+- [A4091/a4091-software](https://github.com/A4091/a4091-software) — the A4091 autoboot ROM (`amiga-boot-a4091.rom`) and the `ncr53cxxx` SCRIPTS assembler.
 
 
 ================================================================================
@@ -1900,6 +2166,55 @@ nameserver 192.168.2.23
 EOF
 ```
 
+> **⚠️ Also fix the boot-time `ifconfig`s, or every boot gets ~3 min slower.** As
+> soon as DNS is enabled (the `libsockdns` link above), the two `ifconfig` calls
+> that bring up `lo0` and `aen0` at boot **each hang ~90 s** (~180 s total), because
+> they take **hostnames**, and `gethostbyname()` now tries **DNS first** — but they
+> run *before* the default route is installed (`route add default …` is later, in
+> [`/etc/inet/rc.inet`](#3b-default-route-in-etcinetrcinet)), so with no route to the
+> nameservers each lookup burns the full resolver retransmit schedule before falling
+> back to `/etc/hosts`. Stock (DNS-off) Amix resolves these names from `/etc/hosts`
+> instantly, which is exactly why the trap appears **only after** you enable DNS, and
+> why the [Step 3a `/etc/inet/hosts`](#3a-etcinethosts-the-key-to-boot-time-bring-up)
+> recipe is *not* enough on its own once DNS is on. The fix is to give both boot-time
+> `ifconfig`s a **literal IP** so no resolver call happens before the network is up
+> (boot **210 s → 29 s**; runtime DNS for clients/mail is untouched). ✅
+
+```sh
+# /etc/rc2.d/S69inet        -- the loopback bring-up
+-   /usr/sbin/ifconfig lo0 localhost up
++   /usr/sbin/ifconfig lo0 127.0.0.1 up
+
+# /etc/inet/network-config  -- the aen0 bring-up (replaces the `uname -n` from Step 3a)
+-   /usr/sbin/ifconfig aen0 `uname -n` up -trailers
++   /usr/sbin/ifconfig aen0 192.168.2.38 up -trailers   # this host's static IP, literal
+```
+
+`lo0` is always `127.0.0.1`; `aen0` uses this host's own static address (the same
+`.38` already in `/etc/inet/hosts`). Configuring your own interface should never
+depend on a name service, so this is the correct design regardless. ✅
+
+> **Editing gotchas for `/etc/rc2.d/S69inet` — read before you `sed`:**
+>
+> - **`S69inet` is a hardlink.** The same inode is also `/etc/init.d/inetinit`. Edit
+>   it **in place** so both names stay in sync — `sed` to a temp then `cat >` the
+>   original, or use `ed`. Do **not** `mv`/unlink and recreate, or you break the link
+>   and `inetinit` keeps the old (slow) behaviour:
+>   ```sh
+>   sed 's/ifconfig lo0 localhost up/ifconfig lo0 127.0.0.1 up/' \
+>       /etc/rc2.d/S69inet > /tmp/S69inet.new && cat /tmp/S69inet.new > /etc/rc2.d/S69inet
+>   ```
+> - **Never leave a backup named `S*` inside `/etc/rc2.d/`.** `rc2` runs
+>   `for f in /etc/rc2.d/S*` at boot, so a copy like `S69inet.bak` or `S69inet.orig`
+>   **gets executed too** (verified against the live `/etc/rc2` glob). Park backups
+>   **outside** that directory:
+>   ```sh
+>   cp /etc/rc2.d/S69inet /root/S69inet.orig     # NOT /etc/rc2.d/S69inet.orig
+>   ```
+> - This no-route boot hang is **independent of** the `/etc/domain` "general
+>   weirdness" below — a box with an already-empty `/etc/domain` still hangs the full
+>   180 s. They are two different problems; fix both. ✅
+
 > **Gotcha — leave the domain UNSET (`/etc/domain`).** This is the documented Amix
 > "[general weirdness](https://www.amigaunix.com/doku.php/networking)": if a domain
 > is set, the resolver **appends it to every lookup — even fully-qualified names** —
@@ -1966,7 +2281,7 @@ Useful for automation / agents driving Amix without a visible window:
 - [Networking (concepts)](../how-it-works/networking.md) — the SVR4 STREAMS stack, `aen0`, DNS-off-by-default, the `route` metric.
 - [Amix on Amiberry (status)](emulation-amiberry.md) — what runs vs. what needs WinUAE/FS-UAE.
 - [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
-- [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap.
+- [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap, and the **DNS-enable slow-boot** (literal-IP `ifconfig` fix).
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) — the community source that documents the `/etc/domain` "general weirdness".
 
 ## Sources
@@ -1975,6 +2290,7 @@ Useful for automation / agents driving Amix without a visible window:
 - Amiberry 8.0.0 release + PRs [#1784](https://github.com/BlitterStudio/amiberry/pull/1784) (TAP backend, `a2065=tap0`/`a2065=br0`), [#1777](https://github.com/BlitterStudio/amiberry/pull/1777) (PCAP bridged rewrite), [#1774](https://github.com/BlitterStudio/amiberry/pull/1774) (config parse fix). Source: `src/cfgfile.cpp`, `src/ethernet.cpp`, `src/osdep/amiberry_uaenet.cpp`, `src/a2065.cpp`.
 - Amix boot path: `/etc/inittab` (`S2::sysinit:/etc/sysinit`), `/etc/sysinit` (`domainname \`cat /etc/domain\``), `/etc/init.d/inetinit`, `/etc/inet/network-config` (`ifconfig aen0 \`uname -n\` up -trailers`), `/etc/inet/rc.inet` — read directly off the running system.
 - DNS enable: `/etc/netconfig.DNS` (adds `/usr/lib/resolv.so`), `/usr/lib/libsockdns.so` — present on the install; the `domain`-append behaviour matches [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) and was confirmed via a `gethostbyname()` probe.
+- DNS-enable slow-boot + literal-IP fix: The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅) — instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry, isolating the ~180 s hang to the two boot-time `gethostbyname()` calls; boot **210 s → 29 s** after the fix. `/etc/rc2.d/S69inet` (hardlinked to `/etc/init.d/inetinit`), `/etc/inet/network-config` (`ifconfig aen0 \`uname -n\`` → literal IP), `/etc/inet/rc.inet` (default route runs *after* `network-config`) — read directly off the running system; `for f in /etc/rc2.d/S*` glob confirms backup S\* files execute at boot.
 - Research brief §11 (networking) and the conceptual [networking page](../how-it-works/networking.md).
 
 
@@ -3026,6 +3342,100 @@ floppy* instead of a live disk, see
 - **Boot-partition vs filesystem.** A kernel sitting on the filesystem is not enough; it must be
   written into the boot partition with `make bootpart` to actually boot ✅.
 
+## The "D245 boot-breaker" — an intermittent `ld` corruption
+
+This is a **load-bearing gotcha for anyone relinking the Amix kernel**, not just A4091 work. It was
+first-party reproduced locally on Amix 2.1c under Amiberry. If you ever see a kernel Guru at boot
+with `D245 4C41`, this section is the answer.
+
+### What it is *not* (a corrected misconception) 🔴
+
+🔴 Kernels that grew past a certain size Guru'd at boot with `D245 4C41`, and the cause was twice
+mis-attributed: first to the SCSI driver's **completion poll loop**, then to the **bootstrap
+relocator** misbehaving. **Both were wrong.** The constant `0xD2454C41` decodes as
+`"RELA" | AT_DeadEnd` — it is the **bootstrap relocator's own `Alert()`** in `amiga/boot/rel.c`,
+fired when `rel()` is handed a **corrupt kernel image** to relocate. So `D245` is a *symptom of a
+bad kernel binary*, not a bug in the relocator or in any driver. ✅
+
+The longword breaks down as: `0x52454C41` = ASCII `"RELA"`; setting bit 31 (`AT_DeadEnd`, the
+"unrecoverable" flag exec ORs into a deadly alert) yields `0xD2454C41`, displayed as `D245 4C41` in
+the Guru requester. ✅
+
+### What it actually is — `ld`'s write path corrupts the output ~70% of the time ✅
+
+✅ The real fault is an **intermittent corruption introduced when `ld` writes the linked kernel to
+disk**. About **70% of `make` runs** shift **one ~8 KB block of the output by 8 bytes**, at a
+random offset. If that shift lands in `.symtab` or `.rela.*`, the boot relocator chokes → `D245`:
+
+| Where the 8-byte shift lands | Effect at boot |
+|---|---|
+| `.symtab` | a reloc-referenced symbol gets a garbage `st_shndx` → `symvaddr` COMPLAIN → **D245** ✅ |
+| `.rela.*` | garbage relocation type/offset → `relocsection` COMPLAIN → **D245** ✅ |
+| `.text` / `.data` | wrong code/data, **no D245** — boots but is subtly broken / may wild-branch ✅ |
+
+✅ It is **code-independent**. The same source relinked 10× gave **3 byte-identical clean** builds
+(all `sum -r` = the same value) and **7 corrupt** builds, each with a *different* `sum`. Copying the
+*same* file with `cp`, `dd`, or FTP is **always clean**, which localises the corruption to `ld`'s
+own write path (emulated-disk or SVR4 `ld` buffer interaction).
+
+🟡 The **root layer is unconfirmed** — whether it originates in the emulated disk write, the SVR4
+`ld` buffering, or their interaction is not yet pinned down, and this has not been observed on real
+hardware. Keep it 🟡: it is reproduced in emulation but the underlying mechanism is inferred.
+
+### The fix — build until the checksum is stable ✅
+
+✅ A clean `ld` output is **byte-deterministic**; each corruption is **random and unique**.
+Therefore **a checksum (`sum -r`) that *recurs* is the deterministic clean kernel.**
+[`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
+(runs **on** the Amix box) relinks (link-only, no install) until a `sum -r` value repeats, then
+confirms with [`tools/checkunix.c`](https://github.com/Jusii/grimoire-amix/blob/master/tools/checkunix.c),
+leaving a verified-clean `relocunix`:
+
+```sh
+sh /root/build-clean-kernel.sh    # exit 0 = clean relocunix ready; 1 = could not stabilize in 25 builds
+```
+
+> **Never `make install` an unverified kernel.** A corrupt kernel written to the boot partition will
+> brick the boot disk (see the safety rule on the [boot process](../how-it-works/boot-process.md)
+> page). Always clean-gate first, and install onto a backup/throwaway disk. ✅
+
+Two complementary detectors exist:
+
+| Detector | What it checks | Trade-off |
+|---|---|---|
+| [`tools/checkunix.c`](https://github.com/Jusii/grimoire-amix/blob/master/tools/checkunix.c) | native big-endian `.symtab` integrity (flags out-of-range `st_shndx`) | **fast**, runs on the box, but **symtab-only** — misses `.rela`/`.text` shifts ✅ |
+| [`tools/relsim.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/relsim.py) | host-side reimplementation of the boot relocator `rel()` | **full offline `D245` oracle** — checks `.symtab` **and** relocation records ✅ |
+
+Build `checkunix` natively (`cc -O -o checkunix checkunix.c`) and run it on the box; run `relsim.py`
+on the host against a **pulled** kernel ELF:
+
+```sh
+# on the host, against a kernel pulled off the box:
+python3 tools/relsim.py relocunix
+```
+
+### Build-system corollary — `make` does not reliably recompile a changed `.c` ✅
+
+✅ Plain `cd /usr/sys; make` does **not** reliably pick up an edited source file: the per-subsystem
+`exp` prelink chain has **incomplete dependencies**, so a changed `.c` (or a changed `/stand/CONFIG`)
+is silently ignored. After editing, for example, `amiga/kernel/support.c`, you must `rm` the stale
+`.o` **and** the subsystem `exp` **and** `amiga/exp` before `make`:
+
+```sh
+cd /usr/sys
+rm amiga/kernel/support.o amiga/kernel/exp amiga/exp     # stale .o + subsystem exp + top-level exp
+make
+```
+
+Then **confirm the change took effect by the kernel `sum` changing** — if `sum -r relocunix` is
+unchanged, your edit was not compiled in. ✅
+
+Two more SVR4-box gotchas that bite build scripts ✅:
+
+- **`/tmp` is wiped on reboot** — keep build scripts and saved checksums in `/root`, not `/tmp`.
+- **SVR4 `grep` has no `\|` alternation** — use separate `grep` invocations instead of one
+  alternation pattern. (This is in addition to the pre-POSIX `/bin/sh` limits noted above.)
+
 ## See also
 
 - [Driver model overview](driver-model.md) — what `cdevsw`/`bdevsw`, majors/minors, and the
@@ -3052,6 +3462,19 @@ floppy* instead of a live disk, see
 - Master research brief §3 (boot process / kernel install flow), §4 (kernel architecture),
   §5 (driver model / "Adding a driver"), §6 (VA2000 patch set), §13 (open questions:
   `rdbunix`/`relocunix` rename).
+- The A4091-on-Amix project — `NOTES.md` §17–§18 (the `D245` boot-breaker: relocator `Alert()`
+  mechanism, the intermittent ~70% `ld`-write corruption, the build-until-stable gate; reproduced
+  locally ✅) and the handoff brief §5/§10, plus `src/`/`tools/`.
+- [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
+  — the relink-until-`sum -r`-recurs clean-gate that dodges the `D245` corruption.
+- [`tools/checkunix.c`](https://github.com/Jusii/grimoire-amix/blob/master/tools/checkunix.c)
+  — native big-endian `.symtab` integrity detector (`0x52454C41 | AT_DeadEnd` == `D245`; build with
+  `cc -O -o checkunix checkunix.c`).
+- [`tools/relsim.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/relsim.py)
+  — host-side reimplementation of the boot relocator `rel()`; the full offline `D245` oracle
+  (symtab **and** relocation records).
+- a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + SCRIPTS
+  assembler), referenced by the A4091-on-Amix work.
 
 
 ================================================================================
@@ -3751,6 +4174,66 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 **Note:** the four-argument shape above comes from the modern community repos, not from the Ditto paper, which predates them. Carry it as 🟡 and verify against your kernel headers before relying on the exact argument order.
 
+## Zorro III boards and the real "Zorro II only" wall
+
+🔴 **"Zorro II only" is imprecise about `autocon()` itself.** `autocon()` searches the same `bootinfo.autocon[NAUTO]` table for *any* AutoConfig board and returns the assigned base for a matched product id — **including Zorro III boards** ✅ (first-party, from the A4091-on-Amix project; `autocon()` in `amiga/kernel/support.c`). The match is purely on `(er_Manufacturer, er_Product)`; nothing in the table search rejects a Zorro III address. So a Zorro III board *does* AutoConfigure and `autocon()` *does* hand back its base.
+
+🔴 **The actual wall is the 68030 Transparent-Translation gap, not `autocon()`.** Amix maps physical space with two Transparent-Translation registers (`amiga/ml/ttrap.s`) ✅:
+
+| TT register | Value | Physical range it makes directly addressable |
+|---|---|---|
+| `tt0` | `0x003F0143` | `0x00000000`–`0x3FFFFFFF` |
+| `tt1` | `0x807F0143` | `0x80000000`–`0xFFFFFFFF` |
+| *(gap)* | — | `0x40000000`–`0x7FFFFFFF` **unmapped** |
+
+A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside TT0, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped gap** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Widening TT0 is unsafe: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`.
+
+The fix is the kernel primitive **`sptalloc(npages, prot, pfn, flag)`**, which page-table-maps physical pages into kernel VA ✅. A Zorro III driver takes the `autocon()` base and `sptalloc`-maps it before any register access:
+
+```c
+extern caddr_t sptalloc();
+acfg = (volatile uchar *)sptalloc(1, PG_V, phystopfn((paddr_t)base), 0);              /* board base  */
+siop = (volatile uchar *)sptalloc(1, PG_V, phystopfn((paddr_t)base + 0x00800000), 0); /* chip regs   */
+```
+
+See [the A4091/53C710 driver](a4091-53c710-driver.md) for the full Zorro III bring-up (this is exactly how the A4091 SCSI host adapter, product id `0x02020054`, is made addressable from Amix).
+
+## `autocon()` and the phantom A3000 internal SCSI
+
+🔴 **What was hardcoded, and why it mis-orders cards.** The A3000 internal SCSI (Commodore DMAC + WD33C93 at `0xDD0000`) is **not** an AutoConfig board, so it never appears in `bootinfo.autocon[]`. Historically, `autocon()` in `amiga/kernel/support.c` faked one in: whenever RAM extended past 7 MB it returned a **phantom A3000 SCSI at `0xDD0000` regardless of whether the hardware exists** ✅ (first-party). The original special case:
+
+```c
+if (index==0 && end > (char *)0x07000000 && (pc==0x0202F003)) { *bp = 0xdd0000; return 1; }
+```
+
+On a machine *without* the A3000 SCSI (or a real A4000, which has none) this phantom still claims `queue[0]` (card 0) and shoves the next SCSI card to card 1. That mis-orders the SCSI card table — and because the compiled-in root device decodes to card 0, the kernel sends the root read to non-existent hardware. (For the boot-time consequences and the panic chain it produces, see [the boot process](../how-it-works/boot-process.md).)
+
+## Chipset-gated WD33C93 auto-detection (the fix)
+
+✅ **What it actually does now** (first-party, from the A4091-on-Amix project — full source in `src/kernel-patches/support.c`). The phantom is replaced with a **chipset gate + a WD33C93 write/readback probe**, so the A3000 SCSI is registered only when it is genuinely present:
+
+```c
+if (index==0 && (pc==0x0202F003)) {                 /* A3000 internal SCSI: not an AutoConfig board */
+    int a3kscsi = 0;
+    unsigned short vposr = *(volatile unsigned short *)0xDFF004;   /* custom chip, always present, bus-safe */
+    if ((((int)vposr >> 8) & 0x7F) < 0x22) {        /* ECS/OCS Agnus (<0x22) = A3000-class; AGA Alice (>=0x22) = A4000 */
+        volatile unsigned char *sasr = (unsigned char *)0xDD0041;  /* WD33C93 SASR */
+        volatile unsigned char *scmd = (unsigned char *)0xDD0043;  /* WD33C93 SCMD */
+        *sasr = 0x02; *scmd = 0x55;  *sasr = 0x02;                 /* write/readback Timeout-Period reg */
+        if (*scmd == 0x55) { *sasr = 0x02; *scmd = 0xAA; *sasr = 0x02; if (*scmd == 0xAA) a3kscsi = 1; }
+    }
+    if (a3kscsi) { *bp = 0xdd0000; return 1; }       /* present -> register */
+    /* absent -> fall through; autocon returns 0; sd.c never registers it */
+}
+```
+
+How the two steps work ✅:
+
+- **Chipset gate (the safety mechanism).** Read **VPOSR (`0xDFF004`)** — a custom-chip register that is *always* present and bus-safe to read on any Amiga. The identification field is **bits 8–14** (mask the toggling LOF bit at bit 15, i.e. `(vposr >> 8) & 0x7F`): **< 0x22 = ECS/OCS Agnus** (A3000-class), **≥ 0x22 = AGA Alice** (A4000). On AGA the whole block is **skipped**, so the kernel *never reads* `0xDD0000` — eliminating any bus-fault at an address that does not decode on an A4000.
+- **WD33C93 probe (on A3000-class only).** Write `0x55` then `0xAA` to the WD33C93 Timeout-Period register (indirectly, via its `SASR`/`SCMD` ports at `0xDD0041` / `0xDD0043`) and read each back. The board at `0xDD0000` is registered only if the chip **echoes** both values.
+
+🟡 **Emulation caveat (carry honestly).** Amiberry's *open bus* at `0xDD0000` echoes writes, so the write/readback **false-positives** when `scsi_a3000=false` — in emulation "ECS always registers" even with no WD33C93 attached. This is harmless for the real targets (a physical A3000 *always* has the WD33C93, and a real A2500's empty bus would correctly fail the probe). The **chipset gate** is what makes the **A4000 / AGA** case correct and safe; the WD33C93 readback can only be *fully* trusted on real hardware.
+
 ## The Zorro II ID nibble encoding
 
 To match a board you must read its AutoConfig ROM, and that ROM is laid out in a deliberately awkward **nibble format**. Understanding it is what lets [lszorro](case-studies/lszorro.md) (and any userspace probe) decode `(mfr, product)` correctly ✅.
@@ -3818,6 +4301,8 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 
 ## See also
 
+- [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board brought up over the TT gap with `sptalloc()`; the auto-detection consumer of `autocon()`.
+- [The boot process](../how-it-works/boot-process.md) — how the phantom-A3000 mis-ordering produced the root-mount panic, and the fixed card numbering.
 - [The Amix device-driver model](driver-model.md) — switch tables, major/minor, and where `autocon()` sits in the API surface.
 - [Case study: lszorro userspace Zorro scanner](case-studies/lszorro.md) — the full worked implementation.
 - [Hardware and requirements](../how-it-works/hardware.md) — Zorro II vs Zorro III, supported expansion boards.
@@ -3831,6 +4316,9 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 - `asokero/lszorro-amix` repo — `/dev/mem` `mmap()` scan, `0x80`-byte windows, I/O `0xE90000`–`0xEFFFFF` / mem `0x200000`–`0x9FFFFF`, AutoConfig nibble decode, 461-entry ID DB, register-only fingerprinting: <https://github.com/asokero/lszorro-amix>
 - `asokero/va2000-amix` repo — VA2000 AutoConfig mfr `0x6D6E` product `0x01`, 4 MB Zorro II window, `autocon()` usage: <https://github.com/asokero/va2000-amix>
 - `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x08490001` (2121/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
+- The A4091-on-Amix project — `NOTES.md` §2, §6, §7 (reproduced locally ✅; Zorro III + TT gap, `sptalloc()`, phantom-A3000, chipset-gated WD33C93 detection) and `src/`/`tools/`.
+- `src/kernel-patches/support.c` — the full `autocon()` with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (TT registers `tt0=0x003F0143` / `tt1=0x807F0143` from `amiga/ml/ttrap.s`; A4091 product id `0x02020054`).
+- a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx` SCRIPTS assembler).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model and kernel API context (see [bibliography](../reference/bibliography.md)).
 - amigaunix.com — historical and hardware reference: <https://www.amigaunix.com/doku.php/home>
 
@@ -4841,6 +5329,315 @@ If you are writing another NE2000/DP8390-class or Zorro II network driver for Am
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §11 (networking: SVR4 STREAMS TCP/IP, `aen0`) and §5 (driver model: `cdevsw`, STREAMS, `int2_tbl[]`). ✅
 - [vjouppi/hydra](https://github.com/vjouppi/hydra) — Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics), cited by the hydra-amix README. ✅
 - AT&T SVR4 *Streams Programmer's Guide* / *Network Programmer's Guide* and the DLPI specification (for the `DL_*` primitives), as cited in the Ditto paper. ✅
+
+
+================================================================================
+# FILE: docs/drivers/a4091-53c710-driver.md
+================================================================================
+
+---
+title: "Case Study: A4091 / 53C710 SCSI driver"
+summary: How a native NCR 53C710 block driver was written for the Zorro III Commodore A4091, made a first-class auto-detected SCSI controller in Amix, and got the system to boot with root on the A4091.
+status: draft
+---
+
+# Case Study: A4091 / 53C710 SCSI driver
+
+This is the deep end of the [drivers pillar](driver-model.md): writing a **brand-new SCSI host
+adapter driver** for Amix, for a board the OS was never meant to support, and getting Amix to
+**boot with root, swap and filesystem entirely on it**. It pulls together the
+[device-driver model](driver-model.md), [Zorro AUTOCONFIG](zorro-autoconfig.md), the
+[kernel build](kernel-build.md) and the [boot process](../how-it-works/boot-process.md) — all the
+other driver pages applied at once to a real board.
+
+The work is **first-party and reproduced locally** in Amiberry on the real Amix 2.1c distribution.
+Claims tagged ✅ below were reproduced on the running system; 🟡 claims are emulation-only and need
+real-hardware confirmation; 🔴 marks a belief we held and disproved. The source is the
+[A4091-on-Amix project](#sources) — `src/a4091-wr.c`, the `src/kernel-patches/`, and the lab
+notebook `NOTES.md`.
+
+## What the A4091 is
+
+The **A4091** is Commodore's **Zorro III** SCSI-2 host adapter, built on the **NCR/Symbios 53C710**
+SCSI I/O processor ✅. It is the high-end successor to the Zorro II A2091 (WD33C93), intended for the
+A3000T/A4000T class.
+
+Its AUTOCONFIG identity and memory window ✅ (`src/a4091-wr.c`, `docs/a4091-53c710-reference.md` §0):
+
+| Property | Value | Source |
+|---|---|---|
+| AutoConfig manufacturer | `0x0202` (Commodore) | `a4091-wr.c` `A4091_PROD` |
+| AutoConfig product | `0x54` | `a4091-wr.c` `A4091_PROD` |
+| Combined product id | **`0x02020054`** | `a4091-wr.c` `#define A4091_PROD 0x02020054` |
+| `er_Type` | `0x90` (Zorro III) | reference §0 |
+| Physical board base | **`0x40000000`** | `a4091-wr.c` `a4091map()` fallback |
+| Board window | **`0x01000000`** (16 MB), sparse | reference §1 |
+| 53C710 register block | board + **`0x00800000`** → `0x40800000` | `a4091-wr.c` `SIOP_OFF` |
+
+Amix (Commodore's SVR4.0 port to 68030 Amigas, the "2.1c" distribution ✅) **shipped with no 53C710
+driver** and is widely described as **Zorro II only** ✅ — see [Zorro AUTOCONFIG for drivers](zorro-autoconfig.md)
+and [Supported hardware](../how-it-works/hardware.md). The stock kernel only knows the A2090/A2091
+(WD33C93) and the A3000 on-board SCSI. This project wrote a native 53C710 block driver and made the
+A4091 a first-class, auto-detected SCSI controller alongside them.
+
+## The Zorro III obstacle and the `sptalloc()` solution
+
+The board is in **Zorro III** space, and that is exactly where the stock drivers' trick breaks down.
+
+🔴 **"Zorro III is unaddressable" — was thought absolute, is actually a TT-register gap with a
+work-around.** Amix's 68030 maps physical address space with two **Transparent Translation**
+registers (`amiga/ml/ttrap.s`) ✅:
+
+```
+tt0 = 0x003F0143   maps phys 0x00000000 - 0x3FFFFFFF
+tt1 = 0x807F0143   maps phys 0x80000000 - 0xFFFFFFFF
+```
+
+That leaves **`0x40000000 - 0x7FFFFFFF` an unmapped gap — and the A4091 sits in it** ✅. Zorro II
+boards are ≤ 24-bit (e.g. the A3000 SCSI at `0xDD0000`), so they fall inside TT0; that is why the
+stock WD33C93 drivers can simply dereference the address `autocon()` returns. Widening TT0 to cover
+the gap is **unsafe** — `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000` ✅.
+
+**The fix** is the kernel primitive **`sptalloc(npages, prot, pfn, flag)`**, which page-table-maps
+physical pages into kernel virtual address space ✅. The driver maps the board's AutoConfig page and
+the 53C710 register block (`src/a4091-wr.c`, `a4091map()`):
+
+```c
+#define	SIOP_OFF	0x00800000	/* 53C710 register block within the board window */
+...
+acfg = (volatile uchar *)sptalloc( 1, PG_V, phystopfn( (paddr_t)base), 0);          /* board base    */
+siop = (volatile uchar *)sptalloc( 1, PG_V, phystopfn( (paddr_t)base + SIOP_OFF), 0); /* 53C710 regs */
+```
+
+Post-boot these return working kernel VAs (observed `siop = 0x401CA000`) and the 53C710 is fully
+addressable ✅. **DMA is unaffected:** the 53C710 bus-masters to Amix RAM at phys `0x07800000+`,
+which is inside TT0, so DMA targets are reachable no matter where the board's *registers* land in
+kernel VA ✅. (See [Zorro AUTOCONFIG](zorro-autoconfig.md) for `autocon()` and the Zorro III
+detection that complements this mapping.)
+
+## The 53C710 driver model — how it plugs into the Amix SCSI stack
+
+✅ The Amix SCSI stack (`amiga/alien/`) layers like this:
+
+```
+block disk driver dd.c / gsioctl passthrough  ->  sd.c selector  ->  per-card queue function  ->  chip
+```
+
+The command unit handed down the stack is `struct sdcom` (`sd.h`): `cdb[12]`, the data `addr`/`nbyte`,
+`unit`/`card`, the `reading` flag, `status`/`okay`, and an `intr()` completion callback ✅. See
+[the device-driver model](driver-model.md) for the general switch-table mechanism this sits on top of.
+
+### The card registry in `sd.c`
+
+`sd.c` carries a registry table `scsicard[]` mapping AutoConfig product ids to queue functions. The
+patch adds one row for the A4091 (`src/kernel-patches/sd.c`) ✅:
+
+```c
+static struct {
+	uint	pn;				/* product number */
+	bool	(*f)( );			/* queuing function */
+	char	*hardwarename;
+} scsicard[] = {
+	0x0202F003, &a3091queue, "A3000 Internal SCSI",
+	0x02020001, &a2090queue, "A2090 SCSI",
+	0x02020003, &a2091queue, "A2091 SCSI",
+	0x02020054, &a4091queue, "A4091 SCSI",   /* <- our addition */
+};
+```
+
+At the first root open, `sd.c init()` calls `autocon(productid, …)` for each row and `insert()`s the
+cards it finds, **sorted ascending by board base address** ✅:
+
+```c
+static void
+init( )
+{
+	if (not queue->f)
+		for (i=0; i<nel( scsicard); ++i) {
+			int c = 0;
+			while (autocon( scsicard[i].pn, c, &a, &o))
+				insert( scsicard[i].f, c++, a, scsicard[i].hardwarename);
+		}
+}
+```
+
+So on a machine with both controllers, the A3000 SCSI (`0xDD0000`) becomes `queue[0]` (**card 0**)
+and the A4091 (`0x40000000`) becomes `queue[1]` (**card 1**) — the lower base sorts first ✅. **This
+ordering is the entire story behind booting root from the A4091** — see
+[the boot process: root on an A4091](../how-it-works/boot-process.md) and the phantom-A3000 fix in
+[Zorro AUTOCONFIG](zorro-autoconfig.md).
+
+The matching build patch is `src/kernel-patches/alien-Makefile`, which adds `a4091.o` to the
+`amiga/alien` `OBJ` list.
+
+### The driver itself: `a4091-wr.c`
+
+The production driver is `src/a4091-wr.c` (the READ+WRITE driver) ✅. Its key pieces:
+
+- **`a4091map()`** — `sptalloc`-maps the board base and the register block (above), and **caches the
+  mapping** so it only happens once (`if (siop) return 0`). Falls back to the known base
+  `0x40000000` / size `0x01000000` if `autocon()` does not find the board ✅.
+- **`a4091init()`** — a 53C710 soft reset followed by minimal **polled-mode** register init. Reset is
+  via **ISTAT bit 6** (not DCNTL — that is the older 53C700) and is **not self-clearing**, so it is
+  set then explicitly cleared. The init writes `SCNTL0=0xCC`, `SCNTL1=0x20`, `DCNTL=0x00`,
+  **`DMODE=0xE0`** (burst-8 | FC2, the A4091 value), the one-hot host id `SCID = 1 << 7 = 0x80`, and
+  the A4091 bus-arbitration errata bit `CTEST8 |= 0x01` (SM). No SCSI/DMA interrupts are enabled ✅.
+  All register **writes go to `reg + 0x40`** (the A4091 write-shadow `WRSHADOW`), reads at `reg + 0`;
+  accesses are **8- or 32-bit only, never 16-bit** ✅.
+- **`a4091queue(c, cp)`** — drives **any** CDB from the caller's `sdcom` through a **table-indirect
+  53C710 SCRIPTS program** (`inq_script[]`, a static `ulong[]` that lives in kernel `.data`, so its
+  bus address equals `&inq_script[0]` under the TT0 identity mapping). CDB length is derived from the
+  SCSI **group code** (top 3 bits of the opcode → 6 / 10 / 12 bytes). The **DSA** (`struct siop_ds`)
+  binds IDENTIFY / CDB / status / message / data buffers; the DATA phase **dispatches on the live bus
+  phase**, so *one* SCRIPTS program performs both READ(10) and WRITE(10). Data DMAs **straight into
+  `cp->addr`** — the caller's buffer, already a physical address via `dd.c`'s `vtop()` ✅.
+
+The SCRIPTS program's data-phase dispatch (from `inq_script[]` in `src/a4091-wr.c`) is what makes one
+program serve reads and writes:
+
+```c
+0x808b0000, 0x00000018,		/* JUMP dataout, WHEN DATA_OUT  (write)         */
+0x818b0000, 0x00000020,		/* JUMP datain,  WHEN DATA_IN   (read)          */
+0x838b0000, 0x00000020,		/* JUMP status,  WHEN STATUS    (no data)       */
+```
+
+The DSA table binds the caller's buffer for the data move ✅:
+
+```c
+ds.data1len = cp->nbyte;  ds.data1buf = (uchar *)cp->addr;	/* DMA -> caller buf */
+```
+
+#### Completion: the one honest 🟡 in the driver
+
+After launching SCRIPTS (a write to `R_DSP`), the driver reads completion with a **single ISTAT read**:
+
+```c
+WR32( R_DSP, (ulong)inq_script);
+/* nopoll completion -- single ISTAT read (emulated target instant) */
+istat = RD8(R_ISTAT);
+...
+else if ((dstat & DSTAT_SIR) && dsps == 0xff00) rc = 0;
+```
+
+The **emulated** target answers synchronously, so that one read already sees `DIP` set and
+`dsps = 0xff00` (the SCRIPTS "done" INT vector) ✅. **A physical disk is not instant** — real
+hardware needs a **bounded poll loop or interrupt-driven completion** 🟡. The hooks for that already
+exist: an empty `a4091intr()` and the `int2_tbl` level-2 ISR slot (the A2090/A2091 use the same
+table — see [device list](../reference/device-list.md#scsi-host-adapters)). Keep this 🟡 until it is
+run on metal.
+
+For the full 53C710 register map, SCRIPTS encoding, one-hot SELECT-ID encoding, the soft-reset
+sequence, the write-shadow at `reg+0x40`, and the emulator's full-window SIGSEGV hazard, see the
+project's `docs/a4091-53c710-reference.md` (the verified chip reference behind this driver).
+
+## The A4091 disk's `/dev` numbering
+
+✅ With both an A3000 and an A4091 present, the A4091 (card 1) target 0 slice 0 is reached at:
+
+```
+/dev/dsk/c8d0s0    block, major 18, minor 8
+/dev/rdsk/c8d0s0   char,  major 40, minor 8
+```
+
+The `cN` in the name is **computed**, not stored — see the SCSI minor-number scheme on the
+[device list](../reference/device-list.md#minor-number-encoding-for-the-scsi-disk-major-18). From
+`amiga/alien/sd.h`:
+
+```
+sdunit(dev) = (dev>>0) & 7      /* SCSI target id 0-7        */
+sdcard(dev) = (dev>>3) & 1      /* card index (queue[] slot) -- only 0 or 1; SDCARDS = 2 */
+sdpart(dev) = (dev>>4) & 7      /* slice/partition           */
+```
+
+So `cN = sdcard*8 + sdunit`: `c8d0s0` = card 1, target 0, slice 0 = `makedevice(18, 8)`; the stock
+A3000-root device `c6d0s1` = card 0, target 6, slice 1 = `makedevice(18, 22)` ✅. A `dev_t` is
+`(major << 18) | minor` ✅.
+
+The READ/WRITE path was validated end to end ✅:
+
+- **Raw SCSI passthrough** via the `gsioctl` userspace path (`src/gsio.c`, `/dev/scsi` major 11) —
+  INQUIRY, READ(10), WRITE(10) all returning correct data.
+- **`mkfs ufs` + `mount`** on the A4091 disk, with files written and **surviving a reboot** (genuine
+  persistence to the disk behind the A4091, not a RAM artefact).
+
+## Driver variants — the evolution
+
+Only `a4091-wr.c` is the production driver; the earlier variants are kept under `src/` to show the
+incremental bring-up path ✅:
+
+| File | Stage |
+|---|---|
+| `a4091.c` | detection-only (proves `sptalloc` + register read) |
+| `a4091-nopoll.c` | INQUIRY only |
+| `a4091-blk.c` | READ-only block device |
+| **`a4091-wr.c`** | **READ + WRITE — production** |
+| `a4091-wr-dbg.c` | same as production + `A4:` `printf` diagnostics (used to trace the early-boot path) |
+
+## Build & install
+
+The driver is a standard kernel-relink job ([kernel build & install](kernel-build.md)), with the
+A4091-specific steps:
+
+1. **Drop the driver** `src/a4091-wr.c` into the kernel tree as `/usr/sys/amiga/alien/a4091.c`.
+2. **Register it in the Makefile** — add `a4091.o` to the `amiga/alien` `OBJ` list
+   (`src/kernel-patches/alien-Makefile`).
+3. **Apply the SCSI-stack patch** — the `scsicard[]` row in `sd.c` (`src/kernel-patches/sd.c`).
+4. **Apply the auto-detect patch** — the chipset-gated `autocon()` in `support.c`
+   (`src/kernel-patches/support.c`); this is what lets one kernel boot both an A3000 and an
+   A4000+A4091. The why is on [Zorro AUTOCONFIG](zorro-autoconfig.md) and
+   [the boot process](../how-it-works/boot-process.md).
+5. **Build with the clean-gate.** The Amix `ld` intermittently corrupts the linked kernel
+   (the "D245 boot-breaker"); relink until the checksum recurs rather than trusting a single `make`.
+   Use `tools/build-clean-kernel.sh` and verify with `tools/relsim.py` / `checkunix.c` — full detail
+   on [kernel build & install](kernel-build.md). **Never `make install` an unverified kernel onto
+   your working disk** — it rewrites the boot partition and bricks it if the kernel is corrupt.
+6. **Install carefully** onto a throwaway / clone disk — see
+   [adding drivers to a custom boot disk](../boot-disks/adding-drivers-to-boot-disk.md) and the
+   "boot root on the A4091" install recipe on [the boot process](../how-it-works/boot-process.md).
+
+The SCRIPTS source (`reference/scripts/inq-wr.ss`) is assembled with the **NetBSD `ncr53cxxx`**
+assembler from the open-source [a4091.device project](https://github.com/A4091/a4091-software), which
+also provides the A4091 autoboot ROM used by the emulator
+([Amix on Amiberry](../getting-started/emulation-amiberry.md)).
+
+## Status
+
+| Claim | Status |
+|---|---|
+| A4091/53C710 driver detects, reads and writes; root + swap + filesystem on the A4091; multi-user, networking | ✅ emulation-proven (Amiberry, real Amix 2.1c) |
+| One universal kernel boots both A3000(ECS) and A4000(AGA) + A4091 | ✅ emulation-proven, one binary |
+| Bounded-poll / interrupt-driven completion (real disks are not instant) | 🟡 pending — single-ISTAT completion is an emulation shortcut |
+| Real-hardware validation on a physical A3000 and A4000 + A4091 | 🟡 pending |
+
+## See also
+
+- [Zorro AUTOCONFIG for drivers](zorro-autoconfig.md) — `autocon()`, the Zorro III / `sptalloc`
+  question, and the chipset-gated auto-detection that registers the A3000 SCSI only when present.
+- [Building & installing a kernel](kernel-build.md) — the `make` → `relocunix` → `make bootpart`
+  flow and the D245 clean-gate that this driver's build depends on.
+- [The boot process](../how-it-works/boot-process.md) — booting Amix with **root on the A4091**, and
+  the rootdev ↔ card-index device numbering.
+- [Device list](../reference/device-list.md) — the SCSI block/char major numbers and the
+  card/target/slice minor scheme.
+- [Supported hardware & requirements](../how-it-works/hardware.md) — the Zorro II / Zorro III rules
+  the A4091 work pushes against.
+- [Amix on Amiberry](../getting-started/emulation-amiberry.md) — the A4091-in-Amiberry config and the
+  A3000(ECS) vs A4000(AGA) Kickstart finding.
+- [The Amix device-driver model](driver-model.md) — the switch-table mechanism underneath the SCSI
+  stack.
+
+## Sources
+
+- The A4091-on-Amix project — `NOTES.md` §1–§20 (lab notebook, reproduced locally ✅) and `src/`/`tools/`.
+- `src/a4091-wr.c` — the 53C710 READ+WRITE driver (`A4091_PROD 0x02020054`, `SIOP_OFF 0x00800000`,
+  `sptalloc()` mapping, `inq_script[]`, `a4091queue()`); SCRIPTS from the a4091-software repo's
+  `ncr53cxxx` source.
+- `src/kernel-patches/{sd.c,support.c,alien-Makefile}` — the kernel diffs (the `scsicard[]` row, the
+  chipset-gated `autocon()`, the `a4091.o` OBJ entry).
+- `docs/a4091-53c710-reference.md` in the project repo — the verified 53C710 register/SCRIPTS detail
+  behind this driver.
+- a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx`
+  SCRIPTS assembler).
 
 
 ================================================================================
@@ -5883,6 +6680,76 @@ unbootable; the Ditto paper makes this explicit ✅. A STREAMS/network driver bu
 natively, `make` in the driver dir then `make force` to relink (`elf2brel` converts the kernel to
 boot format in the process); see the [Hydra case study](../drivers/case-studies/hydra.md).
 
+### Installing a kernel into the Amix boot partition ✅
+
+What `make bootpart` actually does, and how to do it by hand for a *different* disk — verified
+first-party on Amix 2.1c (the A4091 work used this exact pipeline to install a driver-modified
+kernel onto a separate boot disk).
+
+The full install flow from `/usr/sys` is two stages ✅:
+
+```sh
+cd /usr/sys
+make install          # stages the linked kernel to /stand (preserves the old one as /stand/OLDunix)
+cd /stand
+make bootpart         # writes the boot payload into BOOTPART (default /dev/dsk/c6d0s3)
+```
+
+`make bootpart` `dd`s a **concatenated five-part image** to the boot partition ✅ — each file
+preceded by its own **`IBLK` infoblock**:
+
+```sh
+# what `make bootpart` does, expanded (BOOTPART = /dev/dsk/c6d0s3 by default):
+( cat boot1.boot; ./makeiblk boot2.boot; cat boot2.boot; ./makeiblk unix; cat unix ) \
+  | dd conv=sync of=/dev/dsk/c6d0s3
+```
+
+`makeiblk` is the **same `IBLK` infoblock tool** that the boot-floppy format is built from — the
+512-byte `struct infoblock` (magic `IBLK`, compressed/decompressed lengths, checksum) that precedes
+each file the bootstrap loads. See
+[Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md#the-iblk-descriptor-and-the-overrun-trap)
+for the on-disk descriptor layout and the SVR4-`sum` checksum it carries. (On the boot partition the
+kernel is stored **uncompressed**; on the boot *floppy* it is `compress`'d. The `IBLK` framing is the
+same; only the payload differs.) ✅
+
+#### Targeting a *different* disk's boot partition ✅
+
+`make install` always writes **whatever disk the box booted from** (it resolves `BOOTPART` to the
+running root's boot slice — `c6d0s3`). To install a kernel onto **another** disk's boot partition —
+for example an A4091 disk mounted as card 1, whose boot slice is `c8d0s3` — run the pipeline **by
+hand** and never plain `make install` ✅:
+
+```sh
+cd /stand
+( cat boot1.boot; ./makeiblk boot2.boot; cat boot2.boot; ./makeiblk unix; cat unix ) \
+  | dd conv=sync of=/dev/dsk/c8d0s3
+```
+
+This is exactly the trick used to build an A4091-bootable disk from a separate A3000 build host: the
+build environment mounts both disks, links the kernel against the A3000 root, then writes the
+*A4091* disk's boot slice (`c8d0s3`) by hand. (`c8` = card 1, target 0; `c6` = card 0, target 6 —
+see the [A4091/53C710 driver](../drivers/a4091-53c710-driver.md) for the SCSI `cN` device-numbering
+scheme.) Plain `make install` here would have rewritten the *build host's* own boot partition. ✅
+
+#### ✅ Safety rule: never `make install` an unverified kernel onto your working disk
+
+`make install` / `make bootpart` **rewrites the boot partition in place**. If the kernel you install
+is corrupt, the next boot **bricks that disk** — the bootstrap relocator chokes and you get a
+`D245 4C41` Guru with no usable system. This is not hypothetical: the Amix kernel link suffers an
+intermittent (~70%) `ld` write-corruption that produces exactly such a kernel. Three rules ✅:
+
+1. **Always clean-gate the build** — relink until the kernel checksum recurs, which proves a clean
+   `ld` output, before you install it. See the
+   [D245 boot-breaker and the build-until-stable clean-gate](../drivers/kernel-build.md) on the
+   kernel-build page (and [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)).
+2. **Keep a backup HDF** of your working disk before any boot-partition write — recovery is a file
+   copy, not a reinstall.
+3. **Install onto a throwaway / clone disk**, not your daily driver — use the by-hand `c8d0s3`
+   pipeline above to target the clone, never `make install`.
+
+Never `make install` a test or diagnostic kernel (one with `printf` tracing, a half-finished driver,
+an unverified link) onto the disk you actually rely on. ✅
+
 ## Surface (b): a custom bootable floppy — solved ✅🟡
 
 The boot floppy is no longer a black box. From the [reverse-engineering writeup](reverse-engineering-boot-adf.md):
@@ -5965,8 +6832,11 @@ these are the remaining loose ends, none blocking:
   next validation.
 - 🟡 **Full install** through the tape stage needs A3000 SCSI/tape emulation (see
   [Amiberry status](../getting-started/emulation-amiberry.md)).
-- 🔴 **Exact RDB partition type IDs** Amix uses (boot vs swap vs UFS) are undocumented — relevant only
-  if you script creating a boot *partition* from scratch rather than letting the installer do it.
+- ✅ **RDB partition type IDs** Amix uses are now known — read from the installer (`/etc/rdb -F`): boot
+  `0x554e4900` (`UNI\0`), UNIX root `0x554e4901` (`UNI\1`), swap `0x72657376` (`resv`); see
+  [the boot process](../how-it-works/boot-process.md) and
+  [root floppy anatomy](anatomy-root-adf.md#rdb-partition-type-tags). Relevant if you script creating a
+  boot *partition* from scratch rather than letting the installer do it.
 
 If you boot-test a rebuilt floppy, or pin the checksum, please contribute the result back.
 
@@ -5975,6 +6845,8 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
 - [Building & installing a kernel](../drivers/kernel-build.md) — the relink all three surfaces share.
 - [Anatomy of the boot ADF](anatomy-boot-adf.md) / [patch ADF](anatomy-patch-adf.md) — the formats built here.
 - [The build pipeline](build-pipeline.md) — the `tools/` end-to-end.
+- [The A4091/53C710 driver](../drivers/a4091-53c710-driver.md) — the SCSI `cN` device-numbering scheme
+  and a worked case of installing a driver kernel onto a separate boot disk via `c8d0s3`.
 - [VA2000 case study](../drivers/case-studies/va2000.md) · [Hydra case study](../drivers/case-studies/hydra.md).
 
 ## Sources
@@ -5984,6 +6856,15 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
   host-verified round-trip via `tools/extract-kernel.sh` + `tools/build-bootfloppy.sh`.
 - Kernel relink flow (`/usr/sys` → `make force` / `relocunix` → `make bootpart`; keep old `/unix`) —
   Ditto paper; research brief §3, §5, §6.
+- **Installing a kernel into the boot partition** (the `make install` → `cd /stand; make bootpart`
+  flow; the five-part `boot1 + makeiblk(boot2) + boot2 + makeiblk(unix) + unix` `dd` to
+  BOOTPART = `/dev/dsk/c6d0s3`; the by-hand `c8d0s3` pipeline for a *different* disk; the
+  "never `make install` an unverified kernel" safety rule) — The A4091-on-Amix project,
+  `NOTES.md` §11 (build/install flow), §16 + §18 (boot-partition write bricks a disk; D245 `ld`
+  corruption), §19 (the by-hand `c8d0s3` install onto a separate disk) — reproduced locally ✅;
+  handoff §8;
+  [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
+  is the clean-gate that proves a kernel safe to install.
 - Patch-disk self-extraction model — `amix_21_patch.adf` analysis; research brief §10;
   [`tools/build-custom-bootdisk.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-custom-bootdisk.sh).
 - VA2000 / Hydra driver-install procedures — research brief §6; repos
@@ -6522,12 +7403,35 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 
 ### Minor-number encoding for the SCSI disk (major 18)
 
-For the SCSI hard-disk driver, the minor number is **not** a simple index — it packs three fields: **SCSI address**, **LUN**, and **partition** ✅. The paper's example node `/dev/dsk/c0d0s1` is **block major 18, minor 1** = SCSI address 0, LUN 0, partition 1 ✅.
+For the SCSI hard-disk driver, the minor number is **not** a simple index — it packs three fields. The Ditto paper describes them as **SCSI address**, **LUN**, and **partition** ✅; reading the actual `amiga/alien/sd.h` macros (reproduced locally on Amix 2.1c ✅) the three fields are precisely **SCSI target**, **card index**, and **slice/partition**. The paper's example node `/dev/dsk/c0d0s1` is **block major 18, minor 1** = SCSI target 0, card 0, slice 1 ✅.
+
+The block disk driver is **block major 18 / char major 40** ✅. (A separate `gsioctl` passthrough node, `/dev/scsi`, is **char major 11** — that's the raw SCSI-command path, not the block path; see [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md).)
 
 In the `c<addr>d<lun>s<part>` naming you will see on disk:
 
 - `c0d0s1` → controller/SCSI-address 0, drive/LUN 0, slice (partition) 1.
 - The boot/root logic uses this directly: root.adf computes `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
+
+#### Exact minor decode and the "cN" computation ✅
+
+The minor number is decoded by three macros in `amiga/alien/sd.h` (verified against the running 2.1c kernel source ✅):
+
+```c
+#define SDCARDS         2                    /* only two SCSI cards: queue[0], queue[1] */
+#define sdunit(dev)     ((dev) >> 0 & 07)    /* SCSI target id   0-7 */
+#define sdcard(dev)     ((dev) >> 3 & 01)    /* card index (queue[] slot) -- only 0 or 1 */
+#define sdpart(dev)     ((dev) >> 4 & 07)    /* slice / partition 0-7 */
+```
+
+So the minor byte is laid out as `(slice << 4) | (card << 3) | target`. The **`cN` in a device name is *computed*, not stored** — there is no "card N" field; the `N` is rebuilt from two fields as `cN = sdcard * 8 + sdunit` (target). Worked examples ✅:
+
+| Device | card (`sdcard`) | target (`sdunit`) | slice (`sdpart`) | minor | `dev_t` |
+|---|---|---|---|---|---|
+| `c6d0s1` | 0 | 6 | 1 | 22 | `makedevice(18, 22)` |
+| `c8d0s0` | 1 | 0 | 0 | 8 | `makedevice(18, 8)` |
+| `c14d0s2` | 1 | 6 | 2 | 46 | `makedevice(18, 46)` |
+
+A full `dev_t` packs the major above the minor: **`dev_t = (major << 18) | minor`** ✅. The root device is compiled into the kernel as `ROOTDEV = makedevice(18, 22)` (i.e. `c6d0s1`) via `/stand/CONFIG`, consumed by `amiga/config/unix.c`'s `-DROOTDEV` ✅. The `card` field is the index into the kernel's `queue[SDCARDS]` table, populated in board-base-address order at first root open — see [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md) for how a controller claims a `queue[]` slot.
 
 Two SCSI target rules — one genuinely fixed, one a strong convention ✅:
 
@@ -6564,6 +7468,7 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev` node | Notes | Tag |
 |---|---|---|
 | `/dev/mem` | Physical-memory device; `lszorro` opens it and `mmap()`s AutoConfig windows ✅ | ✅ |
+| `/dev/scsi` | `gsioctl` raw-SCSI-command passthrough, **char major 11** (`scsi.c:gsioctl`); used by the `gsio` userspace tool to send arbitrary CDBs — *not* the block path (block 18 / char 40) ✅ | ✅ |
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (not a `/dev` node — an `ifconfig` name) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
@@ -6572,18 +7477,27 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 
 ## Supported expansion cards
 
-Everything here is **Zorro II only** — Amix's memory-mapping layer cannot address Zorro III space, and that source was never shipped so it cannot be community-fixed ✅. Cards are grouped by function. Tags follow the brief.
+Everything **stock** here is **Zorro II only** — Amix's stock drivers just dereference the `autocon()` address, and Zorro II boards (≤ 24-bit, inside the 68030's TT0 transparent-translation window) are directly reachable while Zorro III space is not, by default ✅. That source was never shipped, so the *stock* card set cannot be community-fixed in place ✅. Cards are grouped by function. Tags follow the brief.
+
+> 🔴 **Correction (Zorro III is reachable after all):** "Amix can never drive a Zorro III board" was the long-standing belief, and it is **wrong for a driver that maps the board explicitly.** The A4091-on-Amix project drove the **Zorro III A4091** by page-table-mapping its register block with the kernel's own `sptalloc()` primitive (the board sits in the unmapped `0x40000000–0x7FFFFFFF` TT gap, so a plain pointer deref *does* fail — but `sptalloc()` gets a working kernel VA) 🟡 (reproduced in Amiberry; real-hardware confirmation pending). See [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md).
 
 ### SCSI host adapters
 
 | Card | Notes | Tag |
 |---|---|---|
-| **A3000 on-board SCSI** | The reference controller on the A3000UX | ✅ |
-| **A2090** | A2000-family SCSI controller | ✅ |
-| **A2091** | A2000-family SCSI controller | ✅ |
+| **A3000 on-board SCSI** | The reference controller on the A3000UX (WD33C93); AutoConfig product id `0x0202F003` | ✅ |
+| **A2090** | A2000-family SCSI controller; product id `0x02020001` | ✅ |
+| **A2091** | A2000-family SCSI controller; product id `0x02020003` | ✅ |
+| **A4091** | **Zorro III** SCSI-2 host adapter (NCR/Symbios **53C710**); AutoConfig product id `0x02020054`, phys base `0x40000000`. Not stock — driven by the community [A4091 53C710 driver](../drivers/a4091-53c710-driver.md) 🟡 (Amiberry; real-hardware pending) | 🟡 |
 | **GVP Series II** | Needs a **kernel rebuild + an RDB `dummy_handler`** | 🟡 |
 
 The A2090/A2091 interrupt handlers (`a2090intr`, `a2091intr`) appear in the kernel's level-2 autovector table `int2_tbl[]` ✅ — concrete evidence these controllers are wired into the stock kernel. Remember the disk sits at **SCSI ID 6** by convention (above).
+
+The kernel's `sd.c` selector maps these product ids to per-card queue functions in its `scsicard[]` registry; the A4091 work added the row `0x02020054, &a4091queue, "A4091 SCSI"` (verified in `src/kernel-patches/sd.c` ✅).
+
+#### Card index when both an A3000 SCSI and an A4091 are present ✅
+
+Because `sd.c` inserts detected controllers **sorted ascending by board base address**, the lower-addressed controller takes `queue[0]` (card 0) and the next takes `queue[1]` (card 1). With both present, the A3000 SCSI (`0xDD0000`) is **card 0** and the A4091 (`0x40000000`) is **card 1** ✅ — so an A4091 disk at target 0, slice 0 is reached as **`/dev/dsk/c8d0s0`** (block major 18, minor 8) and **`/dev/rdsk/c8d0s0`** (char major 40, minor 8): `cN = 1*8 + 0 = 8` ✅. When the A4091 is the **only** controller it becomes card 0 instead, so the same disk is `c0d0s0`-class (and an autoboot disk at target 6 appears as `c6d0s1`-class). Which card index the A4091 lands on therefore depends on what else is in the machine — see [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md) and [the boot process](../how-it-works/boot-process.md) for the rootdev↔card-index consequences.
 
 ### Graphics
 
@@ -6631,6 +7545,10 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (`/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).
 - Driver repos: [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix), [`asokero/lszorro-amix`](https://github.com/asokero/lszorro-amix), [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — A2232, requirements, networking pages (community-reported items: GVP Series II, Ariadne, Gateway! graphics cards).
+- The A4091-on-Amix project — `NOTES.md` §3, §8, §12–§15 (lab notebook, reproduced locally ✅) and `src/`/`tools/`. The minor decode (`sdunit`/`sdcard`/`sdpart`, `SDCARDS`), block major 18 / char major 40, and `dev_t = (major<<18)|minor` are verified against `amiga/alien/sd.h`; the `/dev/scsi` char major 11 `gsioctl` path against `src/gsio.c`.
+- `src/kernel-patches/sd.c` — the `0x02020054, &a4091queue, "A4091 SCSI"` `scsicard[]` row and the base-address-sorted `queue[]` insertion.
+- `src/a4091-wr.c` — `A4091_PROD = 0x02020054`, phys base `0x40000000`; the `sptalloc()`-mapped 53C710 driver.
+- a4091.device open-source project: [`A4091/a4091-software`](https://github.com/A4091/a4091-software) (A4091 ROM + SCRIPTS assembler).
 
 
 ================================================================================

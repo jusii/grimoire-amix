@@ -100,6 +100,46 @@ Notes and caveats:
 > "general weirdness" on [amigaunix.com](https://www.amigaunix.com/doku.php/networking)
 > and confirmed first-hand.)
 
+> ⚠️ **Also fix the boot-time `ifconfig`s, or enabling DNS adds ~3 minutes to every
+> boot.** After enabling DNS via the procedure above, the box stalls **~3 minutes** at
+> `The system is coming up.  Please wait.` on *every* boot. Stock Amix (DNS off) does not.
+> Reproduced first-hand on Amix 2.1c under Amiberry, 2026-06-07 ✅.
+>
+> **Root cause** ✅: `/etc/rc2.d/S69inet` brings networking up with two `ifconfig` calls
+> that take **hostnames**, each forcing a `gethostbyname()`:
+> - `ifconfig lo0 localhost up` — in `S69inet` itself
+> - `ifconfig aen0 \`uname -n\` up -trailers` — in `/etc/inet/network-config`
+>
+> With DNS enabled, `gethostbyname()` tries **DNS first**, but these run *before* the
+> default route is installed (`route add default …` happens later, in
+> `/etc/inet/rc.inet`). With no route to the nameservers, each lookup burns the full
+> resolver retransmit schedule — **~90 s each, ~180 s total** — before falling back to
+> `/etc/hosts`. With DNS *off* (stock) the same names resolve instantly from `/etc/hosts`,
+> which is why the trap appears **only after** you enable DNS.
+>
+> This is **independent of the `/etc/domain` weirdness above** ✅ — a box with an
+> already-empty `/etc/domain` still hangs the full 180 s. They are two different problems;
+> fix both.
+
+**The fix — give both boot-time `ifconfig`s a literal IP** (boot **210 s → 29 s**; runtime DNS is unaffected) ✅. Configuring your own interface should never depend on a name service:
+
+```diff
+# /etc/rc2.d/S69inet
+-   /usr/sbin/ifconfig lo0 localhost up
++   /usr/sbin/ifconfig lo0 127.0.0.1 up
+
+# /etc/inet/network-config
+-   /usr/sbin/ifconfig aen0 `uname -n` up -trailers
++   /usr/sbin/ifconfig aen0 <this-host-static-ip> up -trailers
+```
+
+`lo0` is always `127.0.0.1`; `aen0` takes this host's own static address (the same one already in `/etc/hosts` — e.g. `192.168.2.38` in [the LAN setup](../getting-started/networking-on-the-lan.md)). Only the boot path stops calling the resolver; DNS for clients, mail, etc. is untouched ✅.
+
+> 🔗 **Edit `S69inet` in place** — it is a hardlink (the same inode is also
+> `/etc/init.d/inetinit`), so unlink/recreate would desync the two ✅. And never leave
+> backup copies named `S*` inside `/etc/rc2.d/` — `rc2`'s `for f in /etc/rc2.d/S*` glob
+> will run them at boot; park backups elsewhere ✅.
+
 For a complete, reproducible LAN setup (static IP at boot, gateway, DNS, internet, reachable inbound — all surviving reboot) under Amiberry, see **[Putting Amix on your real LAN](../getting-started/networking-on-the-lan.md)**.
 
 ## NFS (server and client)
@@ -150,6 +190,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 | Enable DNS (1/2) | `ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so` + `/etc/resolv.conf` (nameservers only) | ✅ |
 | Enable DNS (2/2) | `cp /etc/netconfig.DNS /etc/netconfig` (activates `/usr/lib/resolv.so`) | ✅ |
 | **Unset domain** (or DNS breaks) | `cp /dev/null /etc/domain; domainname ""` — else it's appended to every lookup | ✅ |
+| **Fix slow boot after DNS** | literal IPs in boot `ifconfig`s: `lo0 127.0.0.1`, `aen0 <static-ip>` — else +180 s/boot | ✅ |
 | NFS export / mount | `share` / `shareall`; `mount -F nfs host:/path /mnt` | ✅ |
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
 | PPP | not available | ✅ |
@@ -176,3 +217,4 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (cites the SVR4 *Streams Programmer's Guide* and *Network Programmer's Guide*).
 - [github.com/isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix)
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).
+- The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.

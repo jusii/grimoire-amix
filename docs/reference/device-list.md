@@ -29,12 +29,35 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 
 ### Minor-number encoding for the SCSI disk (major 18)
 
-For the SCSI hard-disk driver, the minor number is **not** a simple index — it packs three fields: **SCSI address**, **LUN**, and **partition** ✅. The paper's example node `/dev/dsk/c0d0s1` is **block major 18, minor 1** = SCSI address 0, LUN 0, partition 1 ✅.
+For the SCSI hard-disk driver, the minor number is **not** a simple index — it packs three fields. The Ditto paper describes them as **SCSI address**, **LUN**, and **partition** ✅; reading the actual `amiga/alien/sd.h` macros (reproduced locally on Amix 2.1c ✅) the three fields are precisely **SCSI target**, **card index**, and **slice/partition**. The paper's example node `/dev/dsk/c0d0s1` is **block major 18, minor 1** = SCSI target 0, card 0, slice 1 ✅.
+
+The block disk driver is **block major 18 / char major 40** ✅. (A separate `gsioctl` passthrough node, `/dev/scsi`, is **char major 11** — that's the raw SCSI-command path, not the block path; see [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md).)
 
 In the `c<addr>d<lun>s<part>` naming you will see on disk:
 
 - `c0d0s1` → controller/SCSI-address 0, drive/LUN 0, slice (partition) 1.
 - The boot/root logic uses this directly: root.adf computes `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
+
+#### Exact minor decode and the "cN" computation ✅
+
+The minor number is decoded by three macros in `amiga/alien/sd.h` (verified against the running 2.1c kernel source ✅):
+
+```c
+#define SDCARDS         2                    /* only two SCSI cards: queue[0], queue[1] */
+#define sdunit(dev)     ((dev) >> 0 & 07)    /* SCSI target id   0-7 */
+#define sdcard(dev)     ((dev) >> 3 & 01)    /* card index (queue[] slot) -- only 0 or 1 */
+#define sdpart(dev)     ((dev) >> 4 & 07)    /* slice / partition 0-7 */
+```
+
+So the minor byte is laid out as `(slice << 4) | (card << 3) | target`. The **`cN` in a device name is *computed*, not stored** — there is no "card N" field; the `N` is rebuilt from two fields as `cN = sdcard * 8 + sdunit` (target). Worked examples ✅:
+
+| Device | card (`sdcard`) | target (`sdunit`) | slice (`sdpart`) | minor | `dev_t` |
+|---|---|---|---|---|---|
+| `c6d0s1` | 0 | 6 | 1 | 22 | `makedevice(18, 22)` |
+| `c8d0s0` | 1 | 0 | 0 | 8 | `makedevice(18, 8)` |
+| `c14d0s2` | 1 | 6 | 2 | 46 | `makedevice(18, 46)` |
+
+A full `dev_t` packs the major above the minor: **`dev_t = (major << 18) | minor`** ✅. The root device is compiled into the kernel as `ROOTDEV = makedevice(18, 22)` (i.e. `c6d0s1`) via `/stand/CONFIG`, consumed by `amiga/config/unix.c`'s `-DROOTDEV` ✅. The `card` field is the index into the kernel's `queue[SDCARDS]` table, populated in board-base-address order at first root open — see [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md) for how a controller claims a `queue[]` slot.
 
 Two SCSI target rules — one genuinely fixed, one a strong convention ✅:
 
@@ -71,6 +94,7 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev` node | Notes | Tag |
 |---|---|---|
 | `/dev/mem` | Physical-memory device; `lszorro` opens it and `mmap()`s AutoConfig windows ✅ | ✅ |
+| `/dev/scsi` | `gsioctl` raw-SCSI-command passthrough, **char major 11** (`scsi.c:gsioctl`); used by the `gsio` userspace tool to send arbitrary CDBs — *not* the block path (block 18 / char 40) ✅ | ✅ |
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (not a `/dev` node — an `ifconfig` name) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
@@ -79,18 +103,27 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 
 ## Supported expansion cards
 
-Everything here is **Zorro II only** — Amix's memory-mapping layer cannot address Zorro III space, and that source was never shipped so it cannot be community-fixed ✅. Cards are grouped by function. Tags follow the brief.
+Everything **stock** here is **Zorro II only** — Amix's stock drivers just dereference the `autocon()` address, and Zorro II boards (≤ 24-bit, inside the 68030's TT0 transparent-translation window) are directly reachable while Zorro III space is not, by default ✅. That source was never shipped, so the *stock* card set cannot be community-fixed in place ✅. Cards are grouped by function. Tags follow the brief.
+
+> 🔴 **Correction (Zorro III is reachable after all):** "Amix can never drive a Zorro III board" was the long-standing belief, and it is **wrong for a driver that maps the board explicitly.** The A4091-on-Amix project drove the **Zorro III A4091** by page-table-mapping its register block with the kernel's own `sptalloc()` primitive (the board sits in the unmapped `0x40000000–0x7FFFFFFF` TT gap, so a plain pointer deref *does* fail — but `sptalloc()` gets a working kernel VA) 🟡 (reproduced in Amiberry; real-hardware confirmation pending). See [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md).
 
 ### SCSI host adapters
 
 | Card | Notes | Tag |
 |---|---|---|
-| **A3000 on-board SCSI** | The reference controller on the A3000UX | ✅ |
-| **A2090** | A2000-family SCSI controller | ✅ |
-| **A2091** | A2000-family SCSI controller | ✅ |
+| **A3000 on-board SCSI** | The reference controller on the A3000UX (WD33C93); AutoConfig product id `0x0202F003` | ✅ |
+| **A2090** | A2000-family SCSI controller; product id `0x02020001` | ✅ |
+| **A2091** | A2000-family SCSI controller; product id `0x02020003` | ✅ |
+| **A4091** | **Zorro III** SCSI-2 host adapter (NCR/Symbios **53C710**); AutoConfig product id `0x02020054`, phys base `0x40000000`. Not stock — driven by the community [A4091 53C710 driver](../drivers/a4091-53c710-driver.md) 🟡 (Amiberry; real-hardware pending) | 🟡 |
 | **GVP Series II** | Needs a **kernel rebuild + an RDB `dummy_handler`** | 🟡 |
 
 The A2090/A2091 interrupt handlers (`a2090intr`, `a2091intr`) appear in the kernel's level-2 autovector table `int2_tbl[]` ✅ — concrete evidence these controllers are wired into the stock kernel. Remember the disk sits at **SCSI ID 6** by convention (above).
+
+The kernel's `sd.c` selector maps these product ids to per-card queue functions in its `scsicard[]` registry; the A4091 work added the row `0x02020054, &a4091queue, "A4091 SCSI"` (verified in `src/kernel-patches/sd.c` ✅).
+
+#### Card index when both an A3000 SCSI and an A4091 are present ✅
+
+Because `sd.c` inserts detected controllers **sorted ascending by board base address**, the lower-addressed controller takes `queue[0]` (card 0) and the next takes `queue[1]` (card 1). With both present, the A3000 SCSI (`0xDD0000`) is **card 0** and the A4091 (`0x40000000`) is **card 1** ✅ — so an A4091 disk at target 0, slice 0 is reached as **`/dev/dsk/c8d0s0`** (block major 18, minor 8) and **`/dev/rdsk/c8d0s0`** (char major 40, minor 8): `cN = 1*8 + 0 = 8` ✅. When the A4091 is the **only** controller it becomes card 0 instead, so the same disk is `c0d0s0`-class (and an autoboot disk at target 6 appears as `c6d0s1`-class). Which card index the A4091 lands on therefore depends on what else is in the machine — see [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md) and [the boot process](../how-it-works/boot-process.md) for the rootdev↔card-index consequences.
 
 ### Graphics
 
@@ -138,3 +171,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (`/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).
 - Driver repos: [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix), [`asokero/lszorro-amix`](https://github.com/asokero/lszorro-amix), [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — A2232, requirements, networking pages (community-reported items: GVP Series II, Ariadne, Gateway! graphics cards).
+- The A4091-on-Amix project — `NOTES.md` §3, §8, §12–§15 (lab notebook, reproduced locally ✅) and `src/`/`tools/`. The minor decode (`sdunit`/`sdcard`/`sdpart`, `SDCARDS`), block major 18 / char major 40, and `dev_t = (major<<18)|minor` are verified against `amiga/alien/sd.h`; the `/dev/scsi` char major 11 `gsioctl` path against `src/gsio.c`.
+- `src/kernel-patches/sd.c` — the `0x02020054, &a4091queue, "A4091 SCSI"` `scsicard[]` row and the base-address-sorted `queue[]` insertion.
+- `src/a4091-wr.c` — `A4091_PROD = 0x02020054`, phys base `0x40000000`; the `sptalloc()`-mapped 53C710 driver.
+- a4091.device open-source project: [`A4091/a4091-software`](https://github.com/A4091/a4091-software) (A4091 ROM + SCRIPTS assembler).
