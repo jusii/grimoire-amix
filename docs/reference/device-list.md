@@ -142,7 +142,7 @@ The A2410 is the *officially* supported color option; the VA2000 path is the mod
 |---|---|---|---|
 | **A2065** | `aen0` | Native Ethernet (LANCE); the A3000UX ships with it | ✅ |
 | **Ariadne I** | — | Via Gateway! Vol.2 drivers | 🟡 |
-| **Hydra AmigaNet** | `hya0` (char 47) | Via the modern `hydra-amix` STREAMS/DLPI driver (NE2000/DP8390) | ✅ |
+| **Hydra AmigaNet** | `hya0` (char 47) | Via the modern `hydra-amix` STREAMS/DLPI driver (NE2000/DP8390); **works on real hardware (2026-06)** — ARP + ICMP ping verified | ✅ |
 
 Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. See [Networking](../how-it-works/networking.md).
 

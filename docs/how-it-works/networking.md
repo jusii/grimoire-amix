@@ -168,7 +168,7 @@ If you need IP over serial in practice, the community guidance is effectively "u
 
 ## Adding other network cards
 
-Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card needs a driver compiled into `/unix`. The modern, fully worked example is the **Hydra AmigaNet** driver.
+Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card needs a driver compiled into `/unix`. The modern, fully worked example is the **Hydra AmigaNet** driver — and as of **2026-06 it works on real hardware**: ARP resolves and ICMP `ping` reaches both the local gateway and external IPs, which the repo calls *"believed to be the first working AMIX network driver for the Hydra card"* 🟡 (first-party). See [the Hydra case study](../drivers/case-studies/hydra.md) for the bring-up story.
 
 - `hydra-amix` is a **STREAMS / DLPI** network driver for the Hydra card (an **NE2000 / DP8390** design), rev 1.2a, Zorro II, AutoConfig ID **2121/1 (`0x08490001`)** ✅.
 - It registers at **`cdevsw` slot 47** with the `hya` tag. **Amix is SVR4.0 — there is no `ifconfig … plumb`**; you link the interface in with `slink addaen /dev/hya0 hya0`, then `ifconfig hya0 <ip> netmask <m> up -trailers` ✅.

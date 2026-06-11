@@ -77,7 +77,7 @@ licensed Amix install and headers).
 | <https://github.com/asokero/va2000-amix> | ✅ Char framebuffer driver for the MNT VA2000 RTG card (`/dev/va2000`, char major 68) | [va2000](../drivers/case-studies/va2000.md) |
 | <https://github.com/asokero/xrtg-amix> | ✅ X11R5 server (`Xrtg`) for the VA2000 (needs the va2000 driver) | [xrtg](../drivers/case-studies/xrtg.md) |
 | <https://github.com/asokero/lszorro-amix> | ✅ Userspace `lspci`-style Zorro II scanner | [lszorro](../drivers/case-studies/lszorro.md) |
-| <https://github.com/isoriano1968/hydra-amix> | ✅ STREAMS/DLPI network driver for the Hydra AmigaNet card (`cdevsw` slot 47, `hya`); now also carries a slice of the Amix `/usr/sys` kernel + boot source tree | [hydra](../drivers/case-studies/hydra.md) |
+| <https://github.com/isoriano1968/hydra-amix> | ✅ STREAMS/DLPI network driver for the Hydra AmigaNet card (`cdevsw` slot 47, `hya`); now also carries a slice of the Amix `/usr/sys` kernel + boot source tree. **2026-06: verified on real hardware** (ARP + ICMP ping) — "believed to be the first working Amix net driver for the card" 🟡 | [hydra](../drivers/case-studies/hydra.md) |
 | <https://github.com/vjouppi/hydra> | 🟡 Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics); cited by the hydra-amix README | [hydra](../drivers/case-studies/hydra.md) |
 
 🟡 An earlier research note claimed "asokero handle not found / isoriano1968 only does AmigaOS Mesa."

@@ -131,7 +131,7 @@ There is also a modern RTG path: the [MNT VA2000 char framebuffer driver](../dri
 |---|---|---|
 | **A2065** | ✅ | Native Ethernet (LANCE); device `aen0` |
 | Ariadne I | 🟡 | Via *Gateway!* drivers |
-| **Hydra** AmigaNet | ✅ | Via the modern [`hydra-amix` STREAMS/DLPI driver](../drivers/case-studies/hydra.md) |
+| **Hydra** AmigaNet | ✅ | Via the modern [`hydra-amix` STREAMS/DLPI driver](../drivers/case-studies/hydra.md) — **verified on real hardware (2026-06)**; "believed to be the first working Amix net driver for the card" 🟡 |
 
 See [the networking page](networking.md) for STREAMS TCP/IP, static-IP setup, and the DNS-off-by-default quirk.
 

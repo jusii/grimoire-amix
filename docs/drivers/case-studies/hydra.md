@@ -10,7 +10,27 @@ status: draft
 
 This page is the worked example for [Writing a STREAMS driver](../writing-a-streams-driver.md): hydra-amix is the project's reference STREAMS network driver, mirroring the structure of the stock A2065 LANCE driver (`aen/`). Everything here is grounded in the repo's README and source ✅ and in §6 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md). The driver is **source-only** — it builds against a licensed Amix SVR4 environment, so no binaries are distributed ✅.
 
-> **Status note.** hydra-amix is a recent, AI-assisted hobby effort, under active development (the source has changed substantially over time — e.g. the AutoConfig ID was corrected and an early A2065-emulation fallback was removed). Facts here track the current `master`; check the repo for newer changes.
+> **Status note.** hydra-amix is a recent, AI-assisted hobby effort under active development; the source changes substantially over time (the AutoConfig ID was corrected, an early A2065-emulation fallback was removed, and as of 2026-06 it is **working on real hardware** — see below). Facts here track the current `master`; check the repo for newer changes.
+
+## Current status: working on real Hydra hardware ✅
+
+As of **2026-06** (commit `3147725`), the driver is **verified on a real Hydra Systems AmigaNet card under Amix** — no longer just source review ✅:
+
+- the interface plumbs and configures (`slink` + `ifconfig`);
+- **ARP resolves**, and **ICMP `ping` works to both the local gateway and external IPs** (e.g. `8.8.8.8`);
+- the card's RX/TX LEDs show live traffic.
+
+The repo's README calls it *"believed to be the **first working AMIX network driver** for the Hydra Systems AmigaNet card."* 🟡 (the author's first-party claim, hedged "believed to be" — credible, not independently established). The build is still **source-only** (it needs a licensed Amix install), but the *functionality* is now real-hardware-proven — a notable milestone for Amix networking beyond the stock A2065.
+
+### What made it work
+
+The README credits one **key unlock** — the RX minimum-frame fix below — but the real-hardware bring-up actually rode on a **broader RX/init hardening pass** ✅. The visible one-liner sat on top of substantial NIC-init and RX-ring correctness work:
+
+- **RX minimum-frame fix (the ARP/ping unlock).** The DP8390 RX ring's reported byte count **includes the 4-byte Ethernet CRC**; after the driver strips CRC, a minimum Ethernet frame is **60 bytes, not 64**. The old code rejected post-CRC frames below 64, so **minimum-size ARP replies were dropped** — ARP never completed and ping never started. The driver now checks against **`ETH_MINFRAME = ETH_MINPACKET − ETH_CRC_LEN`** (= 60); a frame below it is *rejected and the ring advanced* (it is **not** padded — TX padding is a separate path, against `ETH_MINPACKET`) ✅. (`hydra.h`: `ETH_CRC_LEN 4`, `ETH_MINFRAME`; the check is `if (pktsize < ETH_MINFRAME …)` in `hydra.c`.) This is a reusable gotcha for any DP8390/NE2000 RX path.
+- **Register-access timing** — a `NIC_DELAY()` (`DELAY(5)`) after each DP8390 register write, to guarantee chip-select deassertion time between accesses (the AmigaOS driver reads a CIA register twice for the same ~1 µs delay) ✅.
+- **RX-ring hardening** — a receive loop guard, bad-next-page recovery, bad-RSR tracking, and ring-status telemetry, so a malformed ring entry recovers instead of wedging ✅.
+- **NIC-init overhaul** — corrected `BNRY`/`CURR`/`next_pkt` setup, revised `DCR`/`TCR`/`RCR`, and an expanded interrupt mask (`IMR`) ✅.
+- **Bounded RAM helpers** — direct card-RAM access reworked to bounded long-word reads/writes with zero-fill on an invalid read ✅.
 
 ## What the Hydra AmigaNet card is
 
@@ -122,6 +142,15 @@ The repo ships a small user-space tool, **`hya`** (`usr/sys/amiga/driver/hydra/h
 
 It is backed by two driver ioctls, `HYDRA_NUMBER_OF_BOARDS` and `HYDRA_GET_CONFIG` ✅. The `hya -S` guard is what makes the boot-time `slink` conditional.
 
+### The `hydra_test` diagnostic tool
+
+Alongside `hya`, the repo ships **`hydra_test`** (`hya/hydra_test.c`) — a deeper diagnostic that opens `/dev/hya0`, runs register/RAM/TX/RX tests, and **dumps the driver's live counters, status fields, and passive RX-ring maps**, logging to stdout and a file ✅. It is backed by ioctls defined in **`hydrauser.h`**:
+
+- **`HYDRA_GET_STATUS`** → a `hydra_status_t` of counters and state: `tx_arp` / `tx_ip`, `buffer_error` / `rx_bad_size`, per-stream counts (`open` / `bound` / `arp` / `ip`), `board_state`, `last_tx_sap`, `if_active` ✅.
+- **`HYDRA_IOCTL_TEST`** with `HYDRA_TEST_{READ_REG, WRITE_REG, READ_RAM, WRITE_RAM, GET_STATE, TX, GET_BOARD}` sub-ops.
+
+`hydra_test` deliberately **avoids the trap-prone register slots** (see Known issues), so it is safe to run on real hardware ✅.
+
 ## Known issues (from the repo)
 
 The repo's README documents several real-world gotchas worth carrying ✅:
@@ -129,6 +158,7 @@ The repo's README documents several real-world gotchas worth carrying ✅:
 - **`autocon()` table corruption on 2.1p2** — the bootinfo `ConfigDev` table can have address/size mismatches, which is why the driver validates and falls back to direct slot/memory probes (above).
 - **MAC PROM byte lane** — the PROM at `base+0xffc0` is a 16-bit bus and must be read with a step-2 (every-other-byte) stride; direct contiguous reads return garbage.
 - **Remote-DMA hang** — the standard NE2000 byte-at-the-data-port Remote-DMA method does **not** raise RDC on the Hydra. The hydra-amix driver therefore writes packet data **directly to the card's buffer RAM** (`hydra_ram_write`/`hydra_ram_read` at `board_base + (page<<8)`) instead of using the RDMA data port ✅. (For the *same* problem, the AmigaOS reference driver — [vjouppi/hydra](https://github.com/vjouppi/hydra) — uses Hydra-specific ASIC registers `HYDRA_LOAD1`/`HYDRA_LOAD2` at `board+0x8000+0x7FD2`/`0x7FD5`; those symbols are **not** in the hydra-amix source 🟡.)
+- **Register-6 / TBCR1 / FIFO trap (diagnostic access).** Raw reads/writes around DP8390 **register 6** (`TBCR1` / the FIFO slot) can **trap the Amix kernel** on Hydra hardware *while the NIC is stopped* ✅. This is a hazard for ad-hoc *diagnostic* register pokes, **not** the normal data path — the working TX path writes those TX-setup registers while the NIC is *started*. (It is documented as a guard, not as a proven cause of any TX bug.) The `hydra_test` tool deliberately refuses those slots.
 
 ## Why this is a good template
 
@@ -152,6 +182,7 @@ If you are writing another NE2000/DP8390-class or Zorro II network driver for Am
 ## Sources
 
 - [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix) — repo README and source (driver entry points, AutoConfig ID `0x08490001`, register offsets, the three-method `hydraautoconfig`, `slink` plumbing, native `make`/`make force` build, the `hya` tool, and the known-issues list). ✅
+- The **2026-06 real-hardware milestone** — commit `3147725` "Update Hydra AMIX driver": README "Current Status" (ARP + ICMP ping local & external, RX/TX LEDs, "believed to be the first working AMIX network driver"), the `ETH_MINFRAME` RX fix (`hydra.h`, `hydra.c` `pktsize < ETH_MINFRAME` check) + the broader RX/init hardening (`NIC_DELAY`, RX-ring guards, NIC-init overhaul, bounded RAM helpers), the register-6/`TBCR1` trap guard, and `hya/hydra_test.c` + the `HYDRA_GET_STATUS` / `HYDRA_IOCTL_TEST` ioctls in `hydrauser.h`. ✅ / 🟡 (real-hardware verification is the upstream author's first-party report)
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix` case-study facts). ✅
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §11 (networking: SVR4 STREAMS TCP/IP, `aen0`) and §5 (driver model: `cdevsw`, STREAMS, `int2_tbl[]`). ✅
 - [vjouppi/hydra](https://github.com/vjouppi/hydra) — Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics), cited by the hydra-amix README. ✅

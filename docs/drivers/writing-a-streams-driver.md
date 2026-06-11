@@ -93,6 +93,8 @@ This is why a STREAMS net driver has **no `read`/`write`**: the data path is the
 
 Adding a level-2 interrupt driver means contributing an entry to `int2_tbl[]` in `kernel.c`, exactly as a char driver would; see [the *_tbl arrays](driver-model.md#the-_tbl-arrays) and [Building and installing a kernel](kernel-build.md).
 
+> **RX gotcha worth stealing — the DP8390 frame length includes the CRC.** The single fix that got hydra from "compiles" to "ARP and ping work on real hardware" (2026-06) was in the RX length check: the DP8390 receive ring's reported byte count **includes the 4-byte Ethernet CRC**, so after you strip CRC the **minimum frame is 60 bytes, not 64**. The driver had been rejecting post-CRC frames below 64, which silently **dropped minimum-size ARP replies** — so ARP never completed. The fix is to validate against `ETH_MINFRAME` (= `ETH_MINPACKET − ETH_CRC_LEN` = 60), not the on-the-wire 64 ✅. If you write a DP8390/NE2000 RX path, get this boundary right or small control frames vanish. (It rode on a broader RX-ring and NIC-init hardening pass — see [the Hydra case study](case-studies/hydra.md#what-made-it-work).)
+
 ## Init split: probe at boot, full-init on open
 
 hydra registers a **boot-time `init_tbl[]` entry** (`hydrainit`) that calls the idempotent `hydraautoconfig()` to **probe for the board at boot** ✅. But the *heavy* setup — reading the MAC PROM and programming the DP8390 — is **deferred to open**: it runs the first time the interface is brought up, when `slink` opens the stream and `hydraopen` calls `hydra_initialize` 🟡. So "detect at boot, initialize on open," not all-at-boot.
