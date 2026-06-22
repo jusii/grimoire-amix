@@ -71,3 +71,17 @@ tooling), plus **reference**. See [`docs/index.md`](docs/index.md) for the map a
 
 This is an **independent** resource that **cross-links** to [amigaunix.com](https://www.amigaunix.com/doku.php/home)
 for end-user/historical/install-media material — we do not duplicate it, we go deeper on development.
+
+## 8. Importing findings from other projects (`import/`)
+
+New findings handed over by other projects/agents arrive as **confidence-tagged briefs** dropped in
+[`import/`](import/) — one Markdown file per handoff, `import/<project>-<topic>.md`. Each brief states,
+per finding: the **claim**, its **✅/🟡/🔴 tag**, and a one-line **how-I-know**. Briefs are **not**
+authoritative and are **gitignored** (they are transient transport artifacts — see
+[`import/README.md`](import/README.md)).
+
+To integrate one: ground it against existing sources, fold it into the relevant `docs/` page(s)
+**carrying its tags unchanged** (never upgrade — §2), add it to that page's `## Sources`, regenerate
+`llms-full.txt` (§6), then **clear** the brief from `import/` (delete it, or return it to the
+originating project). Never leave a raw brief in [`sources/`](sources/) — that directory is the
+grounded source of truth (§1), not an inbox.

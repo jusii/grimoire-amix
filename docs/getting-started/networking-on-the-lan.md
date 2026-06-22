@@ -105,6 +105,9 @@ hardfile2=rw,DH0:/path/to/Amix.hdf,32,1,2,512,0,,scsi6_a3000
 > **Gotcha — the MAC must be a Commodore OUI (`00:80:10:xx:xx:xx`).** The Amix
 > `aen0`/LANCE path expects it; an arbitrary MAC misbehaves. The host-side TAP keeps
 > its own random MAC (correct — the bridge/host learns the Amiga MAC from frames). ✅
+> This OUI requirement is specific to the emulated **A2065/LANCE `aen0`** path; other
+> interfaces such as the Z3660 GEM `zen0` use their own MAC (e.g. `00:80:51:…`) — see
+> [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md). ✅
 >
 > Launching headless is possible (`Xvfb` + a controlling TTY + `xdotool`); see
 > [Headless operation](#headless-operation-optional). Otherwise just launch Amiberry
@@ -282,6 +285,7 @@ Useful for automation / agents driving Amix without a visible window:
 ## See also
 
 - [Networking (concepts)](../how-it-works/networking.md) — the SVR4 STREAMS stack, `aen0`, DNS-off-by-default, the `route` metric.
+- [Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) — the **real-hardware** native-ethernet path: a physical A4000 + Z3660 as a LAN host over `zen0` (a native STREAMS/DLPI driver), as opposed to this page's emulated-A2065-on-a-host-TAP recipe. Same SVR4 boot-time bring-up files apply.
 - [Amix on Amiberry (status)](emulation-amiberry.md) — what runs vs. what needs WinUAE/FS-UAE.
 - [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
 - [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap, and the **DNS-enable slow-boot** (literal-IP `ifconfig` fix).

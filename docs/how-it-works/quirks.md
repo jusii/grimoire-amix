@@ -8,7 +8,7 @@ status: draft
 
 Amix is a "quick and dirty" 1990–1992 SVR4 port ✅, and it shows: the kernel hard-codes SCSI IDs and a RAM ceiling, the bootstrap predates the 68040 and Zorro III, the clock breaks in 2000, and the userland is pre-POSIX. This page is the **checklist of port-specific surprises** — the things that are technically correct, technically broken, or just unexpected, that cost people hours before they realize "it's just Amix."
 
-Each item is one line: what it is, the ✅/🟡 confidence tag carried from the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §12 (and §2/§9/§11), and a cross-link to the page that covers it in depth.
+Each item is one line: what it is, the ✅/🟡 confidence tag carried from the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §12 (and §2/§9/§11, plus §17/§18 for the Z3660 driver-authoring items), and a cross-link to the page that covers it in depth.
 
 ## TL;DR checklist
 
@@ -16,7 +16,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 |---|---|---|---|
 | 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
 | 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive | ✅ | [Hardware](hardware.md) |
-| 3 | **No Zorro III** — memory-mapping layer can't address it; unfixable | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
+| 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside TT0) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md) |
 | 5 | **Superkickstart dual-boot** by holding the right mouse button at power-on | ✅ | [Boot process](boot-process.md) |
 | 6 | **DNS resolution is OFF by default** (`/etc/hosts` only) | ✅/🟡 | [Networking](networking.md) |
@@ -27,6 +27,9 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 11 | **Clock drift** via SCSI interaction | 🟡 | [Networking](networking.md) |
 | 12 | **`/bin/sh` is pre-POSIX**: no `$(...)`, no `grep -q` | ✅ | [Driver model](../drivers/driver-model.md), [Writing a char driver](../drivers/writing-a-char-driver.md) |
 | 13 | **Enabling DNS adds ~3 min to every boot** unless the boot-time `ifconfig`s (`S69inet` `lo0`, `network-config` `aen0`) use **literal IPs** instead of hostnames | ✅ | [Networking](networking.md), [Networking on the LAN](../getting-started/networking-on-the-lan.md) |
+| 14 | **A board interrupt Amix has no handler for will storm the kernel** — the Z3660 firmware raised level-6 (INT6) on every RX frame; with no Amix eth-INT6 handler, ordinary ARP broadcasts hard-locked the box. Fix: disable the firmware IRQ and **poll** | ✅ | [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) |
+| 15 | **A board the 2.1 `bootinfo.autocon[]` table misses, registered via `autocon()` alone, silently never runs** — kernel banner, then a dead box (no panic, no I/O). Fix: multi-method detect (autocon → a chipset-gated fixed-base probe → a `probe=` fallback) | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md), [A4091](../drivers/a4091-53c710-driver.md) |
+| 16 | **On an emulated 68k, "boots then hangs" may be the *emulator*, not your driver** — the Z3660's 68k emulator faulted demand-paging the driver's own pages, while the driver carried every transfer byte-perfectly. Triage with serial instrumentation + core-dump analysis before blaming the driver | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md) |
 
 The rest of this page expands each item.
 
@@ -42,9 +45,9 @@ The **tape drive must sit at ID 4** — the root-floppy install scripts hard-ref
 
 The kernel hard-codes a Fast RAM ceiling of **16 MB** (minimum 4 MB) ✅. Going **above 16 MB mis-maps the SCSI drive** ✅ — the symptom is disk corruption / failure rather than an honest "too much RAM" error, which makes it a nasty trap. Set your emulator's Fast RAM to **≤ 16 MB**. Background in [hardware](hardware.md).
 
-### 3. No Zorro III ✅
+### 3. Zorro III — stock drivers are Zorro II only ✅
 
-Amix's memory-mapping layer **cannot address Zorro III space** ✅. It is **Zorro II only**. Worse, the relevant kernel source was never shipped, so this can't be patched by the community ✅ — there is no community fix and there won't be one. Any expansion board you intend to use must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
+**Stock** Amix is **Zorro II only** ✅: its stock drivers simply dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside the 68030's TT0 window), and that kernel source was never shipped so the *stock* card set can't be patched in place. This is **not** absolute for a *purpose-written* driver, though: one that maps the board explicitly — the kernel's `sptalloc()` primitive, or (when the board's window happens to fall inside TT0) a direct mapping — **can** reach a Zorro III board. The [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do exactly this. For ordinary expansion, still assume a card must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
 
 ### 4. No 68040/68060 — the A4000 is out ✅
 
@@ -106,6 +109,47 @@ This is **independent of the `/etc/domain` weirdness** ✅: a box with an alread
 
 `lo0` is always `127.0.0.1`; `aen0` uses the host's own static address (the one already in `/etc/hosts`). Configuring your own interface should never depend on a name service, so this is the correct design regardless — and DNS for clients/mail/etc. is untouched. Full procedure in [networking](networking.md) and [networking on the LAN](../getting-started/networking-on-the-lan.md).
 
+### 14. An unhandled board interrupt storms the kernel ✅
+
+A gotcha for **driver authors**, learned bringing up the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) on real hardware: if a board (or its firmware) raises a CPU interrupt level for which **Amix installs no handler**, the unacknowledged source fires continuously and **hard-locks the machine** ✅. The Z3660 firmware raises Amiga **INT6 (EXTER)** on *every* received ethernet frame, but Amix has no level-6 ethernet handler — so the moment the interface came up, normal LAN **ARP broadcast traffic stormed INT6 and instantly froze the box** (caps-lock LED dead). The whole kernel had booted to `login:` fine; only bringing the interface up triggered it.
+
+**Fix:** disable the board/firmware interrupt and **poll** the receive path instead — `z3660eth` writes the firmware's `ZZ_CONFIG_DISABLE` so INT6 is never raised, and drains RX from a clock-level `timeout()` callout ✅. Interrupt-driven RX would need a level-6 hook the firmware's model doesn't safely give Amix. The general lesson: when adding a driver, don't enable an interrupt source Amix can't service — confirm there's a handler (and an ack path) for that level, or run polled. Full story on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
+
+## Driver-authoring quirks
+
+### 15. An un-enumerated board silently never runs ✅
+
+Amix 2.1's `bootinfo.autocon[]` table can **miss** a board that is physically present — seen on the
+Z3660, both when its combo window sits at a fixed base outside the AutoConfig chain
+(`autoconfig_rtg NO`) and when Kickstart *does* configure it (`autoconfig_rtg YES`) but the 2.1 table
+still doesn't list it ✅. If the kernel's `sd.c` registers controllers **only** via `autocon()`, the
+driver's queue function never runs — and the failure is **silent**: the kernel prints its banner, then
+nothing (no panic, no I/O, no log) ✅. The same `bootinfo` table is independently known to be
+unreliable on 2.1p2 — the [hydra driver](../drivers/case-studies/hydra.md) carries a three-method
+detect for the same reason.
+
+**Fix — register the board by more than one method:** try `autocon()` first, then a **chipset-gated
+probe of the board's known fixed base** accepted only if a presence register reads a valid value (so an
+absent board can't false-positive), then a `driver.conf` **`probe=` fallback hook**. On the Z3660
+piscsi driver this multi-method detect is exactly what carried the first real-hardware boot past the
+silent banner ✅. Full story on [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md); the
+chipset (AGA/ECS) gate is shared with [the A4091 driver](../drivers/a4091-53c710-driver.md).
+
+### 16. On an emulator, "the machine hung" ≠ "your driver hung" ✅
+
+A board can appear to **boot and then hang** with a brand-new driver as the obvious suspect — and be
+innocent. Bringing up the [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md) on real
+hardware, the box booted and then froze; the cause was the Z3660's **firmware 68k emulator core**
+faulting while demand-paging the driver's *own* text back in (two MMU exception-frame bugs), **not**
+the driver — which was carrying every disk transfer byte-perfectly ✅. On an emulated 68k the "CPU" is
+itself software, so a crash there presents identically to a driver lock-up.
+
+**Triage method:** combine **kernel-side serial instrumentation** (prove your transfers completed and
+were byte-correct) with **core-dump analysis** (`adb` / capstone disassembly of where the "CPU"
+actually died) to isolate the fault to the emulator rather than the driver, *before* rewriting working
+driver code ✅. The emulator fixes themselves are owned by the Z3660 firmware repo; the durable lesson
+here is the triage discipline.
+
 ## Time & Y2K quirks
 
 ### 7. Y2K: `setclk` and the kernel's 1999 date cap ✅/🟡
@@ -161,3 +205,5 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - amigaunix.com DokuWiki — requirements, networking, x11, patch-disk, y2k-dst, tips-tricks, dual-boot pages (community-reported items): <https://www.amigaunix.com/doku.php/home>.
 - BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the SCSI IDs and RAM ceiling).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry isolated `S69inet` at 180 s; boot **210 s → 29 s** after switching the boot-time `ifconfig`s to literal IPs. Files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system (quirk 13).
+- The amix-z3660net project — the `z3660eth` driver bring-up on a real A4000 + Z3660, 2026-06-21 ✅: the firmware INT6-per-RX-frame storm (Amix has no level-6 ethernet handler) and the disable-IRQ/poll fix (`ZZ_CONFIG_DISABLE`, `timeout()` RX drain), diagnosed via the firmware serial `[PC]` heartbeat + `nm` of `relocunix` (quirk 14). See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
+- The amix-z3660scsi project @ `8ea1605` — the `z3660` piscsi block-driver bring-up on a real A4000 + Z3660, 2026-06-12/13 ✅: the 2.1 `bootinfo.autocon[]` miss and the multi-method detect that cleared the silent hang (quirk 15), and the firmware-emulator-vs-driver triage (quirk 16 — the apparent hang was the 68k emulator demand-paging the driver's own pages, not the driver; firmware-owned fix, cited not reproduced). See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).

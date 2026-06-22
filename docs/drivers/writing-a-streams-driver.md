@@ -101,6 +101,8 @@ hydra registers a **boot-time `init_tbl[]` entry** (`hydrainit`) that calls the 
 
 The practical consequence: the table edits in `kernel.c` for hydra add a `cdevsw[]` slot (47) with a `streamtab`, an `int2_tbl[]` entry for `hydraintr`, **and** an `init_tbl[]`/`io_init[]` entry (`hydrainit`) — like the [VA2000 framebuffer driver](case-studies/va2000.md) (`va2000init`). The difference from VA2000 is *what* the init does: hydra's boot init only *probes*; it defers the real programming to open, whereas VA2000 must claim its Zorro window at boot ✅.
 
+> **A simpler variant — no `init_tbl`/`int2_tbl` at all.** The [`z3660eth` driver](z3660-ethernet-driver.md) (interface `zen0`) takes hydra's "init on open" idea one step further: it autoconfigs entirely on first `open` and services received frames from a **polled clock-level `timeout()` callout** instead of an interrupt — so its only `kernel.c` edit is the single `cdevsw[48]` `streamtab` slot ✅. That keeps a board-less build kernel safe (a missing board just makes `open()` return `ENXIO`, never a boot-time panic), and on the Z3660 it was the *necessary* design: the board's firmware raises Amiga **INT6** on every received frame, but Amix has no level-6 ethernet handler, so leaving interrupts on storms the kernel. Polled RX with the firmware interrupt disabled is the robust path when you can't safely own the IRQ. See [the Z3660 ethernet driver case study](z3660-ethernet-driver.md).
+
 ## Bringing the interface up: slink
 
 Amix is **SVR4.0** and **has no `ifconfig … plumb`** — that operation came later in the SVR4 line ✅. A STREAMS network driver is linked into the IP stack with **`slink`**, then configured with `ifconfig` 🟡:
@@ -132,7 +134,7 @@ mknod /dev/hya0 c 47 0                        # create the device node
 
 The native compiler is **GCC 2.7.2.3 for Amix**, distributed as an installable **pkg on [amigaunix.com](https://amigaunix.com)** (the stock AT&T SVR4 `cc` also compiles kernel C) ✅. The kernel-image / boot-relocatable conversion (`elf2brel`, the `boot/`/`stand/` tooling) is part of this on-box kernel build, not a separate cross step. For the relink mechanics see [Building and installing a kernel](kernel-build.md), and keep the old `/unix` as a fallback.
 
-> **Note:** the `m68k-amix-gcc` *cross*-compiler remains a private build with no public recipe 🔴 — but it is **not needed** to build this driver; hydra builds on-box with the amigaunix.com GCC pkg. See the [toolchain page](toolchain.md) and the [licensing boundary](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) (obtain Amix media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution).
+> **Note:** hydra builds on-box with the amigaunix.com GCC pkg. As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`), which closes the earlier "no public cross recipe" gap ✅ — so you can build driver objects on a modern host too (it takes your licensed Amix tree as a sysroot). See the [toolchain page](toolchain.md) and the [licensing boundary](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) (obtain Amix media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution).
 
 ## Checklist: adding a STREAMS net driver
 
@@ -149,15 +151,16 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 - [The Amix device-driver model](driver-model.md) — block vs char vs STREAMS, `cdevsw`/`bdevsw`, the naming convention.
 - [Writing a character driver](writing-a-char-driver.md) — the `read`/`write` contrast (the `par` driver).
 - [Hydra DLPI case study](case-studies/hydra.md) — the full device-level deep dive.
+- [Z3660 ethernet driver case study](z3660-ethernet-driver.md) — a second worked example: polled RX over the Z3660 firmware mailbox, no `int2_tbl`, real-hardware-verified.
 - [Networking](../how-it-works/networking.md) — the STREAMS TCP/IP stack hydra feeds; A2065, static IP, DNS, NFS.
-- [Toolchain](toolchain.md) — the native on-box build, `elf2brel`, and the (separate) cross-compiler gap.
+- [Toolchain](toolchain.md) — the native on-box build, `elf2brel`, and the `gcc-cross-amix` cross-toolchain.
 - [Building and installing a kernel](kernel-build.md) — relink (`make force`) and boot-partition install.
 - [Zorro II autoconfig for drivers](zorro-autoconfig.md) — discovering the board (`autocon()`, AutoConfig IDs).
 - [Device list reference](../reference/device-list.md) — known major/minor and `cdevsw` slot assignments.
 
 ## Sources
 
-- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 from amigaunix.com, `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; `m68k-amix-gcc` cross-compiler not required), §13 (🔴 no public `m68k-amix-gcc` recipe — moot for on-box builds).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 from amigaunix.com, `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; cross-toolchain via `gcc-cross-amix`), §13 (cross-toolchain now public via `gcc-cross-amix`; native on-box still simplest).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).
 - `isoriano1968/hydra-amix` repo: <https://github.com/isoriano1968/hydra-amix>
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>

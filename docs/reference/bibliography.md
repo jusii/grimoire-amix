@@ -7,7 +7,7 @@ status: draft
 # Bibliography & Sources
 
 This page is the master source list behind grimoire-amix. It splits into **primary sources** (the Ditto
-driver paper, the three install floppies we analyse locally, the four modern driver repos, AT&T's
+driver paper, the three install floppies we analyse locally, the modern driver + cross-toolchain repos, AT&T's
 SVR4 documentation, and the scanned Commodore manuals on archive.org) and **community / reference
 sources** (amigaunix.com, encyclopedias, blogs, Usenet, emulator issue trackers, and the emulator
 docs). Every `docs/` page ends with its own `## Sources` list citing the specific items below; this
@@ -65,10 +65,10 @@ Cite local analysis in the form **"`amix_21_root.adf` analysis via `tools/inspec
 reader can reproduce the finding against their own copy. The deeper unpack of the root miniroot uses
 `tools/unpack-root.sh`.
 
-### The four modern driver repositories
+### The modern Amix repositories (drivers + cross-toolchain)
 
-All four are recent, AI-assisted hobby drivers targeting **Amix 2.1p2a on an Amiga 3000 / 68030 /
-Zorro II**. ✅ Their READMEs and source ground the [driver case studies](../drivers/case-studies/va2000.md)
+These are recent, AI-assisted hobby projects — four drivers plus a Linux cross-toolchain — targeting
+**Amix 2.1p2 on an Amiga 3000 / 68030**. ✅ Their READMEs and source ground the [driver case studies](../drivers/case-studies/va2000.md)
 and much of the [driver model](../drivers/driver-model.md). All are source-only (building them needs a
 licensed Amix install and headers).
 
@@ -78,13 +78,15 @@ licensed Amix install and headers).
 | <https://github.com/asokero/xrtg-amix> | ✅ X11R5 server (`Xrtg`) for the VA2000 (needs the va2000 driver) | [xrtg](../drivers/case-studies/xrtg.md) |
 | <https://github.com/asokero/lszorro-amix> | ✅ Userspace `lspci`-style Zorro II scanner | [lszorro](../drivers/case-studies/lszorro.md) |
 | <https://github.com/isoriano1968/hydra-amix> | ✅ STREAMS/DLPI network driver for the Hydra AmigaNet card (`cdevsw` slot 47, `hya`); now also carries a slice of the Amix `/usr/sys` kernel + boot source tree. **2026-06: verified on real hardware** (ARP + ICMP ping) — "believed to be the first working Amix net driver for the card" 🟡 | [hydra](../drivers/case-studies/hydra.md) |
+| <https://github.com/isoriano1968/gcc-cross-amix> | ✅ Linux-hosted **cross-toolchain** bootstrap for `m68k-cbm-sysv4` (`Makefile` + wrapper; binutils 2.8.1 + GCC 2.7.2.3; user-supplied Amix sysroot). C works (a dynamically-linked Amix exe runs on real hardware); C++ WIP 🟡 | [toolchain](../drivers/toolchain.md) |
 | <https://github.com/vjouppi/hydra> | 🟡 Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics); cited by the hydra-amix README | [hydra](../drivers/case-studies/hydra.md) |
 
 🟡 An earlier research note claimed "asokero handle not found / isoriano1968 only does AmigaOS Mesa."
-That note is **wrong** — these four repos exist and are the project's centerpiece examples.
+That note is **wrong** — these repos exist and are the project's centerpiece examples.
 🟢 The modern drivers build **natively on the box** (Hydra: `make`/`make force` with GCC 2.7.2.3, an
-amigaunix.com pkg). The `m68k-amix-gcc` *cross*-compiler still has no public build recipe 🔴, but that
-gap is **moot** — see the [toolchain](../drivers/toolchain.md) page.
+amigaunix.com pkg). **As of 2026-06 a public, reproducible *cross*-toolchain also exists** —
+[`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), `m68k-cbm-sysv4-gcc` —
+closing the earlier "no public cross recipe" gap ✅; see the [toolchain](../drivers/toolchain.md) page.
 🔴 **Do not propagate:** the hydra-amix README states Amix was "later sold by Haage & Partner." This
 conflicts with the sourced history (Commodore; support ended 1993, bankruptcy 1994 — H&P is the
 AmigaOS-3.5/3.9 era, unrelated). Treat it as upstream lore, not fact. See [versions](versions.md).

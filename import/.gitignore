@@ -1,0 +1,5 @@
+# import/ holds transient incoming handoff briefs — keep the directory and its contract
+# tracked, but ignore every dropped brief (they must never ship or land in sources/).
+*
+!.gitignore
+!README.md

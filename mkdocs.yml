@@ -87,6 +87,8 @@ nav:
       - "Case study: lszorro": drivers/case-studies/lszorro.md
       - "Case study: hydra": drivers/case-studies/hydra.md
       - "Case study: A4091 / 53C710 SCSI": drivers/a4091-53c710-driver.md
+      - "Case study: Z3660 ethernet (zen0)": drivers/z3660-ethernet-driver.md
+      - "Case study: Z3660 piscsi SCSI": drivers/z3660-scsi-driver.md
   - Boot & install disks:
       - Boot floppy anatomy: boot-disks/anatomy-boot-adf.md
       - Root floppy anatomy: boot-disks/anatomy-root-adf.md

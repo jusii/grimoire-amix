@@ -79,7 +79,9 @@ Case studies: [va2000](drivers/case-studies/va2000.md) ·
 [xrtg](drivers/case-studies/xrtg.md) ·
 [lszorro](drivers/case-studies/lszorro.md) ·
 [hydra](drivers/case-studies/hydra.md) ·
-[A4091 / 53C710](drivers/a4091-53c710-driver.md)
+[A4091 / 53C710 SCSI](drivers/a4091-53c710-driver.md) ·
+[Z3660 ethernet (zen0)](drivers/z3660-ethernet-driver.md) ·
+[Z3660 piscsi SCSI](drivers/z3660-scsi-driver.md)
 
 ### Custom boot & install disks
 [Boot floppy](boot-disks/anatomy-boot-adf.md) ·

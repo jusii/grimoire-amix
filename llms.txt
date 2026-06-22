@@ -36,12 +36,14 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [Writing a STREAMS/DLPI Driver](docs/drivers/writing-a-streams-driver.md): network drivers via hydra.
 - [Zorro II AUTOCONFIG for Drivers](docs/drivers/zorro-autoconfig.md): autocon(), board IDs, /dev/mem scanning.
 - [X11 RTG Graphics Drivers](docs/drivers/x11-rtg-drivers.md): the Xrtg server over a framebuffer driver.
-- [Toolchain & Packaging](docs/drivers/toolchain.md): cc/gcc, m68k-amix-gcc cross-build, pkgadd.
+- [Toolchain & Packaging](docs/drivers/toolchain.md): native cc/gcc + the gcc-cross-amix Linux cross-toolchain (m68k-cbm-sysv4), elf2brel, pkgadd.
 - [Case Study: va2000-amix](docs/drivers/case-studies/va2000.md): char framebuffer driver (MNT VA2000).
 - [Case Study: xrtg-amix](docs/drivers/case-studies/xrtg.md): X11R5 server for the VA2000.
 - [Case Study: lszorro-amix](docs/drivers/case-studies/lszorro.md): userspace Zorro II scanner.
 - [Case Study: hydra-amix](docs/drivers/case-studies/hydra.md): STREAMS/DLPI Ethernet driver.
 - [Case Study: A4091 / 53C710 SCSI driver](docs/drivers/a4091-53c710-driver.md): booting Amix from a Zorro III A4091 — the 68030 TT-gap obstacle, sptalloc, the 53C710 SCRIPTS driver, and chipset-gated auto-detection (emulation-proven).
+- [Case Study: Z3660 ethernet driver (zen0)](docs/drivers/z3660-ethernet-driver.md): native SVR4 STREAMS/DLPI driver for the Z3660 accelerator's onboard Zynq ethernet — the firmware frame-mailbox protocol, polled RX (no int2_tbl), the INT6 interrupt-storm fix; full bidirectional TCP/IP on real hardware (A4000 + Z3660, 2026-06).
+- [Case Study: Z3660 piscsi SCSI driver (z3660.c)](docs/drivers/z3660-scsi-driver.md): the Z3660's onboard "SCSI" is not a SCSI chip but the PiStorm piscsi register mailbox ported to its Zynq ARM — a ~5-poke synchronous block driver, the multi-method detect that cleared a silent hang, and the firmware-emulator bug that masqueraded as a driver hang; booted Amix multiuser with root on real hardware (A4000 + Z3660, 2026-06), first try.
 
 ## Custom boot & install disks
 - [Anatomy of the Boot Floppy](docs/boot-disks/anatomy-boot-adf.md): bootblock + compressed kernel.
@@ -63,4 +65,4 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 
 ## Optional
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home): the established community wiki (end-user/install/history).
-- [va2000-amix](https://github.com/asokero/va2000-amix), [xrtg-amix](https://github.com/asokero/xrtg-amix), [lszorro-amix](https://github.com/asokero/lszorro-amix), [hydra-amix](https://github.com/isoriano1968/hydra-amix): the modern driver repos this project documents.
+- [va2000-amix](https://github.com/asokero/va2000-amix), [xrtg-amix](https://github.com/asokero/xrtg-amix), [lszorro-amix](https://github.com/asokero/lszorro-amix), [hydra-amix](https://github.com/isoriano1968/hydra-amix), [gcc-cross-amix](https://github.com/isoriano1968/gcc-cross-amix) (Linux cross-toolchain): the modern Amix driver + toolchain repos this project documents.

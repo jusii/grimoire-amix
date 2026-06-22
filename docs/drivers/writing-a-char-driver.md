@@ -459,7 +459,7 @@ Read the full mechanics — kernel-file patches, the `make install` / `make boot
 - [Zorro II autoconfig for drivers](zorro-autoconfig.md) — `autocon()` / AUTOCONFIG board discovery.
 - [Case study: VA2000 framebuffer (char major 68)](case-studies/va2000.md) — a modern char driver with `mmap`.
 - [Device list reference](../reference/device-list.md) — known major/minor numbers, including `/dev/par` (major 21).
-- [The toolchain](toolchain.md) — native on-box `cc`/GCC builds, and the (separate) `m68k-amix-gcc` cross-compiler gap.
+- [The toolchain](toolchain.md) — native on-box `cc`/GCC builds, and the `gcc-cross-amix` Linux cross-toolchain.
 
 ## Sources
 

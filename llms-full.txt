@@ -247,9 +247,9 @@ The Amix kernel **predates the 68040 MMU** and has no support for it (or the lat
 
 🟡 **Real-hardware validation is still pending** — a physical AGA-equipped, 68030-class machine (and a physical A4000+A4091) have not yet been booted; the result is emulation-proven only. The Kickstart matrix in [Amix on Amiberry](../getting-started/emulation-amiberry.md) encodes which ROM each chipset profile needs.
 
-### No Zorro III — Zorro II only
+### Zorro III — stock support is Zorro II only
 
-Amix supports **Zorro II expansion only**; it has **no Zorro III support**. ✅ The kernel's memory-mapping layer cannot address Zorro III space, and — critically — **that source was never shipped**, so the community cannot fix it. ✅ Any card you want to use must work in (or fall back to) **Zorro II** address ranges.
+**Stock** Amix supports **Zorro II expansion only**; out of the box it has **no Zorro III support**. ✅ The stock drivers just dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside the 68030's TT0 window), and — because that kernel source was never shipped — the *stock* card set can't be patched in place. ✅ This is **not** a hard wall for a *purpose-written* driver, though: one that maps the board explicitly (the kernel's `sptalloc()` primitive, or a window that happens to fall inside TT0) **can** reach a Zorro III board — the [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do. For ordinary use, assume a card must work in (or fall back to) **Zorro II** address ranges.
 
 Board addresses are assigned at reset by the Amiga **AUTOCONFIG** mechanism, which Amix reads through the kernel's `autocon()` interface — again, **Zorro II only**. ✅ See [the Zorro autoconfig driver page](../drivers/zorro-autoconfig.md) for how drivers consume this.
 
@@ -845,9 +845,10 @@ Because the stack is statically linked into a monolithic kernel with **no loadab
 |---|---|---|---|---|
 | **A2065** (Am7990 LANCE Ethernet) | `aen0` | Zorro II | native (`aen/` in the kernel source tree) | ✅ |
 | **Hydra AmigaNet** (NE2000 / DP8390) | `hya0` | Zorro II | modern `hydra-amix` STREAMS/DLPI driver | ✅ |
+| **Z3660** (accelerator's onboard Zynq GEM) | `zen0` | Zorro III *(eth window at `0x10000000`, inside TT0)* | modern `z3660eth` STREAMS/DLPI driver — **works on real hardware (2026-06)** | ✅ |
 | **Ariadne I** | (Gateway! Vol.2 driver) | Zorro II | community | 🟡 |
 
-The A2065 is the card Commodore shipped and the only Ethernet board Amix supports out of the box ✅. `aen0` is what `ifconfig` and the routing tables refer to.
+The A2065 is the card Commodore shipped and the only Ethernet board Amix supports out of the box ✅. `aen0` is what `ifconfig` and the routing tables refer to. Both modern STREAMS/DLPI add-on drivers (Hydra → `hya0`, Z3660 → `zen0`) are real-hardware-verified — see [Adding other network cards](#adding-other-network-cards).
 
 **Note:** the loopback interface (`lo0`) and the conventional `127.0.0.1` are SVR4 standard; only the physical-interface name `aen0` is Amix-specific here.
 
@@ -996,7 +997,9 @@ Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card 
 
 Full detail — the build line, the DLPI flow, and the LANCE-mirroring design — is on [the Hydra case study](../drivers/case-studies/hydra.md). The general procedure for writing this class of driver is on [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md), and the relink/boot-partition steps are on [the kernel build page](../drivers/kernel-build.md).
 
-> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (a pkg on amigaunix.com) — no cross-compiler is needed. The `m68k-amix-gcc` *cross*-compiler still has no public, reproducible recipe 🔴, but that gap is **moot** for building network drivers on a real/emulated Amix. You do still need a licensed Amix install (kernel headers/libs aren't redistributable). See [the toolchain page](../drivers/toolchain.md).
+A second real-hardware-verified example is the **`z3660eth`** driver for the **Z3660 accelerator's onboard ethernet** (interface `zen0`) — the network analogue of the [A4091 SCSI work](../drivers/a4091-53c710-driver.md), giving Amix full bidirectional TCP/IP on a physical A4000 + Z3660 (2026-06) ✅. It is a contrasting design to hydra: instead of programming a NIC chip directly it speaks the Z3660 firmware's **frame mailbox** over MMIO, registers at **`cdevsw` slot 48** (tag `zen`), and **services RX from a polled `timeout()` callout — no `int2_tbl`/`init_tbl` edit**. The one real-hardware blocker was an **INT6 interrupt storm** (the firmware raised level-6 on every received frame, but Amix has no eth INT6 handler, so ARP broadcasts hard-locked the box); the fix was to disable the firmware interrupt and keep the polled drain. Bring-up is the same `slink` plumbing as hydra (`slink addaen /dev/zen0 zen0`, then `ifconfig zen0 … up -trailers`). See [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) for the mailbox protocol, the storm, and the build/deploy story.
+
+> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (a pkg on amigaunix.com). As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — so you can build driver objects on a modern host too ✅. Either way you need a licensed Amix install (its headers/libs aren't redistributable; the cross-toolchain consumes them as a sysroot). See [the toolchain page](../drivers/toolchain.md).
 
 ## Quick reference
 
@@ -1004,6 +1007,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 |---|---|---|
 | Bring A2065 up | `ifconfig aen0 <ip> netmask <mask> up` | ✅ |
 | Bring Hydra up | `slink addaen /dev/hya0 hya0`, then `ifconfig hya0 <ip> … up -trailers` (no `ifconfig plumb` on SVR4.0) | ✅ |
+| Bring Z3660 (`zen0`) up | `slink addaen /dev/zen0 zen0`, then `ifconfig zen0 <ip> … up -trailers` (cdevsw 48; real-HW) | ✅ |
 | Default route (metric required) | `route add default <gw> 1` | ✅/🟡 |
 | Static name→IP, resolver fallback | `/etc/hosts` | ✅ |
 | Enable DNS (1/2) | `ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so` + `/etc/resolv.conf` (nameservers only) | ✅ |
@@ -1018,6 +1022,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 
 - [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md) — how a network interface attaches to the SVR4 stack.
 - [Hydra case study](../drivers/case-studies/hydra.md) — a complete modern STREAMS/DLPI network driver (`hya0`).
+- [Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) — a real-hardware STREAMS/DLPI driver (`zen0`) over the Z3660 firmware mailbox; the INT6 storm and polled RX.
 - [Kernel architecture](kernel-architecture.md) — monolithic SVR4, STREAMS, no loadable modules.
 - [Filesystems and disks](filesystems-and-disks.md) — UFS/s5, needed for NFS server exports.
 - [Quirks](quirks.md) — DNS-off-by-default, the `route` metric, and the SLIP reboot bug in one list.
@@ -1032,11 +1037,12 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 - Research brief §4 "Kernel architecture" (monolithic SVR4; STREAMS, TLI + BSD sockets; no loadable modules).
 - Research brief §3 / §10 (`amix_21_boot.adf` string analysis — embedded NFS/RPC client string table), via `tools/inspect-adf.sh`.
 - Research brief §12 "Quirks checklist" (DNS off by default; SLIP reboot bug).
-- Research brief §13 (🔴 no public `m68k-amix-gcc` cross-compiler recipe — moot for on-box driver builds).
+- Research brief §13 (cross-toolchain: `gcc-cross-amix` now provides a public `m68k-cbm-sysv4` recipe; native on-box build still simplest).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (cites the SVR4 *Streams Programmer's Guide* and *Network Programmer's Guide*).
 - [github.com/isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix)
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.
+- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`zen0`, cdevsw 48) for the Z3660's onboard ethernet, **validated on a real A4000 + Z3660, 2026-06-21** ✅ (`ifconfig zen0`, `netstat -in` zero-error, laptop↔box `ping`/`ftp`); the firmware-mailbox protocol, the INT6 storm, and the polled-RX design are on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
 
 
 ================================================================================
@@ -1203,7 +1209,7 @@ status: draft
 
 Amix is a "quick and dirty" 1990–1992 SVR4 port ✅, and it shows: the kernel hard-codes SCSI IDs and a RAM ceiling, the bootstrap predates the 68040 and Zorro III, the clock breaks in 2000, and the userland is pre-POSIX. This page is the **checklist of port-specific surprises** — the things that are technically correct, technically broken, or just unexpected, that cost people hours before they realize "it's just Amix."
 
-Each item is one line: what it is, the ✅/🟡 confidence tag carried from the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §12 (and §2/§9/§11), and a cross-link to the page that covers it in depth.
+Each item is one line: what it is, the ✅/🟡 confidence tag carried from the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §12 (and §2/§9/§11, plus §17/§18 for the Z3660 driver-authoring items), and a cross-link to the page that covers it in depth.
 
 ## TL;DR checklist
 
@@ -1211,7 +1217,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 |---|---|---|---|
 | 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
 | 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive | ✅ | [Hardware](hardware.md) |
-| 3 | **No Zorro III** — memory-mapping layer can't address it; unfixable | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
+| 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside TT0) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md) |
 | 5 | **Superkickstart dual-boot** by holding the right mouse button at power-on | ✅ | [Boot process](boot-process.md) |
 | 6 | **DNS resolution is OFF by default** (`/etc/hosts` only) | ✅/🟡 | [Networking](networking.md) |
@@ -1222,6 +1228,9 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 11 | **Clock drift** via SCSI interaction | 🟡 | [Networking](networking.md) |
 | 12 | **`/bin/sh` is pre-POSIX**: no `$(...)`, no `grep -q` | ✅ | [Driver model](../drivers/driver-model.md), [Writing a char driver](../drivers/writing-a-char-driver.md) |
 | 13 | **Enabling DNS adds ~3 min to every boot** unless the boot-time `ifconfig`s (`S69inet` `lo0`, `network-config` `aen0`) use **literal IPs** instead of hostnames | ✅ | [Networking](networking.md), [Networking on the LAN](../getting-started/networking-on-the-lan.md) |
+| 14 | **A board interrupt Amix has no handler for will storm the kernel** — the Z3660 firmware raised level-6 (INT6) on every RX frame; with no Amix eth-INT6 handler, ordinary ARP broadcasts hard-locked the box. Fix: disable the firmware IRQ and **poll** | ✅ | [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) |
+| 15 | **A board the 2.1 `bootinfo.autocon[]` table misses, registered via `autocon()` alone, silently never runs** — kernel banner, then a dead box (no panic, no I/O). Fix: multi-method detect (autocon → a chipset-gated fixed-base probe → a `probe=` fallback) | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md), [A4091](../drivers/a4091-53c710-driver.md) |
+| 16 | **On an emulated 68k, "boots then hangs" may be the *emulator*, not your driver** — the Z3660's 68k emulator faulted demand-paging the driver's own pages, while the driver carried every transfer byte-perfectly. Triage with serial instrumentation + core-dump analysis before blaming the driver | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md) |
 
 The rest of this page expands each item.
 
@@ -1237,9 +1246,9 @@ The **tape drive must sit at ID 4** — the root-floppy install scripts hard-ref
 
 The kernel hard-codes a Fast RAM ceiling of **16 MB** (minimum 4 MB) ✅. Going **above 16 MB mis-maps the SCSI drive** ✅ — the symptom is disk corruption / failure rather than an honest "too much RAM" error, which makes it a nasty trap. Set your emulator's Fast RAM to **≤ 16 MB**. Background in [hardware](hardware.md).
 
-### 3. No Zorro III ✅
+### 3. Zorro III — stock drivers are Zorro II only ✅
 
-Amix's memory-mapping layer **cannot address Zorro III space** ✅. It is **Zorro II only**. Worse, the relevant kernel source was never shipped, so this can't be patched by the community ✅ — there is no community fix and there won't be one. Any expansion board you intend to use must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
+**Stock** Amix is **Zorro II only** ✅: its stock drivers simply dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside the 68030's TT0 window), and that kernel source was never shipped so the *stock* card set can't be patched in place. This is **not** absolute for a *purpose-written* driver, though: one that maps the board explicitly — the kernel's `sptalloc()` primitive, or (when the board's window happens to fall inside TT0) a direct mapping — **can** reach a Zorro III board. The [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do exactly this. For ordinary expansion, still assume a card must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
 
 ### 4. No 68040/68060 — the A4000 is out ✅
 
@@ -1301,6 +1310,47 @@ This is **independent of the `/etc/domain` weirdness** ✅: a box with an alread
 
 `lo0` is always `127.0.0.1`; `aen0` uses the host's own static address (the one already in `/etc/hosts`). Configuring your own interface should never depend on a name service, so this is the correct design regardless — and DNS for clients/mail/etc. is untouched. Full procedure in [networking](networking.md) and [networking on the LAN](../getting-started/networking-on-the-lan.md).
 
+### 14. An unhandled board interrupt storms the kernel ✅
+
+A gotcha for **driver authors**, learned bringing up the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) on real hardware: if a board (or its firmware) raises a CPU interrupt level for which **Amix installs no handler**, the unacknowledged source fires continuously and **hard-locks the machine** ✅. The Z3660 firmware raises Amiga **INT6 (EXTER)** on *every* received ethernet frame, but Amix has no level-6 ethernet handler — so the moment the interface came up, normal LAN **ARP broadcast traffic stormed INT6 and instantly froze the box** (caps-lock LED dead). The whole kernel had booted to `login:` fine; only bringing the interface up triggered it.
+
+**Fix:** disable the board/firmware interrupt and **poll** the receive path instead — `z3660eth` writes the firmware's `ZZ_CONFIG_DISABLE` so INT6 is never raised, and drains RX from a clock-level `timeout()` callout ✅. Interrupt-driven RX would need a level-6 hook the firmware's model doesn't safely give Amix. The general lesson: when adding a driver, don't enable an interrupt source Amix can't service — confirm there's a handler (and an ack path) for that level, or run polled. Full story on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
+
+## Driver-authoring quirks
+
+### 15. An un-enumerated board silently never runs ✅
+
+Amix 2.1's `bootinfo.autocon[]` table can **miss** a board that is physically present — seen on the
+Z3660, both when its combo window sits at a fixed base outside the AutoConfig chain
+(`autoconfig_rtg NO`) and when Kickstart *does* configure it (`autoconfig_rtg YES`) but the 2.1 table
+still doesn't list it ✅. If the kernel's `sd.c` registers controllers **only** via `autocon()`, the
+driver's queue function never runs — and the failure is **silent**: the kernel prints its banner, then
+nothing (no panic, no I/O, no log) ✅. The same `bootinfo` table is independently known to be
+unreliable on 2.1p2 — the [hydra driver](../drivers/case-studies/hydra.md) carries a three-method
+detect for the same reason.
+
+**Fix — register the board by more than one method:** try `autocon()` first, then a **chipset-gated
+probe of the board's known fixed base** accepted only if a presence register reads a valid value (so an
+absent board can't false-positive), then a `driver.conf` **`probe=` fallback hook**. On the Z3660
+piscsi driver this multi-method detect is exactly what carried the first real-hardware boot past the
+silent banner ✅. Full story on [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md); the
+chipset (AGA/ECS) gate is shared with [the A4091 driver](../drivers/a4091-53c710-driver.md).
+
+### 16. On an emulator, "the machine hung" ≠ "your driver hung" ✅
+
+A board can appear to **boot and then hang** with a brand-new driver as the obvious suspect — and be
+innocent. Bringing up the [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md) on real
+hardware, the box booted and then froze; the cause was the Z3660's **firmware 68k emulator core**
+faulting while demand-paging the driver's *own* text back in (two MMU exception-frame bugs), **not**
+the driver — which was carrying every disk transfer byte-perfectly ✅. On an emulated 68k the "CPU" is
+itself software, so a crash there presents identically to a driver lock-up.
+
+**Triage method:** combine **kernel-side serial instrumentation** (prove your transfers completed and
+were byte-correct) with **core-dump analysis** (`adb` / capstone disassembly of where the "CPU"
+actually died) to isolate the fault to the emulator rather than the driver, *before* rewriting working
+driver code ✅. The emulator fixes themselves are owned by the Z3660 firmware repo; the durable lesson
+here is the triage discipline.
+
 ## Time & Y2K quirks
 
 ### 7. Y2K: `setclk` and the kernel's 1999 date cap ✅/🟡
@@ -1356,6 +1406,8 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - amigaunix.com DokuWiki — requirements, networking, x11, patch-disk, y2k-dst, tips-tricks, dual-boot pages (community-reported items): <https://www.amigaunix.com/doku.php/home>.
 - BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the SCSI IDs and RAM ceiling).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry isolated `S69inet` at 180 s; boot **210 s → 29 s** after switching the boot-time `ifconfig`s to literal IPs. Files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system (quirk 13).
+- The amix-z3660net project — the `z3660eth` driver bring-up on a real A4000 + Z3660, 2026-06-21 ✅: the firmware INT6-per-RX-frame storm (Amix has no level-6 ethernet handler) and the disable-IRQ/poll fix (`ZZ_CONFIG_DISABLE`, `timeout()` RX drain), diagnosed via the firmware serial `[PC]` heartbeat + `nm` of `relocunix` (quirk 14). See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
+- The amix-z3660scsi project @ `8ea1605` — the `z3660` piscsi block-driver bring-up on a real A4000 + Z3660, 2026-06-12/13 ✅: the 2.1 `bootinfo.autocon[]` miss and the multi-method detect that cleared the silent hang (quirk 15), and the firmware-emulator-vs-driver triage (quirk 16 — the apparent hang was the 68k emulator demand-paging the driver's own pages, not the driver; firmware-owned fix, cited not reproduced). See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 
 
 ================================================================================
@@ -2102,6 +2154,9 @@ hardfile2=rw,DH0:/path/to/Amix.hdf,32,1,2,512,0,,scsi6_a3000
 > **Gotcha — the MAC must be a Commodore OUI (`00:80:10:xx:xx:xx`).** The Amix
 > `aen0`/LANCE path expects it; an arbitrary MAC misbehaves. The host-side TAP keeps
 > its own random MAC (correct — the bridge/host learns the Amiga MAC from frames). ✅
+> This OUI requirement is specific to the emulated **A2065/LANCE `aen0`** path; other
+> interfaces such as the Z3660 GEM `zen0` use their own MAC (e.g. `00:80:51:…`) — see
+> [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md). ✅
 >
 > Launching headless is possible (`Xvfb` + a controlling TTY + `xdotool`); see
 > [Headless operation](#headless-operation-optional). Otherwise just launch Amiberry
@@ -2279,6 +2334,7 @@ Useful for automation / agents driving Amix without a visible window:
 ## See also
 
 - [Networking (concepts)](../how-it-works/networking.md) — the SVR4 STREAMS stack, `aen0`, DNS-off-by-default, the `route` metric.
+- [Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) — the **real-hardware** native-ethernet path: a physical A4000 + Z3660 as a LAN host over `zen0` (a native STREAMS/DLPI driver), as opposed to this page's emulated-A2065-on-a-host-TAP recipe. Same SVR4 boot-time bring-up files apply.
 - [Amix on Amiberry (status)](emulation-amiberry.md) — what runs vs. what needs WinUAE/FS-UAE.
 - [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
 - [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap, and the **DNS-enable slow-boot** (literal-IP `ifconfig` fix).
@@ -3942,7 +3998,7 @@ Read the full mechanics — kernel-file patches, the `make install` / `make boot
 - [Zorro II autoconfig for drivers](zorro-autoconfig.md) — `autocon()` / AUTOCONFIG board discovery.
 - [Case study: VA2000 framebuffer (char major 68)](case-studies/va2000.md) — a modern char driver with `mmap`.
 - [Device list reference](../reference/device-list.md) — known major/minor numbers, including `/dev/par` (major 21).
-- [The toolchain](toolchain.md) — native on-box `cc`/GCC builds, and the (separate) `m68k-amix-gcc` cross-compiler gap.
+- [The toolchain](toolchain.md) — native on-box `cc`/GCC builds, and the `gcc-cross-amix` Linux cross-toolchain.
 
 ## Sources
 
@@ -4059,6 +4115,8 @@ hydra registers a **boot-time `init_tbl[]` entry** (`hydrainit`) that calls the 
 
 The practical consequence: the table edits in `kernel.c` for hydra add a `cdevsw[]` slot (47) with a `streamtab`, an `int2_tbl[]` entry for `hydraintr`, **and** an `init_tbl[]`/`io_init[]` entry (`hydrainit`) — like the [VA2000 framebuffer driver](case-studies/va2000.md) (`va2000init`). The difference from VA2000 is *what* the init does: hydra's boot init only *probes*; it defers the real programming to open, whereas VA2000 must claim its Zorro window at boot ✅.
 
+> **A simpler variant — no `init_tbl`/`int2_tbl` at all.** The [`z3660eth` driver](z3660-ethernet-driver.md) (interface `zen0`) takes hydra's "init on open" idea one step further: it autoconfigs entirely on first `open` and services received frames from a **polled clock-level `timeout()` callout** instead of an interrupt — so its only `kernel.c` edit is the single `cdevsw[48]` `streamtab` slot ✅. That keeps a board-less build kernel safe (a missing board just makes `open()` return `ENXIO`, never a boot-time panic), and on the Z3660 it was the *necessary* design: the board's firmware raises Amiga **INT6** on every received frame, but Amix has no level-6 ethernet handler, so leaving interrupts on storms the kernel. Polled RX with the firmware interrupt disabled is the robust path when you can't safely own the IRQ. See [the Z3660 ethernet driver case study](z3660-ethernet-driver.md).
+
 ## Bringing the interface up: slink
 
 Amix is **SVR4.0** and **has no `ifconfig … plumb`** — that operation came later in the SVR4 line ✅. A STREAMS network driver is linked into the IP stack with **`slink`**, then configured with `ifconfig` 🟡:
@@ -4090,7 +4148,7 @@ mknod /dev/hya0 c 47 0                        # create the device node
 
 The native compiler is **GCC 2.7.2.3 for Amix**, distributed as an installable **pkg on [amigaunix.com](https://amigaunix.com)** (the stock AT&T SVR4 `cc` also compiles kernel C) ✅. The kernel-image / boot-relocatable conversion (`elf2brel`, the `boot/`/`stand/` tooling) is part of this on-box kernel build, not a separate cross step. For the relink mechanics see [Building and installing a kernel](kernel-build.md), and keep the old `/unix` as a fallback.
 
-> **Note:** the `m68k-amix-gcc` *cross*-compiler remains a private build with no public recipe 🔴 — but it is **not needed** to build this driver; hydra builds on-box with the amigaunix.com GCC pkg. See the [toolchain page](toolchain.md) and the [licensing boundary](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) (obtain Amix media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution).
+> **Note:** hydra builds on-box with the amigaunix.com GCC pkg. As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`), which closes the earlier "no public cross recipe" gap ✅ — so you can build driver objects on a modern host too (it takes your licensed Amix tree as a sysroot). See the [toolchain page](toolchain.md) and the [licensing boundary](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) (obtain Amix media via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org, never by redistribution).
 
 ## Checklist: adding a STREAMS net driver
 
@@ -4107,15 +4165,16 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 - [The Amix device-driver model](driver-model.md) — block vs char vs STREAMS, `cdevsw`/`bdevsw`, the naming convention.
 - [Writing a character driver](writing-a-char-driver.md) — the `read`/`write` contrast (the `par` driver).
 - [Hydra DLPI case study](case-studies/hydra.md) — the full device-level deep dive.
+- [Z3660 ethernet driver case study](z3660-ethernet-driver.md) — a second worked example: polled RX over the Z3660 firmware mailbox, no `int2_tbl`, real-hardware-verified.
 - [Networking](../how-it-works/networking.md) — the STREAMS TCP/IP stack hydra feeds; A2065, static IP, DNS, NFS.
-- [Toolchain](toolchain.md) — the native on-box build, `elf2brel`, and the (separate) cross-compiler gap.
+- [Toolchain](toolchain.md) — the native on-box build, `elf2brel`, and the `gcc-cross-amix` cross-toolchain.
 - [Building and installing a kernel](kernel-build.md) — relink (`make force`) and boot-partition install.
 - [Zorro II autoconfig for drivers](zorro-autoconfig.md) — discovering the board (`autocon()`, AutoConfig IDs).
 - [Device list reference](../reference/device-list.md) — known major/minor and `cdevsw` slot assignments.
 
 ## Sources
 
-- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 from amigaunix.com, `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; `m68k-amix-gcc` cross-compiler not required), §13 (🔴 no public `m68k-amix-gcc` recipe — moot for on-box builds).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 from amigaunix.com, `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; cross-toolchain via `gcc-cross-amix`), §13 (cross-toolchain now public via `gcc-cross-amix`; native on-box still simplest).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).
 - `isoriano1968/hydra-amix` repo: <https://github.com/isoriano1968/hydra-amix>
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>
@@ -4538,15 +4597,15 @@ historical desktop environment (OpenLook `olwm`/`olwsm`, `tvtwm`, the X11R5 font
 
 ---
 title: Toolchain & Packaging
-summary: Native on-box cc/GCC builds (the m68k-amix-gcc cross path has no public recipe and isn't needed), elf2brel, and SVR4 packaging (pkgmk/pkgtrans/pkgadd, AmixBP).
+summary: Native on-box cc/GCC builds plus a Linux-hosted cross-toolchain (gcc-cross-amix — binutils 2.8.1 + GCC 2.7.2.3, m68k-cbm-sysv4), elf2brel, and SVR4 packaging (pkgmk/pkgtrans/pkgadd, AmixBP).
 status: draft
 ---
 
 # Toolchain & Packaging
 
-Amix builds software **on the box**: the bundled AT&T SVR4 `cc` (the kernel's reference compiler) or a community **GCC 2.7.2.3** (installable as a pkg from [amigaunix.com](https://amigaunix.com)), with GNU `make` and GAS, then relink `/unix` ✅. This is how the real drivers are actually built — the [Hydra STREAMS driver](case-studies/hydra.md) and the [VA2000 framebuffer](case-studies/va2000.md) both compile **natively, with no cross-compiler** ✅. A *cross* path (`m68k-amix-gcc`, a GCC retargeted to `m68k-cbm-sysv4`, emitting ELF converted with `elf2brel`) is conceivable but has **no public build recipe** 🔴 — and is not needed, because the native build works. Finished software is shipped as SVR4 packages built with `pkgproto`/`pkgmk`/`pkgtrans` and installed with `pkgadd` ✅; the large community bundle is **AmixBP**, with a `zoo`+`cpio` fallback ✅.
+Amix builds software two ways. **On the box**: the bundled AT&T SVR4 `cc` (the kernel's reference compiler) or a community **GCC 2.7.2.3** (installable as a pkg from [amigaunix.com](https://amigaunix.com)), with GNU `make` and GAS, then relink `/unix` ✅ — this is how the existing drivers ([Hydra](case-studies/hydra.md), [VA2000](case-studies/va2000.md)) are built. **On Linux**: as of 2026-06 a public, reproducible *cross*-toolchain exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), a GCC 2.7.2.3 retargeted to `m68k-cbm-sysv4` — that compiles Amix userland binaries and kernel/driver objects on a modern host (you supply your own licensed Amix sysroot) ✅. Finished software is shipped as SVR4 packages built with `pkgproto`/`pkgmk`/`pkgtrans` and installed with `pkgadd` ✅; the large community bundle is **AmixBP**, with a `zoo`+`cpio` fallback ✅.
 
-Two important caveats colour everything below. The Amix `/bin/sh` is **pre-POSIX**, which breaks many modern build scripts ✅. And the `m68k-amix-gcc` *cross*-compiler has **no public, reproducible build recipe** 🔴 — but that gap is **not on the critical path**, since drivers build natively on the box.
+Two important caveats colour everything below. The Amix `/bin/sh` is **pre-POSIX**, which breaks many modern build scripts ✅. And the cross-toolchain still needs a **user-supplied licensed Amix sysroot** (headers/libs/startup objects are not redistributable), and its **C++/`g++` support is not finished yet** 🟡 — C is fully working.
 
 This page is the toolchain companion to [building and relinking the kernel](kernel-build.md) and to [writing a STREAMS driver](writing-a-streams-driver.md) (the worked native build example). For the underlying driver model see [the Amix device-driver model](driver-model.md).
 
@@ -4595,9 +4654,9 @@ if grep hya /etc/something >/dev/null 2>&1; then ...
 
 If a tool insists on a POSIX shell, run it under `ksh` (the default *login* shell on Amix is `ksh`, with `sh`/`csh`/`tcsh` also present) ✅ rather than `/bin/sh`. This is the same gotcha documented for the VA2000 driver's install script in the [VA2000 case study](case-studies/va2000.md).
 
-## The native kernel-driver build (and the m68k-amix-gcc cross gap)
+## Building drivers: native on-box, and the gcc-cross-amix cross-toolchain
 
-The modern Amix drivers are built **natively on the box**, not cross-compiled. The [Hydra STREAMS driver](case-studies/hydra.md)'s `Makefile` invokes the on-box compiler (`cc` / `ld -r`): `make` produces a relocatable object (`exp`), then `cd /usr/sys && make force` relinks the kernel with it ✅. A cross-compiler retargeted to Amix (**`m68k-amix-gcc`**, vendor triple `m68k-cbm-sysv4`) is conceivable for editing driver source on a modern host, but **no public recipe to build it exists** 🔴 (see below) — so in practice you build inside the emulator or on real hardware.
+There are now **two** working paths. The modern Amix drivers are built **natively on the box**: the [Hydra STREAMS driver](case-studies/hydra.md)'s `Makefile` invokes the on-box compiler (`cc` / `ld -r`) — `make` produces a relocatable object (`exp`), then `cd /usr/sys && make force` relinks the kernel ✅. **And as of 2026-06 there is also a public, reproducible *cross*-toolchain** — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) — that builds a Linux-hosted GCC targeting `m68k-cbm-sysv4`, so you can compile Amix userland binaries *and* kernel/driver objects on a modern host (see [Cross-compiling with gcc-cross-amix](#cross-compiling-on-linux-the-gcc-cross-amix-toolchain) below) ✅. That **resolves the long-standing "no public cross-toolchain recipe" gap.** Native is still the simplest path for a one-off driver; the cross-toolchain is the edit-on-a-modern-host option.
 
 ### The target triple
 
@@ -4612,7 +4671,7 @@ The `cbm` (Commodore) vendor field matches the kernel platform string `m68k-cbm-
 
 ### Kernel-driver build flags
 
-The Hydra `Makefile` compiles with these kernel flags, using the **native** on-box compiler — no `CC=m68k-amix-gcc` override ✅:
+The Hydra `Makefile` compiles with these kernel flags, using the **native** on-box compiler — no cross-compiler override ✅:
 
 ```sh
 # Native on-box build (the Makefile's own flags).
@@ -4645,17 +4704,28 @@ cd /usr/sys && make force                  # relink the kernel (elf2brel runs in
 
 Note the kernel image name: modern 2.1 systems and the community repos call the relinked kernel **`relocunix`** (the 1990 Ditto paper called the equivalent image `rdbunix` — a historical rename; verify per version 🟡). The boot-partition write step is covered in [building and relinking the kernel](kernel-build.md), and the Hydra specifics in the [Hydra case study](case-studies/hydra.md).
 
-### Open gap: no public cross-toolchain build recipe 🔴
+### Cross-compiling on Linux: the gcc-cross-amix toolchain ✅
 
-**There is no public, reproducible recipe to build `m68k-amix-gcc` from source** 🔴. A cross GCC would need the **licensed Amix SVR4 headers and C library** as a sysroot, which cannot be redistributed. But this is **not a blocker**: the driver repos do **not** use a cross-compiler — they build **natively** on a licensed Amix install. They are source-only because that licensed install (its kernel headers/libs) is what you must supply, not because of any cross toolchain ✅.
+The cross path is now **public and reproducible**: **[`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix)** is a `Makefile` that bootstraps a Linux-hosted toolchain for `m68k-cbm-sysv4` ✅. (This resolves the gap our earlier notes flagged as open 🔴.)
 
-Practical consequences:
+- **Components:** GNU **binutils 2.8.1** + **GCC 2.7.2.3** (the same GCC version Amix runs natively), downloaded from the GNU archive and built with `-std=gnu89` (the 1990s configure tests and sources predate C99). The installed cross driver is **`m68k-cbm-sysv4-gcc`** — our earlier docs called it `m68k-amix-gcc`, a placeholder; the real binary is the triple-prefixed one ✅.
+- **The one thing you must supply: a licensed Amix sysroot.** The repo deliberately ships **no** Amix headers/libraries/startup objects (the licensing boundary). You point it at your own Amix tree — `make all AMIX_ROOT=/path/to/usr-amix` — and its `sysroot` target copies `usr/include`, `usr/lib` (`libc.so.1`, `ld.so.1`), `usr/ccs/lib` (`crt1.o`/`crti.o`/`crtn.o`), and `usr/sys` into the toolchain ✅.
+- **Status (2026-06):** the C compiler, GNU `as`, and GNU `ld` all work, and a **dynamically-linked Amix C executable links and runs on real Amix** ✅. **C++ / `g++` is not complete yet** 🟡.
 
-- You cannot reconstruct `m68k-amix-gcc` purely from open materials today 🔴 — but you don't need to.
-- The actual build path is **on the box** (in the emulator or on real hardware) with native `cc`/GCC 2.7.2.3 (see [native compilers](#native-compilers-on-the-box)). Single-file drivers like the [VA2000 framebuffer driver](case-studies/va2000.md) build with `cc va2000.c`; the [Hydra STREAMS driver](case-studies/hydra.md) builds with `make` + `make force` ✅.
-- If you do have a licensed Amix install, you can extract its headers/libs to form a sysroot, but the exact configure/build invocation for the cross GCC is **not documented** in any source we hold 🔴.
+```sh
+make all AMIX_ROOT=/path/to/usr-amix      # build binutils+gcc, populate the sysroot, install the wrapper
+. build/env.sh
+m68k-cbm-sysv4-gcc hello.c -o hello        # -> ELF 32-bit MSB executable, m68k 68020, SYSV, dynamically linked
+```
 
-This is tracked as open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
+For a **kernel/driver object** (compile on Linux, link natively on the Amiga), the repo's `test-random` target cross-compiles a real Amix driver source to a relocatable object ✅:
+
+```sh
+make test-random AMIX_ROOT=/path/to/usr-amix CPUFLAGS=-m68030
+#   -> build/test/random.o : ELF 32-bit MSB relocatable M68000  (resembles native AMIX driver objects)
+```
+
+The wrapper compiles via `-S` → an `.lcomm` assembly fix-up → `as -m68020`, working around quirks of the old GCC's output ✅. So you can now develop a driver (e.g. the [A4091](a4091-53c710-driver.md) or a new NIC) on a modern host and do only the final relink on Amix — though the native on-box build (above) remains the simplest path for a single driver. This was open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), now closed.
 
 ## SVR4 packaging
 
@@ -4704,6 +4774,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 |---|---|---|
 | Building a single-file char driver | On-box native | `cc driver.c` (or newer GCC via `CC=`) ✅ |
 | Building a STREAMS / kernel driver | On-box native | `make` in the driver dir, then `make force` to relink ✅ |
+| Editing driver/userland source on a modern host | Linux cross | `gcc-cross-amix` → `m68k-cbm-sysv4-gcc` (needs your own Amix sysroot) ✅; C only, C++ WIP 🟡 |
 | Shipping userland software you compiled | SVR4 packaging | `pkgproto` → `pkgmk` → `pkgtrans` → `pkgadd` ✅ |
 | Installing community add-ons | AmixBP / `zoo`+`cpio` | `pkgadd` / `zoo`+`cpio` ✅ |
 | Rebuilding `/unix` after adding a driver | On-box or cross | see [kernel build](kernel-build.md) ✅ |
@@ -4714,6 +4785,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - [Writing a STREAMS Driver](writing-a-streams-driver.md) — the worked native build example.
 - [Hydra Case Study](case-studies/hydra.md) — the real STREAMS driver built natively on Amix (`make` / `make force`).
 - [VA2000 Case Study](case-studies/va2000.md) — a native single-file `cc` build and the pre-POSIX `/bin/sh` gotcha.
+- [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) — the Linux-hosted cross-toolchain bootstrap (`make all AMIX_ROOT=…`).
 - [The Amix Device-Driver Model](driver-model.md) — major/minor numbers and the `cdevsw`/`bdevsw` tables drivers plug into.
 - [Versions](../reference/versions.md) — version matrix (GCC 2.7.2.3 built under 2.03; `rdbunix`→`relocunix` rename).
 
@@ -4722,6 +4794,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra **native** build, GCC 2.7.2.3 from amigaunix.com), §11 (userland shells), and §13 (open gaps #1, #3).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (kernel build flow; `rdbunix` historical name).
 - `isoriano1968/hydra-amix` repo (the **native** `make` / `make force` build, `CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"`, `elf2brel` in `boot/`, native GCC 2.7.2.3 from amigaunix.com): <https://github.com/isoriano1968/hydra-amix>
+- `isoriano1968/gcc-cross-amix` repo (the Linux-hosted cross-toolchain: `Makefile` + `amix-gcc-wrapper.sh`; binutils 2.8.1 + GCC 2.7.2.3, target `m68k-cbm-sysv4`, user-supplied sysroot; `make all`/`test-hello`/`test-random`; C works, C++ WIP): <https://github.com/isoriano1968/gcc-cross-amix>
 - `asokero/va2000-amix` repo (native `cc va2000.c`; pre-POSIX `/bin/sh` gotchas — no `$(...)`, no `grep -q`): <https://github.com/asokero/va2000-amix>
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (install uses `amixpkg`/`cpio`/`dd` from tape).
 - amigaunix.com — *downloads* page (AmixBP, Michael Parson) and *more_software* / *tips-tricks*: <https://www.amigaunix.com/doku.php/home>
@@ -4813,7 +4886,7 @@ The driver is **one C file** and builds with the native AT&T SVR4 `cc` already o
 cc va2000.c
 ```
 
-Because it is plain native `cc`, there is no toolchain bootstrap problem here — and there is none for Hydra either; both build on-box (the `m68k-amix-gcc` *cross*-compiler has no public recipe 🔴 but is not needed — see the [toolchain page](../toolchain.md)). The object goes into the kernel source tree and is linked statically into the kernel — Amix has **no loadable modules**, so every driver is part of `/unix` (the [kernel architecture](../../how-it-works/kernel-architecture.md) explains why).
+Because it is plain native `cc`, there is no toolchain bootstrap problem here — and there is none for Hydra either; both build on-box. (A Linux **cross-toolchain** now also exists — [`gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), `m68k-cbm-sysv4-gcc` — if you'd rather edit driver source on a modern host; see the [toolchain page](../toolchain.md).) The object goes into the kernel source tree and is linked statically into the kernel — Amix has **no loadable modules**, so every driver is part of `/unix` (the [kernel architecture](../../how-it-works/kernel-architecture.md) explains why).
 
 ## The six kernel files the installer patches
 
@@ -5219,7 +5292,7 @@ The Hydra is a Zorro II Ethernet board in the NE2000 family ✅:
 | Media | **10Base2** (BNC / thin coax) and **10BaseT** (RJ-45) | ✅ |
 | AutoConfig ID | **2121 / 1**, i.e. manufacturer `2121` (0x0849), product `1` → combined **0x08490001** | ✅ |
 
-Because it is a Zorro II AutoConfig board, the Amiga firmware assigns its base address at reset and Amix discovers it through the kernel AutoConfig interface — see [Zorro II AutoConfig for drivers](../zorro-autoconfig.md) for how Amix maps these boards. Zorro III is categorically unsupported by Amix, so a Zorro III network card could not be driven this way ✅.
+Because it is a Zorro II AutoConfig board, the Amiga firmware assigns its base address at reset and Amix discovers it through the kernel AutoConfig interface — see [Zorro II AutoConfig for drivers](../zorro-autoconfig.md) for how Amix maps these boards. A Zorro III board is **not** reachable by the stock dereference-the-`autocon()`-address path this driver uses ✅; driving one needs a driver that maps the board explicitly — see the [A4091 SCSI](../a4091-53c710-driver.md) and [Z3660 ethernet](../z3660-ethernet-driver.md) drivers.
 
 ### Register / memory layout on the board
 
@@ -5289,7 +5362,7 @@ mknod /dev/hya0 c 47 0
 
 The native compiler is **GCC 2.7.2.3 for Amix**, distributed as an installable **pkg on [amigaunix.com](https://amigaunix.com)** (the stock AT&T SVR4 `cc` also compiles kernel C) ✅. The kernel-image/boot-relocatable conversion (`elf2brel`, the `stand/`/`boot/` tooling) is part of the on-box kernel build, not a cross step. See [Building and installing a kernel](../kernel-build.md) for the general relink-and-write-boot-partition cycle, and keep the old `/unix` as a fallback.
 
-> **Note on the toolchain "gap".** Earlier project notes flagged the `m68k-amix-gcc` *cross*-compiler as an open 🔴 gap (no public recipe). That gap is real but **not on the path to building this driver**: hydra builds **on-box** with the amigaunix.com GCC pkg. You still need a **licensed Amix install** (kernel headers/libs are not redistributable), which is why the repo is source-only ✅. See [Toolchain](../toolchain.md).
+> **Note on the toolchain.** hydra builds **on-box** with the amigaunix.com GCC pkg. As of 2026-06 a Linux-hosted cross-toolchain — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — also exists, closing the earlier "no public cross recipe" gap ✅. Either way you need a **licensed Amix install** (its headers/libs are the non-redistributable part — which is why the repo is source-only). See [Toolchain](../toolchain.md).
 
 ## Bringing the interface up: slink, not `ifconfig plumb`
 
@@ -5348,7 +5421,7 @@ If you are writing another NE2000/DP8390-class or Zorro II network driver for Am
 
 - [Writing a STREAMS driver](../writing-a-streams-driver.md) — the general method this case study illustrates.
 - [Networking on Amix](../../how-it-works/networking.md) — the SVR4 STREAMS TCP/IP stack, `aen0`, and how interfaces are configured.
-- [Toolchain](../toolchain.md) — native on-box build, the `m68k-cbm-sysv4` triple, and the (separate) cross-compiler gap.
+- [Toolchain](../toolchain.md) — native on-box build, the `m68k-cbm-sysv4` triple, and the `gcc-cross-amix` cross-toolchain.
 - [The Amix device-driver model](../driver-model.md) — major/minor numbers, `cdevsw`, STREAMS as the third device class, and `int2_tbl[]`.
 - [Zorro II AutoConfig for drivers](../zorro-autoconfig.md) — how Amix discovers and maps Zorro II boards by AutoConfig ID.
 - [Building and installing a kernel](../kernel-build.md) — the relink-and-write-boot-partition cycle the build feeds into.
@@ -5628,6 +5701,8 @@ A4091-specific steps:
    [adding drivers to a custom boot disk](../boot-disks/adding-drivers-to-boot-disk.md) and the
    "boot root on the A4091" install recipe on [the boot process](../how-it-works/boot-process.md).
 
+> **Tip — cross-develop on a modern host.** As of 2026-06 you can build the driver object on Linux with the [`gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) cross-toolchain (`m68k-cbm-sysv4-gcc`) instead of editing on the box — it cross-compiles a real Amix driver `.c` to a relocatable m68k ELF; you then do only the final relink on Amix. See [Toolchain → cross-compiling](toolchain.md#cross-compiling-on-linux-the-gcc-cross-amix-toolchain). ✅
+
 The SCRIPTS source (`reference/scripts/inq-wr.ss`) is assembled with the **NetBSD `ncr53cxxx`**
 assembler from the open-source [a4091.device project](https://github.com/A4091/a4091-software), which
 also provides the A4091 autoboot ROM used by the emulator
@@ -5652,6 +5727,9 @@ also provides the A4091 autoboot ROM used by the emulator
   the rootdev ↔ card-index device numbering.
 - [Device list](../reference/device-list.md) — the SCSI block/char major numbers and the
   card/target/slice minor scheme.
+- [Z3660 piscsi SCSI driver](z3660-scsi-driver.md) and [Z3660 ethernet driver](z3660-ethernet-driver.md)
+  — the other modern Zorro III drivers; the piscsi "SCSI" is a deliberately contrasting ~5-poke
+  firmware mailbox (no 53C710, no SCRIPTS) that boots Amix from real hardware.
 - [Supported hardware & requirements](../how-it-works/hardware.md) — the Zorro II / Zorro III rules
   the A4091 work pushes against.
 - [Amix on Amiberry](../getting-started/emulation-amiberry.md) — the A4091-in-Amiberry config and the
@@ -5671,6 +5749,742 @@ also provides the A4091 autoboot ROM used by the emulator
   behind this driver.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx`
   SCRIPTS assembler).
+
+
+================================================================================
+# FILE: docs/drivers/z3660-ethernet-driver.md
+================================================================================
+
+---
+title: "Case Study: Z3660 ethernet driver (zen0)"
+summary: How a native SVR4 STREAMS/DLPI ethernet driver (zen0) was written for the Z3660 accelerator's onboard Zynq ethernet, giving Amix full bidirectional TCP/IP on real hardware — talking the firmware's frame mailbox, not emulating a NIC, and dodging an INT6 interrupt storm with polled RX.
+status: draft
+---
+
+# Case Study: Z3660 ethernet driver (zen0)
+
+This is the **network analogue of the [A4091 / 53C710 SCSI driver](a4091-53c710-driver.md)**: a
+brand-new native driver for a board Amix was never meant to support, written, built, deployed and
+**validated end-to-end on real hardware**. Where the A4091 work got Amix to boot with root on a
+Zorro III SCSI controller, this work gives Amix **full bidirectional TCP/IP over the Z3660
+accelerator's onboard ethernet**, as the interface **`zen0`**. It pulls together the
+[STREAMS driver model](writing-a-streams-driver.md), [the kernel build](kernel-build.md) and the
+[networking stack](../how-it-works/networking.md) — applied at once to a real combo board.
+
+The work is **first-party and reproduced on real hardware** — written, built, deployed and run on a
+physical **Amiga 4000 + Z3660** during 2026-06. Unless noted, every claim here is **✅ Verified**
+(driver source we wrote, firmware source we read, or a result reproduced live on the hardware);
+inferences and unconfirmed items are tagged 🟡 inline, carried verbatim from the source brief per the
+repo's [confidence-tag policy](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md). The
+source is the **amix-z3660net** project — `src/z3660eth.{c,h}`, `driver.conf`, `userland/S99zen` — the
+sibling **amix-z3660** SCSI project's `ETHERNET-SCOPING.md`, and the Z3660 firmware source.
+
+> **One-line summary.** Amix now has full TCP/IP over a native SVR4 STREAMS/DLPI driver (`zen0`) for
+> the Z3660's onboard ethernet — **not NIC emulation**. The only real-hardware blocker turned out to
+> be an interrupt storm, fixed driver-side with **no firmware change**. ✅
+
+## What the Z3660 and `z3660eth` are
+
+The **Z3660** is a 68030/68060-class **Zorro III accelerator** built around a Xilinx **Zynq-7000**
+SoC ✅. The Zynq PS runs firmware (`Z3660.bin`, loaded by `BOOT.bin`) that emulates the 68k *and*
+drives the card's real peripherals — including the card's **Zynq Gigabit Ethernet MAC (GEM)** via the
+Xilinx `XEmacPs` driver. Ethernet, audio and USB all hang off a **piscsi**-style register/mailbox
+interface in the card's RTG register page ✅.
+
+`z3660eth` is a **native Commodore Amiga Unix (Amix, SVR4.0, m68k 68030) STREAMS/DLPI ethernet
+driver** for that onboard GEM ✅. It is the network counterpart of the `amix-z3660` SCSI driver
+(`z3660.c`) for the same combo board.
+
+**It is not NIC emulation.** The firmware already moves whole ethernet frames between the 68k guest
+and the Zynq GEM — it does this for AmigaOS through the SANA-II `Z3660Net.device`. `z3660eth` speaks
+that **same firmware mailbox** (a small MMIO register protocol over the Zorro III window) and presents
+it to Amix as a **DLPI Style-1 connectionless ethernet provider**, brought up with the stock `slink` +
+`ifconfig` STREAMS plumbing as interface **`zen0`** ✅. Contrast the [hydra-amix driver](case-studies/hydra.md),
+which programs a real DP8390/NE2000 chip directly; here the chip-level work lives in the card's
+firmware and the driver talks to it over a register protocol.
+
+| Property | Value | Tag |
+|---|---|---|
+| Driver tag / interface | `zen` → **`zen0`** | ✅ |
+| `cdevsw` major | **48** (the free `nostr` slot on the stock / A4091 kernel) | ✅ |
+| Board AutoConfig id | **`0x144B0001`** | ✅ |
+| Fixed combo base (AGA fallback) | **`0x10000000`** | ✅ |
+| Station MAC observed on the wire | `00:80:51:01:02:03` | ✅ |
+| Example IP | `192.168.2.39` (the build box keeps `.38`) | ✅ |
+| DLPI style / limits | Style-1; `Z3660ETH_MAXDEV = 5` SAP streams, `Z3660ETH_MAXBOARDS = 1`, MTU 1500 | ✅ |
+
+## The firmware mailbox: the protocol contract
+
+All register offsets are **board-base-relative, 32-bit big-endian MMIO**, living in the RTG register
+page at `board_base + 0x000` (piscsi is at `+0x2000`) ✅. Every offset was verified against the Z3660
+driver headers (`z3660_regs.h`) and the firmware register enum/dispatcher (`rtg/zzregs.h`,
+`rtg/rtg.c`); the in-repo source of truth is `src/z3660eth.h` ✅.
+
+### Registers
+
+| Name | Offset | Dir | Meaning |
+|---|---|---|---|
+| `ZZ_CONFIG` | `0x104` | W | `1` = enable INT6 delivery, `0` = disable, `24` (`8\|16`) = ack/clear ETH |
+| `ZZ_ETH_TX` | `0x190` | W / R | **W** byte-length = trigger TX (synchronous, ~1 ms); **R** = TX result |
+| `ZZ_ETH_RX` | `0x194` | W | write (any value) = advance / free the current RX slot |
+| `ZZ_ETH_MAC_HI` | `0x198` | R/W | MAC bytes [0..1] = `(b0<<8)\|b1` |
+| `ZZ_ETH_MAC_LO` | `0x19C` | R/W | MAC bytes [2..5]; a **write** triggers the GEM `SetMac` |
+| `ZZ_ETH_RX_ADDR` | `0x1A4` | R | board-relative byte offset of the current RX slot |
+| `ZZ_INT_STATUS` | `0x1A8` | R | pending bits: ETH = `1`, AUDIO = `2`, USB = `4` |
+
+On the firmware side (`rtg/rtg.c`) these dispatch to `REG_ZZ_CONFIG` (~line 1150), `REG_ZZ_ETH_TX` →
+`ethernet_send_frame()` (~1609), and `REG_ZZ_ETH_RX` → `ethernet_receive_frame()` (~1613) ✅.
+
+### Frame windows
+
+The frame buffers are real DDR reached through the Zorro III window, at fixed board-relative offsets
+(from the firmware `memorymap.h`) ✅. Note the board base is `0x10000000`, so these windows land
+**inside the 68030's TT0 range** (< `0x40000000`) and are directly mappable — this is *not* the
+[A4091's unmapped TT-gap](a4091-53c710-driver.md) case; `sptalloc` here is simply a clean way to map
+the full 128 KB region:
+
+- **RX backlog ring** — `0x07ED0000`, 32 slots × 2048 bytes = 64 KB.
+- **TX staging frame** — `0x07EE0000`, one frame.
+- **GEM RX frame** — `0x07EF0000`.
+- **Per-slot stride** — 2048 bytes; **per-slot header** — 4 bytes: `[0..1] = length`,
+  `[2..3] = serial` (a monotonic frame serial used as the drain sentinel). The ethernet payload
+  follows the 4-byte header.
+
+> 🟡 **Latent firmware bug (documented, mitigated, not the cause of any observed failure).** The
+> firmware constant `FRAME_MAX_BACKLOG` is **64** while only **32** real slots exist before the TX
+> window — a 64-deep backlog would overrun the ring. The driver mitigates by **eager-draining** every
+> poll tick *and* by **mapping the full 64-slot / 128 KB range**, so any `ZZ_ETH_RX_ADDR` value the
+> firmware returns is always mapped memory. No overrun was observed in practice.
+
+### TX / RX mechanics and the FCS boundary
+
+- **TX** ✅ — copy the frame (min-padded to 60 bytes) into the TX window, then write the byte length to
+  `ZZ_ETH_TX`. The trigger is **synchronous (~1 ms) with no completion IRQ**; reading `ZZ_ETH_TX` back
+  returns the result code (`res = 0` = OK, observed on the wire). The single shared TX window is
+  serialized by `info->tx_busy`; the ~1 ms trigger is **not** held at raised spl.
+- **RX** ✅ — drained by re-reading `ZZ_ETH_RX_ADDR`, comparing each slot's serial header against
+  `info->last_serial` to find fresh frames, delivering each up the stream, and strobing `ZZ_ETH_RX` to
+  free the slot. The drain loop is **bounded** (≤ 256 iterations per call) so a runaway firmware can't
+  wedge the kernel.
+- **FCS / minimum-length boundary** ✅ — the firmware delivers the raw `XEmacPs_BdGetLength` and does
+  **not** strip the FCS (there is no `FCS_STRIP` option). So the driver pads TX up to the 60-byte
+  minimum and **does not** subtract `ETH_CRC_LEN` from the RX length — it must *not* inherit the stock
+  `aen` driver's `-4`. (Same 60-vs-64 CRC boundary as the [hydra RX min-frame gotcha](case-studies/hydra.md#what-made-it-work),
+  handled the other way round: hydra's DP8390 reports a length that *includes* the CRC, so it accounts
+  for the 4 bytes; the Z3660 firmware hands back the raw length, so the driver must *not* subtract
+  `ETH_CRC_LEN`. Both honour the 60-byte post-CRC minimum.)
+
+## Driver architecture
+
+`src/z3660eth.c` is a ~1034-line STREAMS/DLPI skeleton adapted from the stock Amix `aen` (LANCE) and
+`hydra` drivers, with the chip layer replaced by the Z3660 mailbox ✅.
+
+### Function map (all in `src/z3660eth.c`)
+
+| Function | Role |
+|---|---|
+| `z3660eth_map()` | `sptalloc` + map the register page and the 64-slot frame region; fills `board_base`/`regs`/`frame`/`txwin`/`paddress`. Returns `ENXIO` when no Z3660 GEM is present |
+| `z3660eth_autoconfig()` | discovery: `autocon(0x144B0001)`, else (AGA only) the fixed combo base `0x10000000`, verified via the firmware MAC register |
+| `z3660eth_initialize()` | writes `ZZ_CONFIG`, primes `last_serial`, starts the RX poll callout |
+| `z3660ethopen` / `z3660ethclose` | lazy-open: autoconfig on first `open` (like `aen`) |
+| `z3660ethwput` / `z3660ethwsrv` | STREAMS write put / service |
+| `z3660ethxmit()` | TX path: pad, copy to `txwin`, optional cache push, write `ZZ_ETH_TX` |
+| `z3660eth_drain()` | the bounded RX drain (serial sentinel + `ZZ_ETH_RX` strobe) |
+| `z3660eth_poll()` | the `timeout()` callout that calls `z3660eth_drain` each tick |
+| `z3660eth_tx_drain()` | TX-side completion bookkeeping |
+| `z3660ethintr()` | **future** interrupt entry point (not wired into `int2_tbl` yet) |
+| `z3660ethproto()` | DLPI primitive dispatch (bind / unbind / attach / unitdata / …) |
+| `toss_packet_up_stream()` | deliver a received frame up the matching SAP stream |
+| `z3660ethioctl()` | the `zen.c` presence / status ioctls |
+| `z3660ethinit()` | driver init |
+
+### Key design decisions
+
+- **Lazy-open + polled RX → no `int2_tbl` / `init_tbl` edit.** ✅ The driver autoconfigs on the first
+  `open` and services RX from a **clock-level `timeout()` poll callout** (period
+  `Z3660ETH_POLL_TICKS = 1`). This is *why a GEM-less build box boots cleanly and `open()` simply
+  returns `ENXIO`* — there is no boot-time probe that can panic. It is a deliberately different choice
+  from hydra's "probe at boot (`init_tbl`/`hydrainit`), full-init on open" split — see
+  [Writing a STREAMS driver](writing-a-streams-driver.md#init-split-probe-at-boot-full-init-on-open).
+- **No `spl6()` / `splx()`.** ✅ Those primitives **do not exist in Amix SVR4.0** — they are a
+  BSD/hydra idiom. The stock `aen` driver and `z3660.c` do **zero** explicit interrupt masking, so in
+  `z3660eth.h` they are no-ops: `#define splz3660eth() 0` and `#define splx(s) ((void)(s))`.
+  Referencing the nonexistent symbols had left them **undefined in the kernel link**, which the
+  `nm -u` clean-gate (below) rejects — a real build-breaker we hit and fixed.
+- **DLPI Style-1**, up to `Z3660ETH_MAXDEV = 5` SAP streams per board, `Z3660ETH_MAXBOARDS = 1`,
+  MTU 1500 ✅.
+
+## Kernel integration
+
+A STREAMS network driver is **not** registered in `sd.c`'s `scsicard[]` table (that is the SCSI-stack
+path the [A4091 driver](a4091-53c710-driver.md#the-card-registry-in-sdc) uses) — it is wired directly
+into `master.d/kernel.c`'s `cdevsw[]` and built in its own `amiga/driver/<dir>/` subtree. Three edits
+plus the subtree ✅:
+
+1. **`/usr/sys/amiga/driver/z3660eth/`** — `z3660eth.c`, `z3660eth.h`, `z3660ethuser.h`, `Makefile`.
+2. **`master.d/kernel.c`:** add `extern struct streamtab z3660ethinfo;` after the stock `aeninfo`, then
+   claim cdevsw slot **48** (verify it is still the empty `/*48*/ … notty,nostr,…` row) by replacing
+   `nostr` with `&z3660ethinfo`.
+3. **`amiga/driver/Makefile`:** add `z3660eth/exp` to `OBJ` and a `z3660eth/exp:` build rule.
+
+The machine-readable form is `driver.conf`, consumed by the `build-net-kernel.sh` tool in the
+**amix-kerntools** project ✅:
+
+```text
+net  z3660eth  z3660eth.c  z3660ethinfo  48  zen  "Z3660 Ethernet"
+```
+
+Create the node and bring the interface up. As on [hydra](case-studies/hydra.md), Amix is SVR4.0 so
+there is **no `ifconfig plumb`** — you link the stream in with `slink`, then `ifconfig` ✅:
+
+```sh
+mknod /dev/zen0 c 48 0
+slink                                                       # ensure the base inet streams are linked
+slink addaen /dev/zen0 zen0                                 # STREAMS multiplexor link
+ifconfig zen0 192.168.2.39 netmask 255.255.255.0 up -trailers
+route add default 192.168.2.1 1                             # trailing 1 = the (required) metric
+```
+
+## ★ The INT6 interrupt storm — *the* real-hardware blocker
+
+The single most important lesson of the project ✅. On the **WinUAE build box** (no Z3660 GEM) the
+whole integration and build path worked — the kernel boots, `z3660eth` registers at cdevsw 48, and
+`open(/dev/zen0)` returns `ENXIO` with **no panic**. But on the real A4000 + Z3660:
+
+**Symptom.** The kernel booted with the driver and reached `login:`, but the moment the interface was
+brought up the box **hard-locked** (caps-lock LED dead = the 68k is hung hard, not merely busy). ✅
+
+**Root cause** (diagnosed from the firmware serial `[PC]` heartbeat + `nm` of `relocunix`): the
+firmware raises **Amiga INT6 (EXTER)** on *every* received frame — `rtg/rtg.c` sets
+`interrupt_enabled_ethernet` from `ZZ_CONFIG` bit 0 (~line 1166), and the RX path calls
+`amiga_interrupt_set(AMIGA_INTERRUPT_ETH)` (~line 336). **Amix has no level-6 ethernet interrupt handler** — its
+`p6int` / `aciabintr` chain runs but never acks the eth source, so the LAN's normal **ARP broadcast
+traffic storms INT6 and instantly hard-locks the machine** ✅. (Exactly the INT6 risk the scoping doc
+had flagged in Phase 0.)
+
+**Fix** (commit `b06cf45`): the driver writes **`ZZ_CONFIG_DISABLE` (0)** instead of
+`ZZ_CONFIG_ENABLE` (1), so the firmware never raises INT6. RX is unaffected — the firmware still fills
+the backlog ring regardless of the interrupt-enable flag (`ethernet.c` only gates a *debug print* on
+it), so the **bounded poll/drain callout keeps working**. **No firmware change was needed** ✅.
+
+> The lesson generalizes: *the firmware's interrupt model assumed an AmigaOS handler that Amix does
+> not provide; the safe path is polled RX with the firmware interrupt explicitly disabled.* This is
+> recorded as a gotcha on [the quirks checklist](../how-it-works/quirks.md).
+
+## Other bugs that mattered
+
+- **`spl6`/`splx` + `rico.h`-isms (Phase-1 build-breakers, commit `84c9a4f`).** ✅ Besides the
+  nonexistent `spl6`/`splx` symbols (above), a STREAMS driver must spell out `unsigned char/long/short`
+  — **not** `uchar`/`ulong`/`ushort`, which are `rico.h`-only (included by the SCSI driver, not this
+  one). Both showed up only at kernel-link time, as undefined symbols.
+- **The 030 data-cache flush — turned out *not* to be needed.** ✅ The eth DDR windows are cacheable
+  (under TT0), so a stale-cache TX/RX coherency hazard was the scoping's stated *top* risk. The driver
+  has an **optional** line-granular flush (`Z3660ETH_CACHE_FLUSH`, `cpushl %dc` over the TX/RX
+  windows), **default OFF**. On real hardware it was **not required** — TX and RX are byte-correct with
+  the flush off, confirming the 030 data cache is effectively transparent to these windows here. Left
+  OFF.
+
+  > 🟡 Caveat for a future maintainer: the flush helper uses GNU-style `asm volatile("cpushl …")`. The
+  > Amix licensed K&R `cc` may not accept GNU inline-asm syntax; if the flush is ever needed it may
+  > have to move to a separate `.s` file. Untested, because it was never needed.
+- **Auto-bring-up race (the boot script, not the driver).** 🟡 On a *fast clean boot* the bring-up
+  `slink addaen` can race ahead of the inet base STREAMS plumbing and fail to open `zen0` (observed
+  once: the box reached `login:` but `zen0` never came up; cause inferred from the working manual
+  bring-up, which always ran a bare `slink` first — not independently traced). The boot script now
+  runs a bare `slink` first, then **retries** `slink addaen` in a loop (below).
+
+## Build & the `nm -u` clean-gate
+
+The kernel is built **on a networked Amix box** (the WinUAE/Amiberry build box at `192.168.2.38`).
+On-box `ld` corrupts a high fraction of kernel links (the "D245" boot-breaker), so the link must be
+repeated until it produces a clean kernel ✅ — the same hazard the [A4091 build](a4091-53c710-driver.md#build-install)
+and [the kernel-build page](kernel-build.md) describe.
+
+**★ The correct clean-kernel bar is `nm -u`, not `sum -r` recurrence or `checkunix`.** ✅ This was
+learned the hard way (2026-06-21) and supersedes older notes:
+
+- `relocunix` is literally `ln unix relocunix`, gated by the kernel Makefile's own test:
+  `nm -h -u unix | egrep -v '(etext|edata|end)'` **must be empty** (no undefined symbols).
+- A `unix` can pass `checkunix` (which only validates the `.symtab` shape) while still having
+  undefined symbols — so `checkunix` alone is **insufficient**. The working gate relinks until the
+  kernel is **both** `nm -u`-clean **and** `checkunix`-clean, then `ln`s it to `relocunix`. (A
+  recurring `sum -r` among clean builds is gold confirmation but does not converge on this larger
+  kernel and is not required.)
+- Implemented in the amix-kerntools `tools/build-clean-net-kernel.sh`.
+
+> ⚠️ **Never delete the 22 generic SVR4 `exp` blobs** (os, io, netinet, rpc, vm, …): they ship
+> pre-linked with no source on the box and are not regenerable. Only the `amiga/` tree + `master.d` +
+> `fs/exp` + `local/exp` are re-rolled. (Deleting them once cost a painful restore.) ✅
+
+Other on-box build realities (✅, validated on the build box): Makefiles have **no header-dependency
+tracking** — after editing a `.h`, force-recompile the dependent `.o` (or `touch` the `.c`) and verify
+the `md5`; **FTP is asymmetric** on the a2065 build box — `push` (PUT) is reliable but large `pull`
+(GET) is flaky, so patch `kernel.c` on the box with `ed` and use **NFS** (`nfsvers=2`) for large
+pulls; and a **fresh `/usr/sys` rebuild faults at `$40000000`** unless the `amix-base` DDR memory fix
+(the `wip-emulated-ram` work) is in the image — the config that boots is the xfer-memory `.uae`.
+
+## Deploy & bring-up to the real box
+
+The real A4000 + Z3660 has **no network until `zen0` is up** (chicken-and-egg), so deployment is
+out-of-band ✅. Two paths:
+
+1. **Kernel-only shuttle** — copy the clean `relocunix` to the box via `transfer.hdf` (a small scratch
+   Amiga hardfile on SCSI `c5d0`), stage it, `cd /stand; make`, reboot. Never re-image the root.
+2. **Full-image / firmware deploy (no-console)** — the Z3660 ARM firmware console has a **TFTP
+   server**. Power-cycle into the ARM console (spam `C` at power-on), `P` to start TFTP at
+   `192.168.2.29`, `PUT` the artifact, `R` to reboot: path **`0:`** (FAT32) holds `Z3660.bin` (the
+   firmware, ~12.3 MB, ~21 s TFTP; built with `cd ~/Devel/Omat/Amiga/Z3660 && ./docker/run.sh make
+   bootbin` → `…/Alfa/sd_card/BOOT.BIN`, incremental control-core builds in seconds); path **`1:`**
+   (exFAT) holds `hdf/Amix.hdf` (the full root image, ~629 MB, ~20 min TFTP). The host↔box TFTP host is
+   the laptop wired directly to the Z3660.
+
+> ⚠️ **Operational gotchas (✅, all hit this session).** Power control is a flaky HA webhook — verify
+> the serial actually goes silent before powering back on (often needs two tries). The **KVM video is
+> solid black** (an unusable video-converter), so you **cannot** read the Amiga console over it;
+> detect state via the **firmware serial `[PC]` heartbeat** (pinned PC = hung; varying = alive) and,
+> once up, **telnet/ftp over `zen0`**. The serial log is mirrored at
+> `kvm1w.alanara.fi:/userdata/media/z3660-serial.log`.
+
+### Boot auto-bring-up — `/etc/rc2.d/S99zen`
+
+The amix-z3660net repo ships `userland/S99zen` (installed as `/etc/rc2.d/S99zen`). It is
+**backgrounded** so a datapath problem can never hang the boot (the box still reaches `login:`), and
+**hardened** for the bring-up race above ✅:
+
+```sh
+#!/bin/sh
+# S99zen -- bring up zen0 at boot, backgrounded; cdevsw major 48.
+[ -c /dev/zen0 ] || mknod /dev/zen0 c 48 0
+(
+  sleep 5
+  /usr/sbin/slink                       # ensure the base inet streams are linked
+  i=0
+  while [ $i -lt 20 ]; do
+    /usr/sbin/slink addaen /dev/zen0 zen0 && break
+    sleep 3
+    i=`expr $i + 1`
+  done
+  /usr/sbin/ifconfig zen0 192.168.2.39 netmask 255.255.255.0 up -trailers
+  /usr/sbin/route add default 192.168.2.1 1
+  /usr/sbin/ifconfig zen0
+) > /tmp/zen-bringup.log 2>&1 &
+```
+
+> ⚠️ `zen0` only comes up after the **full** boot completes (including an `fsck` + reboot if the SD
+> image is dirty). Do **not** conclude "broken" from an early serial check — give it the whole boot. ✅
+
+## Status — ✅ works on real hardware (2026-06-21)
+
+Validated on a real **A4000 + Z3660**, all reproduced live ✅:
+
+| Test | Result |
+|---|---|
+| `ifconfig zen0` | `flags=23<UP,BROADCAST,NOTRAILERS>`, inet `192.168.2.39`, mask `ffffff00` |
+| Inbound flood ping (laptop → `.39`, 40 pkts @ 50 ms) | **40/40 received, 0% loss** (~3–19 ms RTT) |
+| Outbound: box → laptop (`ping 192.168.2.66`) | `192.168.2.66 is alive` |
+| Outbound: box → gateway (`ping 192.168.2.1`) | `192.168.2.1 is alive` |
+| `netstat -in` for `zen0` | **Ierrs = 0  Oerrs = 0  Collis = 0** (e.g. 895 Ipkts / 376 Opkts) |
+| Remote login (`telnet` / `ftp` over `zen0`) | works (drove the box entirely over the network) |
+| Sustained FTP throughput | **~185 KiB/s**, stable across 3 consecutive ~3.4 MB transfers |
+
+> 🟡 **Throughput note.** ~185 KiB/s (≈1.5 Mbit/s) is the measured FTP rate — a working baseline, not
+> a tuned result; the performance side is considered still flaky and not worth chasing yet. The
+> interface itself reports **zero** errors/collisions even under flood load.
+
+## Known issues & open questions
+
+- 🟡 **Boot reliability is gated by unrelated boot panics, not the driver.** The Amix root is a
+  non-journaled UFS; a cold power-cut can corrupt it and boot-time `fsck` is effectively broken (a
+  separate known issue), so a dirty root can panic before reaching the bring-up. When the boot is
+  clean, networking comes up. Always prefer **clean shutdowns** (`shutdown -i0`; verify the network
+  drops, i.e. the FS unmounted) before power-cycling.
+- 🟡 **Auto-bring-up race** — mitigated by the hardened `S99zen`, not yet stress-tested across many
+  cold boots.
+- ✅ **Interrupt-driven RX is future work.** RX is polled today. A true ISR path (`z3660ethintr()`
+  wired into `int2_tbl[]`) needs a level-6 hook the firmware's INT6 model doesn't safely give Amix; it
+  is gated on a board-mod. The polled callout is correct and measured to work; interrupt RX would
+  mainly help latency/CPU.
+- ✅ **Cache flush left OFF**; revisit only if a future board/firmware revision changes the
+  cacheability of the eth windows.
+- 🟡 **The in-repo amix-z3660net docs lag the real-hardware state.** The lower `## Status` block of
+  `README.md` and the `## Real-world build notes` in `BUILD.md` still describe the pre-real-hardware
+  state and the superseded `sum -r` clean-gate; the authoritative facts are the ones on this page (the
+  `nm -u` gate and the real-hardware status).
+
+## See also
+
+- [Z3660 piscsi SCSI driver](z3660-scsi-driver.md) — the **SCSI sibling on the same Z3660 combo
+  board**: the same firmware-mailbox style of register protocol, applied to disk I/O — it boots Amix
+  multiuser with root on real hardware.
+- [A4091 / 53C710 SCSI driver](a4091-53c710-driver.md) — a separate Zorro III SCSI card (a real
+  53C710); the D245 clean-gate and Zorro III bring-up context this builds on.
+- [Writing a STREAMS driver](writing-a-streams-driver.md) — the third driver kind; `zen0` is a second
+  worked example (polled RX, firmware mailbox) alongside hydra (INT2, DP8390).
+- [Hydra DLPI case study](case-studies/hydra.md) — the other modern Amix net driver; the mirror-image
+  60-vs-64 CRC boundary lives there.
+- [Networking](../how-it-works/networking.md) — the SVR4 STREAMS TCP/IP stack `zen0` joins; static IP,
+  DNS off by default, the `route` metric.
+- [Building and installing a kernel](kernel-build.md) — the relink → `relocunix` cycle and the D245
+  clean-gate this driver's build depends on.
+- [Device & card list](../reference/device-list.md) — the `cdevsw` major 48 / `zen` assignment.
+- [Quirks](../how-it-works/quirks.md) — the firmware-INT6/polled-RX gotcha in the checklist.
+
+## Sources
+
+- **Driver source we wrote** (primary, ✅): the **amix-z3660net** project (git, branch `master`) —
+  `src/z3660eth.c` (~1034 lines), `src/z3660eth.h` (register map, frame-window layout, the `spl`
+  no-ops), `src/z3660ethuser.h`, `src/Makefile`, `driver.conf` (the `net z3660eth … 48 zen` stanza),
+  `userland/S99zen` (boot auto-bring-up), `userland/{bringup.sh,network-config.zen,zen.c}`,
+  `README.md`, `BUILD.md`; commits `f04d283` (initial STREAMS/DLPI driver), `2d26315` (on-box
+  integration scripts), `84c9a4f` (fix `spl6`/`splx` + `rico.h`-isms — Phase-1 gate), `b06cf45`
+  (**do not enable firmware INT6** — the storm fix), `029ee9b` (validated on real HW; hardened
+  `S99zen` + README real-HW status).
+- **Firmware source we read** (primary, ✅): the Z3660 firmware
+  `Z-TURN/vitis_ide/Z3660/src/` — `rtg/rtg.c` (`REG_ZZ_CONFIG` / `REG_ZZ_ETH_TX` / `REG_ZZ_ETH_RX`
+  dispatch, the INT6 raise), `ethernet.c`, `memorymap.h`, `rtg/zzregs.h`.
+- **Design / scoping** (primary, ✅): the **amix-z3660** SCSI project's `ETHERNET-SCOPING.md` (the
+  protocol contract, cache-coherency analysis, the INT6 risk, the phased plan).
+- **Real-hardware results reproduced live** (2026-06-21, A4000 + Z3660, ✅): `ifconfig zen0`,
+  `netstat -in`, laptop↔box `ping` / `ftp`, and firmware serial `[ETHCFG]` / `[ETHTX]` debug
+  breadcrumbs (a temporary `rtg.c` build, since reverted).
+- **Kernel build tooling** (✅): the **amix-kerntools** project — `tools/build-clean-net-kernel.sh`
+  (the `nm -u` clean-gate), `tools/build-net-kernel.sh` (consumes `driver.conf`).
+- Magic numbers (✅): cdevsw major **48**; board autocon `0x144B0001`; fixed combo base `0x10000000`;
+  iface `zen0` @ `192.168.2.39`; build box `192.168.2.38`; TFTP `192.168.2.29`; station MAC
+  `00:80:51:01:02:03`.
+
+
+================================================================================
+# FILE: docs/drivers/z3660-scsi-driver.md
+================================================================================
+
+---
+title: "Case Study: Z3660 piscsi SCSI driver (z3660.c)"
+summary: How a native SVR4 block driver was written for the Z3660 accelerator's onboard "SCSI" — which is not a SCSI chip at all but the PiStorm piscsi register mailbox ported to the card's Zynq ARM — giving Amix a root disk that booted multiuser, byte-perfect, on real hardware from the first try.
+status: draft
+---
+
+# Case Study: Z3660 piscsi SCSI driver (z3660.c)
+
+This is the **SCSI sibling of the [Z3660 ethernet driver (`zen0`)](z3660-ethernet-driver.md)**: a
+native Amix block driver for the *same* Z3660 combo board, talking the *same* firmware-mailbox style
+of register protocol — but for disk I/O instead of frames. Where the ethernet work gave Amix full
+TCP/IP over the card, this work gives Amix a **bootable root disk** on it: a real **Amiga 4000 +
+Z3660** boots Amix **multiuser with the piscsi disk as root**, and every transfer was byte-perfect
+**from the first real-hardware boot** ✅. It is also the third Zorro III data point in these docs,
+alongside the [A4091 / 53C710 SCSI driver](a4091-53c710-driver.md) (the *other* SCSI sibling) and the
+ethernet driver.
+
+The work is **first-party and reproduced on real hardware** — the driver was written for this
+project and run on a physical A4000 + Z3660 in 2026-06. Unless noted, every claim here is **✅
+Verified** (driver source we wrote, or a result reproduced live on the hardware); items resting on
+firmware-side assertion or community lore are tagged 🟡 inline and carried verbatim from the source
+brief per the repo's [confidence-tag policy](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md).
+The source is the **amix-z3660scsi** project at commit `8ea1605` — `src/z3660.c`,
+`src/kernel-patches/sd.c`, `driver.conf`, `NOTES.md`, `README.md` — plus firmware-side facts owned by
+the [Z3660 firmware repo](z3660-ethernet-driver.md#what-the-z3660-and-z3660eth-are).
+
+> **One-line summary.** The Z3660's onboard "SCSI" is **not a SCSI chip** — it is the PiStorm
+> `piscsi` mailbox ported to the card's Zynq ARM. The Amix driver pokes ~5 registers per I/O and the
+> transfer completes synchronously, with no interrupt and no bus-phase management. It was **correct
+> from the first real-hardware boot**; the only failure ever seen was a firmware-emulator bug, not a
+> driver bug. ✅
+
+## What the Z3660 "SCSI" actually is
+
+The **Z3660** is a 68030/68060-class **Zorro III accelerator** built around a Xilinx **Zynq-7000**
+SoC, whose firmware emulates the 68k *and* drives the card's real peripherals (see
+[the ethernet case study](z3660-ethernet-driver.md#what-the-z3660-and-z3660eth-are) for the board in
+full). Its "SCSI" is one of those peripherals — and the key realization that made the driver simple:
+
+**It is not a SCSI controller.** There is **no 53C710, no SCRIPTS, no DSA, no bus-phase management,
+and no interrupt- or poll-based completion** ✅. It is a tiny **synchronous MMIO register mailbox** —
+the **PiStorm `piscsi`** interface ported to the Z3660's Zynq ARM. A disk I/O is **~5 register
+pokes**; the ARM intercepts the bus cycle and performs the whole transfer before the triggering write
+returns. That makes it **substantially lower-risk to port than the [A4091 53C710 driver](a4091-53c710-driver.md)**:
+no SCRIPTS program, no live phase dispatch, no completion bookkeeping — just a mailbox and a bounce
+buffer ✅.
+
+> **Source.** The driver header `src/z3660.c:4-8` states this verbatim; the **empty `z3660intr()`
+> stub** (`z3660.c:379-381`) plus the **synchronous `timeout()` / `z3660done`** completion path
+> (`z3660.c:246-250,374`) corroborate "no IRQ", and the lower-risk rationale is in `NOTES.md`
+> (§"Why this is lower-risk") and `README.md:8-10` ✅.
+
+> 🟡 **Leftover scaffolding.** Some `siop_softc` / `a4091`-flavoured symbol names survive in the
+> sources. Per the project's notes these are vestigial **AmigaOS device / boot-ROM scaffolding** from
+> the upstream `shanshe/Z3660` `z3660_scsi.h` (which lived in a now-removed vendored `repo/` clone),
+> not anything the Amix driver uses — but this is asserted in `NOTES.md`, **not** re-verifiable from
+> the committed repo. Carried 🟡.
+
+## The piscsi command-register protocol
+
+All registers are **32-bit big-endian MMIO at `board_base + 0x2000 + cmd`** (the piscsi page is at
+offset `PISCSI_OFFSET = 0x2000`, distinct from the ethernet mailbox at `+0x000`) ✅.
+
+### Registers the driver uses
+
+| Name | Offset | Dir | Meaning |
+|---|---|---|---|
+| `P_WRITE` | `0x00` | W | command register: a write **= unit number** triggers a WRITE (and completes it) |
+| `P_READ` | `0x04` | W | command register: a write **= unit number** triggers a READ (and completes it) |
+| `P_DRVTYPE` | `0x0C` | R | drive type; returns strictly **0 or 1** — also the presence probe (see below) |
+| `P_BLOCKS` | `0x10` | R | block count (read-only; **writing it is a deliberate debug lever** — see 🟡 below) |
+| `P_READ_ADDR1` | `0x20` | W | **READ:** block number (LBA) |
+| `P_READ_ADDR2` | `0x24` | W | **READ:** byte length |
+| `P_READ_ADDR3` | `0x28` | W | **READ:** buffer address |
+| `P_WRITE_ADDR1` | `0x240` | W | **WRITE:** block number (LBA) |
+| `P_WRITE_ADDR2` | `0x244` | W | **WRITE:** byte length |
+| `P_WRITE_ADDR3` | `0x248` | W | **WRITE:** buffer address |
+| `P_DRVNUMX` | `0x90` | W | select unit |
+| `P_USED_DMA` | `0x9C` | R | nonzero after a READ if the firmware DMAed into the bounce window |
+| `P_BLOCKSIZE0` | `0x200` | R | per-unit block size, indexed `+ unit*4` |
+| `P_BLOCKS0` | `0x220` | R | per-unit block count, indexed `+ unit*4` |
+
+### The per-I/O sequence ✅
+
+1. Write `P_DRVNUMX` (`0x90`) = unit.
+2. Write the **direction's address triple** = block number, byte length, buffer address. The two
+   directions use **different registers**: a READ writes `P_READ_ADDR1/2/3` (`0x20`/`0x24`/`0x28`); a
+   WRITE writes `P_WRITE_ADDR1/2/3` (`0x240`/`0x244`/`0x248`).
+3. Write the **command register** — `P_WRITE` (`0x00`) or `P_READ` (`0x04`) — **with value = unit**.
+
+That **single command-register write is both trigger and completion**: the Zynq ARM intercepts the
+Zorro III bus cycle and finishes the whole transfer before the write returns — **no poll, no IRQ** ✅.
+This is why the driver's interrupt handler is an empty stub and completion is just the next
+instruction.
+
+### The mandatory bounce buffer ✅
+
+All Amix RAM lives **below `0x08000000`** (`BOUNCE_THRESH`), so the transfer path **always bounces**
+through a firmware-visible buffer at `board_base + 0x80000` (`BOUNCE_OFFSET`):
+
+- **WRITE** — the driver `bcopy`s the data into the bounce window *before* issuing `P_WRITE`.
+- **READ** — after `P_READ` returns, the driver checks `P_USED_DMA` (`0x9C`) and `bcopy`s the bounce
+  window back into the caller's buffer.
+
+Transfers are chunked to `MAXXFER = 65536` (≤ 64 KB per command) ✅.
+
+### Geometry and synthesized commands ✅
+
+Disk geometry comes from `P_DRVTYPE` (`0x0C`) plus the **per-unit** registers `P_BLOCKSIZE0`
+(`0x200`) and `P_BLOCKS0` (`0x220`), each indexed `+ unit*4`. Only the data path talks to hardware:
+`READ`/`WRITE` 6 and 10 route to `z3660_rw`, while **`INQUIRY`, `READ_CAPACITY`, `TEST_UNIT_READY`
+and `MODE_SENSE` are synthesized in software** inside `z3660queue` — the firmware exposes a block
+device, not a SCSI target, so the SCSI command surface the Amix `sd` stack expects is faked above the
+mailbox. Multi-byte SCSI fields are written **byte-wise big-endian**, which is also 68030
+alignment-safe ✅.
+
+> **Source.** `src/z3660.c`: `PISCSI_OFFSET` `0x2000`; `P_WRITE`/`P_READ` `0x00`/`0x04` (defs :68-69,
+> triggered by `WRLONG(P_WRITE,unit)`:220 / `WRLONG(P_READ,unit)`:225); `P_DRVNUMX` `0x90` (:75,
+> written :278); the **two** address triples — `P_READ_ADDR1/2/3` `0x20`/`0x24`/`0x28` (defs :72-74,
+> written :222-224) and `P_WRITE_ADDR1/2/3` `0x240`/`0x244`/`0x248` (defs :77-79, written :217-219);
+> `P_USED_DMA` `0x9C`; `BOUNCE_OFFSET` `0x80000` / `BOUNCE_THRESH` `0x08000000` (bcopy :215-228);
+> `MAXXFER` `65536` (:64,206-211); per-unit `P_BLOCKSIZE0` `0x200` / `P_BLOCKS0` `0x220` (:181,191);
+> synthesized CDBs (:286-335) ✅.
+
+> 🟡 **Firmware superset.** The upstream firmware names the chunk constant `PISCSI_MAX_BLOCK_SIZE`
+> and exposes a separate `READBYTES`/`WRITEBYTES` (`0x88`/`0x8C`) command family that the Amix driver
+> **does not** use. (Firmware-side detail, owned by the Z3660 firmware repo.)
+
+## Board identity and window placement
+
+Both Z3660 drivers (this one and the [ethernet](z3660-ethernet-driver.md)) probe the **same
+AutoConfig identity** — manufacturer `0x144B`, product `0x01` → **`0x144B0001`**, the Z3 RTG + piscsi
+combo window ✅. The firmware exposes other products on the same manufacturer:
+
+| Product | What it is | Usable for Amix piscsi? |
+|---|---|---|
+| `0x01` (`0x144B0001`) | Z3 RTG + piscsi combo window — what the driver probes | ✅ yes |
+| `0x03` | Z2 RTG + SCSI combo (advertises a 64 KB window) | ❌ no — see below |
+| `0x02` | Z3 fast RAM | n/a |
+
+With `autoconfig_rtg NO` the combo window **never enters the AutoConfig chain** — it sits at a
+**fixed base `0x10000000`** (`Z3660_FIXED`) ✅. The driver **`sptalloc`-maps** both the register
+window and the bounce buffer into kernel VA (`z3660.c:139-142`) — the **same `sptalloc` primitive the
+[A4091 driver](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution) uses** ✅. The
+meaningful difference from the A4091 is therefore **not** how the board is reached (both page-map their
+windows) but the bus protocol on the far side of the mapping — a synchronous register mailbox here, a
+53C710 SCRIPTS engine there. (The fixed base does fall inside the 68030's TT0 range documented for the
+[A4091's TT-gap analysis](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution),
+so here the mapping is a clean convenience rather than being *forced* by the A4091's unmapped
+`0x40000000–0x7FFFFFFF` gap — but the board is mapped either way.)
+
+> **The Z2 variant is unusable for Amix piscsi.** Its base is `0xE90000`; add the mandatory bounce
+> offset `0x80000` and you land at `0xF10000`, which the firmware/emulator decodes as **extended-ROM
+> space** (extended Kickstart at `0xF00000`). Because all Amix RAM is below `0x08000000` the firmware
+> *always* bounces, so on the Z2 window the bounce buffer points at ROM space and the path **can never
+> move data** ✅.
+
+> **Source.** Driver constants confirmed in `src/z3660.c` (`Z3660_PROD` `0x144B0001`:58,
+> `Z3660_FIXED` `0x10000000`:59, `BOUNCE_OFFSET`/`BOUNCE_THRESH`) ✅. The firmware-side taxonomy
+> (products `0x03`/`0x02`, base `0xE90000`, the `cpu_emulator.cpp` ext-ROM decode, the serial
+> `[Core1] Autoconfig RTG to 0x1000` print) is from `NOTES.md` §"Real-hardware findings (2026-06-12)",
+> verified against the deployed firmware fork (branch `amix-boot`) + live boots; **firmware specifics
+> are owned by the Z3660 firmware repo**.
+
+## Detection: the silent-hang trap and multi-method detect
+
+The single most important integration lesson. Amix 2.1's `bootinfo.autocon[]` table **misses the
+board** — both with `autoconfig_rtg NO` (expected: the window is at a fixed base, not in the
+AutoConfig chain) **and** with `YES` (Kickstart configures it at `0x40000000` but the 2.1 table still
+misses it) ✅. With an `sd.c` that registers controllers **only** via `autocon()`, `z3660queue` never
+runs — so the kernel prints its banner and then goes **silent**: no panic, no I/O, just a dead box.
+This was the original silent hang ✅.
+
+**Fix — register the card by more than one method** ✅, in order:
+
+1. `autocon()` — the normal path (works when the table is right).
+2. An **AGA-gated probe of the fixed base `0x10000000`**, accepted only if `P_DRVTYPE` reads a valid
+   `0`/`1` (so an absent board can't false-positive). The AGA gate is the same `VPOSR >= 0x22` Alice
+   check the [A4091 driver](a4091-53c710-driver.md) uses.
+3. A **`driver.conf` `probe=` fallback hook** (`probe=z3660present`) the build's `sd.c` template calls
+   when the autocon table misses the board.
+
+This multi-method detect is **what carried the real-hardware boot past the silent banner** ✅.
+
+> **Source.** `src/z3660.c` `z3660map` (autocon → AGA gate `VPOSR>=0x22` → fixed-base `DRVTYPE`
+> probe, :131-155) and the exported `z3660present()` (:163-171), wired via `driver.conf:5`
+> `probe=z3660present`; causal chain in `NOTES.md`:173-179; the boot-past-silence in `NOTES.md`:204 ✅.
+
+> **Where the `probe=` hook is consumed.** The `probe=` *dispatch* lives in the **amix-kerntools**
+> `sd.c` **template**, not in this repo's committed `src/kernel-patches/sd.c` (which only adds the
+> `scsicard[]` row). See [kerntools' build contract](a4091-53c710-driver.md#the-card-registry-in-sdc).
+
+### `P_DRVTYPE` as a safe presence probe ✅
+
+`P_DRVTYPE` (`0x0C`) returns **strictly 0 or 1**, which makes it a safe presence test for a board
+AutoConfig never enumerated: the driver reads it and **rejects any `t > 1` as open bus** (an absent
+board reads back garbage outside `{0,1}`). The driver is also defensive about geometry — a reported
+**block size of `0` is coerced to `512`** ✅. (`z3660map` :148-153, `z3660_blocksize` :182.)
+
+## Kernel integration
+
+Unlike the ethernet driver — a STREAMS char driver wired into `cdevsw[]` at major 48 — the piscsi
+driver is a **block disk driver that plugs into the existing Amix SCSI stack**, exactly like the
+[A4091](a4091-53c710-driver.md#the-card-registry-in-sdc). It registers a **queue function in `sd.c`'s
+`scsicard[]` registry**, keyed by AutoConfig product id, and the disk then appears under the stock
+**block major 18 / char major 40** SCSI device numbering ✅.
+
+The machine-readable form is `driver.conf`, consumed by **amix-kerntools** to generate the on-box
+`sd.c`:
+
+```text
+# <product-number>  <queue-func>  "<hardware name>"  <source under src/>  [probe=<func>]
+0x144B0001  z3660queue  "Z3660 SCSI"  z3660.c  probe=z3660present
+```
+
+The `probe=z3660present` field is the fallback detect hook described above — the one piece that lives
+in the kerntools template rather than this repo. With the card registered, the piscsi disk is reached
+through the normal SCSI `/dev` names; on the real box the **root disk is `/dev/rdsk/c6d0s1`** (SCSI
+target 6, the disk-ID-6 convention, card 0). See [the device list](../reference/device-list.md#card-index-when-both-an-a3000-scsi-and-an-a4091-are-present)
+for how the card index and `cN` are computed.
+
+## ★ Works on real hardware — and the bug that wasn't the driver
+
+### It booted multiuser, byte-perfect, first try ✅
+
+On a physical **A4000 + Z3660**, the driver carried **100% of boot I/O byte-perfect** and brought the
+box to a stable **multiuser** process tree, with `fsck` running on the piscsi root disk
+`/dev/rdsk/c6d0s1` — roughly **100+ reads/writes per boot, every completion clean** ✅. The driver was
+**correct from the first real-hardware boot**.
+
+> **Source.** Live boots 2026-06-12/13 on a real A4000 + Z3660 — `NOTES.md` §"2026-06-13 ~08:00:
+> RESOLVED" (:269-296) and §"Overnight 2026-06-12/13" (:204-208); `CLAUDE.md` status line ✅. Spot
+> checks confirmed the **page-in first-longs** of `/sbin/init` and `libc.so.1` matched file content,
+> alongside the aggregate "every transfer byte-correct".
+
+### The "boots then hangs" was the emulator core, not the SCSI driver ✅
+
+Before the clean boot above, the box appeared to **boot and then hang** — and the obvious suspect was
+the new disk driver. It was not. The apparent hang was the firmware **68k emulator core faulting while
+demand-paging the driver's own text back in** — two MMU **format-`$B`** exception-frame bugs (a SIGILL
+on instruction-fetch-fault resume, then a SIGSEGV on mid-instruction replay state). `init` died at
+libc `_rt_boot+0`. Once the emulator was fixed, the driver booted clean and byte-perfect — confirming
+it had been correct all along ✅.
+
+**The reusable lesson is the driver-vs-emulator triage method**: combine **kernel-side serial
+instrumentation** with **core-dump analysis** (`adb` / capstone disassembly) to *prove* the transfers
+were byte-perfect and isolate the fault to the emulator rather than the driver. On an emulated 68k
+where the "CPU" is itself software, "the machine hung" does not imply "your driver hung." (This is
+recorded as a gotcha on [the quirks checklist](../how-it-works/quirks.md).)
+
+> **Source & ownership.** `NOTES.md` §"banner-hang root cause is the EMU core, not SCSI" (:199-228)
+> and §"RESOLVED" (:269-296) ✅. The **mechanism and fix are firmware-owned** — the Z3660 firmware
+> fork, branch `amix-boot`, commits `c8b9398` (ifetch-fault resume) and `e3f9440` (mid-instruction
+> frame state). They are cited here by name + commit only, as the SCSI project's conclusion plus the
+> triage method.
+
+## 🟡 Firmware-side debug lever and hazard
+
+Two firmware-side behaviours are useful to driver authors on this board. Both are **🟡** — asserted
+from real-hardware sessions in `NOTES.md` §"Free 68k→serial debug channel" (:180-189), with **no
+firmware file+symbol citation and no recorded standalone reproduction**; the firmware that emits them
+lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS` `0x10`, per-unit
+`P_BLOCKS0` `0x220` — *are* confirmed in `src/z3660.c` ✅.)
+
+- **A free 68k→serial breadcrumb.** Writing the **read-only** `P_BLOCKS` register makes the Zynq ARM
+  unconditionally print `WARN: Write to read only register …(addr: value)` on its serial console — a
+  zero-cost way to emit a tagged value from 68k code to the host serial log during bring-up. (It is a
+  *technique*, not an implemented driver macro.) 🟡
+- **A divide-by-zero hazard.** **Never read `P_BLOCKS0 + unit*4` of an *unmapped* drive** — the ARM
+  divides by that unit's `block_size` (which is `0` for an absent drive), causing a **Zynq
+  divide-by-zero**. This is *why* the driver gates on `P_DRVTYPE ∈ {0,1}` before touching per-unit
+  registers. 🟡
+
+## Status
+
+| Claim | Status |
+|---|---|
+| piscsi block driver reads/writes; Amix boots **multiuser with root on the piscsi disk** | ✅ real-hardware (A4000 + Z3660, 2026-06-12/13) |
+| Every boot transfer byte-perfect; correct from the first real-hardware boot | ✅ real-hardware |
+| Multi-method detect (autocon → AGA-gated fixed-base probe → `probe=` hook) clears the silent hang | ✅ real-hardware |
+| Z2 RTG+SCSI combo (`product 0x03`) variant | ❌ unusable (bounce window decodes to ROM space) ✅ |
+| Firmware serial-breadcrumb lever + unmapped-drive divide-by-zero hazard | 🟡 asserted (no firmware citation / standalone repro) |
+| The pre-fix "hang" | ✅ proven to be a firmware-emulator bug, **not** the driver |
+
+## See also
+
+- [Z3660 ethernet driver (`zen0`)](z3660-ethernet-driver.md) — the network sibling on the **same**
+  combo board and firmware-mailbox model; the board, the Zynq SoC, and the `0x144B0001` identity are
+  described there in full.
+- [A4091 / 53C710 SCSI driver](a4091-53c710-driver.md) — the *other* SCSI sibling and a true Zorro III
+  53C710 controller; contrast its SCRIPTS/DSA complexity and the `sptalloc` TT-gap mapping with this
+  driver's ~5-poke mailbox.
+- [The Amix device-driver model](driver-model.md) — block vs char vs STREAMS; the `sd.c`/`scsicard[]`
+  SCSI-stack path this driver registers into.
+- [Building & installing a kernel](kernel-build.md) — the `make` → `relocunix` → `make bootpart` flow
+  and the D245 clean-gate the on-box build depends on.
+- [Device & card list](../reference/device-list.md#scsi-host-adapters) — the SCSI block/char majors,
+  the `scsicard[]` registry, and the card/target/slice minor scheme behind `c6d0s1`.
+- [The boot process](../how-it-works/boot-process.md) — booting Amix with **root on a non-stock SCSI
+  controller** and the rootdev ↔ card-index numbering.
+- [Quirks](../how-it-works/quirks.md) — the un-enumerated-board silent-hang and the
+  driver-vs-emulator triage gotchas in the checklist.
+
+## Sources
+
+- **Driver source we wrote** (primary, ✅): the **amix-z3660scsi** project at commit `8ea1605` —
+  `src/z3660.c` (the piscsi mailbox driver: `PISCSI_OFFSET 0x2000`, `P_WRITE`/`P_READ`, `P_DRVNUMX`,
+  the separate READ/WRITE address triples `P_READ_ADDR1/2/3` `0x20`/`0x24`/`0x28` and
+  `P_WRITE_ADDR1/2/3` `0x240`/`0x244`/`0x248`, `P_USED_DMA`, `BOUNCE_OFFSET`/`BOUNCE_THRESH`,
+  `MAXXFER 65536`, per-unit `P_BLOCKSIZE0`/`P_BLOCKS0`, the `sptalloc`-mapped register window + bounce
+  buffer (`:139-142`), synthesized `INQUIRY`/`READ_CAPACITY`/`TEST_UNIT_READY`/`MODE_SENSE`,
+  `z3660map` multi-method detect, `z3660present`, the empty `z3660intr` stub, synchronous
+  `timeout()`/`z3660done` completion), `src/kernel-patches/sd.c` (the `scsicard[]` row), `driver.conf`
+  (the `0x144B0001 z3660queue "Z3660 SCSI" z3660.c probe=z3660present` SCSI stanza), `NOTES.md`,
+  `README.md`.
+- **Real-hardware results reproduced live** (2026-06-12/13, A4000 + Z3660, ✅): Amix booting multiuser
+  with root on `/dev/rdsk/c6d0s1`, ~100+ byte-perfect reads/writes per boot, `fsck` on the piscsi root,
+  page-in spot checks of `/sbin/init` and `libc.so.1` (`NOTES.md` real-hardware sections).
+- **Firmware-side facts** (F4 product taxonomy + fixed-base/ext-ROM decode, the 🟡 serial-breadcrumb
+  lever and divide-by-zero hazard, the emulator format-`$B` fixes): the **Z3660 firmware fork**, branch
+  `amix-boot` (`c8b9398`, `e3f9440`) — **owned by the Z3660 firmware repo, cited not reproduced**.
+- **Magic numbers** (✅): AutoConfig product id `0x144B0001`; fixed combo base `0x10000000`; piscsi
+  page offset `0x2000`; bounce offset `0x80000`; bounce threshold `0x08000000`; `MAXXFER 65536`; root
+  disk `/dev/rdsk/c6d0s1` (SCSI target 6, block major 18 / char major 40).
+- Delta verified against [`llms-full.txt`](https://github.com/Jusii/grimoire-amix/blob/master/llms-full.txt):
+  grimoire documents the Z3660 *ethernet* (`zen0`) and A4091 *53C710* drivers; this page adds the
+  previously-undocumented Z3660 *piscsi SCSI* driver.
 
 
 ================================================================================
@@ -7421,7 +8235,7 @@ Each row carries the same confidence tag the [research brief](https://github.com
 
 ## /dev major/minor numbers
 
-The four stock entries below come from the `ls -l /dev` excerpt in the Ditto driver paper (§5 of the brief) ✅. The two community-driver entries (va2000, hydra) come from the modern driver repos (§6) ✅.
+The four stock entries below come from the `ls -l /dev` excerpt in the Ditto driver paper (§5 of the brief) ✅. The three community-driver entries (va2000, hydra, z3660eth) come from the modern driver projects ✅ — va2000 and hydra from §6 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), and z3660eth from the amix-z3660net project (see [## Sources](#sources)).
 
 | `/dev` node | Class | Major | Minor | Driver / purpose | Tag |
 |---|---|---|---|---|---|
@@ -7431,8 +8245,9 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 | `/dev/dsk/c0d0s1` | block | **18** | encoded (see below) | SCSI hard-disk driver | ✅ |
 | `/dev/va2000` | char | **68** | 0 | MNT VA2000 RTG framebuffer (`asokero/va2000-amix`) | ✅ |
 | `/dev/<hya>` | char | **47** | — | Hydra AmigaNet STREAMS/DLPI driver, tag `hya` (`isoriano1968/hydra-amix`) | ✅ |
+| `/dev/zen0` | char | **48** | 0 | Z3660 onboard-ethernet STREAMS/DLPI driver, tag `zen` (amix-z3660net) | ✅ |
 
-**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
+**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 48) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
 
 ### Minor-number encoding for the SCSI disk (major 18)
 
@@ -7484,6 +8299,18 @@ ifconfig hya0 <ip> netmask <mask> up -trailers
 
 hydra has a boot-time `init_tbl[]` entry (`hydrainit`) that only *probes* for the board; the full init (MAC read, DP8390 programming) is deferred to open (`slink`) time ✅. For the full driver internals see [the Hydra case study](../drivers/case-studies/hydra.md); for the networking stack it plugs into see [Networking](../how-it-works/networking.md).
 
+### The z3660eth STREAMS driver (char 48)
+
+`z3660eth` is the second modern STREAMS/DLPI network driver, for the **Z3660 accelerator's onboard ethernet** — interface **`zen0`**, tag **`zen`**, at **`cdevsw` slot 48** (the free `nostr` slot above hydra's 47 on the stock / A4091 kernel) ✅. Like hydra it is a character driver carrying a `streamtab`, brought up with `slink` (no `ifconfig plumb` on SVR4.0):
+
+```sh
+mknod /dev/zen0 c 48 0
+slink addaen /dev/zen0 zen0
+ifconfig zen0 <ip> netmask <mask> up -trailers
+```
+
+Unlike hydra it programs **no NIC chip** — it talks the Z3660 firmware's frame mailbox over MMIO — and it takes **no `init_tbl`/`int2_tbl` entry at all**: it autoconfigs on first `open` and services RX from a **polled `timeout()` callout**, so a GEM-less build kernel boots cleanly and `open()` just returns `ENXIO`. It is **real-hardware-verified** (A4000 + Z3660, 2026-06). See [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
+
 ### The va2000 framebuffer (char 68)
 
 The VA2000 driver is a single-file char framebuffer driver. After building and installing it you create the node with:
@@ -7505,14 +8332,15 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (not a `/dev` node — an `ifconfig` name) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
+| `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-48 driver) ✅ | ✅ |
 
-**Note:** `aen0` and `hya0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (the hydra driver was modelled on it) ✅.
+**Note:** `aen0`, `hya0` and `zen0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (both the hydra and z3660eth drivers were modelled on it) ✅.
 
 ## Supported expansion cards
 
 Everything **stock** here is **Zorro II only** — Amix's stock drivers just dereference the `autocon()` address, and Zorro II boards (≤ 24-bit, inside the 68030's TT0 transparent-translation window) are directly reachable while Zorro III space is not, by default ✅. That source was never shipped, so the *stock* card set cannot be community-fixed in place ✅. Cards are grouped by function. Tags follow the brief.
 
-> 🔴 **Correction (Zorro III is reachable after all):** "Amix can never drive a Zorro III board" was the long-standing belief, and it is **wrong for a driver that maps the board explicitly.** The A4091-on-Amix project drove the **Zorro III A4091** by page-table-mapping its register block with the kernel's own `sptalloc()` primitive (the board sits in the unmapped `0x40000000–0x7FFFFFFF` TT gap, so a plain pointer deref *does* fail — but `sptalloc()` gets a working kernel VA) 🟡 (reproduced in Amiberry; real-hardware confirmation pending). See [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md).
+> 🔴 **Correction (Zorro III is reachable after all):** "Amix can never drive a Zorro III board" was the long-standing belief, and it is **wrong for a driver that maps the board explicitly.** The A4091-on-Amix project drove the **Zorro III A4091** by page-table-mapping its register block with the kernel's own `sptalloc()` primitive (the board sits in the unmapped `0x40000000–0x7FFFFFFF` TT gap, so a plain pointer deref *does* fail — but `sptalloc()` gets a working kernel VA) 🟡 (reproduced in Amiberry; real-hardware confirmation pending). See [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md). A second, **real-hardware** data point: the **Z3660** accelerator presents a Zorro III AutoConfig identity (`0x144B0001`) and Amix now drives its **onboard ethernet** (`zen0`) via the `z3660eth` driver, `sptalloc`-mapping the firmware register page + frame windows ✅ — though here the windows sit at `0x10000000` (inside TT0), so the mechanism is the firmware mailbox rather than the A4091's TT-gap mapping. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md). The **same board's onboard "SCSI"** (the PiStorm `piscsi` mailbox, not a 53C710) is driven the same mailbox way — Amix boots **multiuser with root** on it on real hardware (2026-06); see [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 
 ### SCSI host adapters
 
@@ -7522,11 +8350,12 @@ Everything **stock** here is **Zorro II only** — Amix's stock drivers just der
 | **A2090** | A2000-family SCSI controller; product id `0x02020001` | ✅ |
 | **A2091** | A2000-family SCSI controller; product id `0x02020003` | ✅ |
 | **A4091** | **Zorro III** SCSI-2 host adapter (NCR/Symbios **53C710**); AutoConfig product id `0x02020054`, phys base `0x40000000`. Not stock — driven by the community [A4091 53C710 driver](../drivers/a4091-53c710-driver.md) 🟡 (Amiberry; real-hardware pending) | 🟡 |
+| **Z3660** (accelerator onboard piscsi "SCSI") | **Not a SCSI chip** — the PiStorm `piscsi` register mailbox on the card's Zynq ARM (no 53C710); AutoConfig product id `0x144B0001`, fixed combo base `0x10000000`. Driven by the community [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md); **works on real hardware (2026-06)** — Amix boots multiuser with **root** on it (`/dev/rdsk/c6d0s1`) | ✅ |
 | **GVP Series II** | Needs a **kernel rebuild + an RDB `dummy_handler`** | 🟡 |
 
 The A2090/A2091 interrupt handlers (`a2090intr`, `a2091intr`) appear in the kernel's level-2 autovector table `int2_tbl[]` ✅ — concrete evidence these controllers are wired into the stock kernel. Remember the disk sits at **SCSI ID 6** by convention (above).
 
-The kernel's `sd.c` selector maps these product ids to per-card queue functions in its `scsicard[]` registry; the A4091 work added the row `0x02020054, &a4091queue, "A4091 SCSI"` (verified in `src/kernel-patches/sd.c` ✅).
+The kernel's `sd.c` selector maps these product ids to per-card queue functions in its `scsicard[]` registry; the A4091 work added the row `0x02020054, &a4091queue, "A4091 SCSI"` (verified in `src/kernel-patches/sd.c` ✅). The Z3660 piscsi driver registers the same way, adding `0x144B0001, &z3660queue, "Z3660 SCSI"` — plus a `probe=z3660present` fallback hook (in the kerntools `sd.c` template) for the case where the 2.1 `bootinfo.autocon[]` table misses the board ✅. See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 
 #### Card index when both an A3000 SCSI and an A4091 are present ✅
 
@@ -7550,8 +8379,9 @@ The A2410 is the *officially* supported color option; the VA2000 path is the mod
 | **A2065** | `aen0` | Native Ethernet (LANCE); the A3000UX ships with it | ✅ |
 | **Ariadne I** | — | Via Gateway! Vol.2 drivers | 🟡 |
 | **Hydra AmigaNet** | `hya0` (char 47) | Via the modern `hydra-amix` STREAMS/DLPI driver (NE2000/DP8390); **works on real hardware (2026-06)** — ARP + ICMP ping verified | ✅ |
+| **Z3660** (accelerator onboard ethernet) | `zen0` (char 48) | Via the modern `z3660eth` STREAMS/DLPI driver (Zynq GEM over the firmware mailbox, **not** chip-level); **works on real hardware (2026-06)** — full bidirectional TCP/IP, telnet/ftp | ✅ |
 
-Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. See [Networking](../how-it-works/networking.md).
+Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. The Z3660 accelerator's AutoConfig id is **`0x144B0001`** (combo base `0x10000000` on AGA), station MAC `00:80:51:01:02:03` observed on the wire ✅. See [Networking](../how-it-works/networking.md).
 
 ### Serial
 
@@ -7582,6 +8412,8 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - `src/kernel-patches/sd.c` — the `0x02020054, &a4091queue, "A4091 SCSI"` `scsicard[]` row and the base-address-sorted `queue[]` insertion.
 - `src/a4091-wr.c` — `A4091_PROD = 0x02020054`, phys base `0x40000000`; the `sptalloc()`-mapped 53C710 driver.
 - a4091.device open-source project: [`A4091/a4091-software`](https://github.com/A4091/a4091-software) (A4091 ROM + SCRIPTS assembler).
+- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`src/z3660eth.{c,h}`, `driver.conf`'s `net z3660eth … 48 zen` stanza), **validated on a real A4000 + Z3660, 2026-06-21** ✅: `cdevsw` char major **48**, tag `zen` / interface `zen0`, AutoConfig `0x144B0001`, combo base `0x10000000`, MAC `00:80:51:01:02:03`. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
+- The amix-z3660scsi project @ `8ea1605` — the native `z3660` piscsi **block** driver (`src/z3660.c`, `src/kernel-patches/sd.c`, `driver.conf`'s `0x144B0001 z3660queue "Z3660 SCSI" z3660.c probe=z3660present` stanza), **validated on a real A4000 + Z3660, 2026-06-12/13** ✅: registers in `sd.c`'s `scsicard[]` (block major 18 / char major 40), root disk `/dev/rdsk/c6d0s1`, AutoConfig `0x144B0001`, fixed combo base `0x10000000`. See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 
 
 ================================================================================
@@ -7881,7 +8713,7 @@ status: draft
 # Bibliography & Sources
 
 This page is the master source list behind grimoire-amix. It splits into **primary sources** (the Ditto
-driver paper, the three install floppies we analyse locally, the four modern driver repos, AT&T's
+driver paper, the three install floppies we analyse locally, the modern driver + cross-toolchain repos, AT&T's
 SVR4 documentation, and the scanned Commodore manuals on archive.org) and **community / reference
 sources** (amigaunix.com, encyclopedias, blogs, Usenet, emulator issue trackers, and the emulator
 docs). Every `docs/` page ends with its own `## Sources` list citing the specific items below; this
@@ -7939,10 +8771,10 @@ Cite local analysis in the form **"`amix_21_root.adf` analysis via `tools/inspec
 reader can reproduce the finding against their own copy. The deeper unpack of the root miniroot uses
 `tools/unpack-root.sh`.
 
-### The four modern driver repositories
+### The modern Amix repositories (drivers + cross-toolchain)
 
-All four are recent, AI-assisted hobby drivers targeting **Amix 2.1p2a on an Amiga 3000 / 68030 /
-Zorro II**. ✅ Their READMEs and source ground the [driver case studies](../drivers/case-studies/va2000.md)
+These are recent, AI-assisted hobby projects — four drivers plus a Linux cross-toolchain — targeting
+**Amix 2.1p2 on an Amiga 3000 / 68030**. ✅ Their READMEs and source ground the [driver case studies](../drivers/case-studies/va2000.md)
 and much of the [driver model](../drivers/driver-model.md). All are source-only (building them needs a
 licensed Amix install and headers).
 
@@ -7952,13 +8784,15 @@ licensed Amix install and headers).
 | <https://github.com/asokero/xrtg-amix> | ✅ X11R5 server (`Xrtg`) for the VA2000 (needs the va2000 driver) | [xrtg](../drivers/case-studies/xrtg.md) |
 | <https://github.com/asokero/lszorro-amix> | ✅ Userspace `lspci`-style Zorro II scanner | [lszorro](../drivers/case-studies/lszorro.md) |
 | <https://github.com/isoriano1968/hydra-amix> | ✅ STREAMS/DLPI network driver for the Hydra AmigaNet card (`cdevsw` slot 47, `hya`); now also carries a slice of the Amix `/usr/sys` kernel + boot source tree. **2026-06: verified on real hardware** (ARP + ICMP ping) — "believed to be the first working Amix net driver for the card" 🟡 | [hydra](../drivers/case-studies/hydra.md) |
+| <https://github.com/isoriano1968/gcc-cross-amix> | ✅ Linux-hosted **cross-toolchain** bootstrap for `m68k-cbm-sysv4` (`Makefile` + wrapper; binutils 2.8.1 + GCC 2.7.2.3; user-supplied Amix sysroot). C works (a dynamically-linked Amix exe runs on real hardware); C++ WIP 🟡 | [toolchain](../drivers/toolchain.md) |
 | <https://github.com/vjouppi/hydra> | 🟡 Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics); cited by the hydra-amix README | [hydra](../drivers/case-studies/hydra.md) |
 
 🟡 An earlier research note claimed "asokero handle not found / isoriano1968 only does AmigaOS Mesa."
-That note is **wrong** — these four repos exist and are the project's centerpiece examples.
+That note is **wrong** — these repos exist and are the project's centerpiece examples.
 🟢 The modern drivers build **natively on the box** (Hydra: `make`/`make force` with GCC 2.7.2.3, an
-amigaunix.com pkg). The `m68k-amix-gcc` *cross*-compiler still has no public build recipe 🔴, but that
-gap is **moot** — see the [toolchain](../drivers/toolchain.md) page.
+amigaunix.com pkg). **As of 2026-06 a public, reproducible *cross*-toolchain also exists** —
+[`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), `m68k-cbm-sysv4-gcc` —
+closing the earlier "no public cross recipe" gap ✅; see the [toolchain](../drivers/toolchain.md) page.
 🔴 **Do not propagate:** the hydra-amix README states Amix was "later sold by Haage & Partner." This
 conflicts with the sourced history (Commodore; support ended 1993, bankruptcy 1994 — H&P is the
 AmigaOS-3.5/3.9 era, unrelated). Treat it as upstream lore, not fact. See [versions](versions.md).

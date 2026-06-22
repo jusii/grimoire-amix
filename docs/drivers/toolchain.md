@@ -1,14 +1,14 @@
 ---
 title: Toolchain & Packaging
-summary: Native on-box cc/GCC builds (the m68k-amix-gcc cross path has no public recipe and isn't needed), elf2brel, and SVR4 packaging (pkgmk/pkgtrans/pkgadd, AmixBP).
+summary: Native on-box cc/GCC builds plus a Linux-hosted cross-toolchain (gcc-cross-amix — binutils 2.8.1 + GCC 2.7.2.3, m68k-cbm-sysv4), elf2brel, and SVR4 packaging (pkgmk/pkgtrans/pkgadd, AmixBP).
 status: draft
 ---
 
 # Toolchain & Packaging
 
-Amix builds software **on the box**: the bundled AT&T SVR4 `cc` (the kernel's reference compiler) or a community **GCC 2.7.2.3** (installable as a pkg from [amigaunix.com](https://amigaunix.com)), with GNU `make` and GAS, then relink `/unix` ✅. This is how the real drivers are actually built — the [Hydra STREAMS driver](case-studies/hydra.md) and the [VA2000 framebuffer](case-studies/va2000.md) both compile **natively, with no cross-compiler** ✅. A *cross* path (`m68k-amix-gcc`, a GCC retargeted to `m68k-cbm-sysv4`, emitting ELF converted with `elf2brel`) is conceivable but has **no public build recipe** 🔴 — and is not needed, because the native build works. Finished software is shipped as SVR4 packages built with `pkgproto`/`pkgmk`/`pkgtrans` and installed with `pkgadd` ✅; the large community bundle is **AmixBP**, with a `zoo`+`cpio` fallback ✅.
+Amix builds software two ways. **On the box**: the bundled AT&T SVR4 `cc` (the kernel's reference compiler) or a community **GCC 2.7.2.3** (installable as a pkg from [amigaunix.com](https://amigaunix.com)), with GNU `make` and GAS, then relink `/unix` ✅ — this is how the existing drivers ([Hydra](case-studies/hydra.md), [VA2000](case-studies/va2000.md)) are built. **On Linux**: as of 2026-06 a public, reproducible *cross*-toolchain exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), a GCC 2.7.2.3 retargeted to `m68k-cbm-sysv4` — that compiles Amix userland binaries and kernel/driver objects on a modern host (you supply your own licensed Amix sysroot) ✅. Finished software is shipped as SVR4 packages built with `pkgproto`/`pkgmk`/`pkgtrans` and installed with `pkgadd` ✅; the large community bundle is **AmixBP**, with a `zoo`+`cpio` fallback ✅.
 
-Two important caveats colour everything below. The Amix `/bin/sh` is **pre-POSIX**, which breaks many modern build scripts ✅. And the `m68k-amix-gcc` *cross*-compiler has **no public, reproducible build recipe** 🔴 — but that gap is **not on the critical path**, since drivers build natively on the box.
+Two important caveats colour everything below. The Amix `/bin/sh` is **pre-POSIX**, which breaks many modern build scripts ✅. And the cross-toolchain still needs a **user-supplied licensed Amix sysroot** (headers/libs/startup objects are not redistributable), and its **C++/`g++` support is not finished yet** 🟡 — C is fully working.
 
 This page is the toolchain companion to [building and relinking the kernel](kernel-build.md) and to [writing a STREAMS driver](writing-a-streams-driver.md) (the worked native build example). For the underlying driver model see [the Amix device-driver model](driver-model.md).
 
@@ -57,9 +57,9 @@ if grep hya /etc/something >/dev/null 2>&1; then ...
 
 If a tool insists on a POSIX shell, run it under `ksh` (the default *login* shell on Amix is `ksh`, with `sh`/`csh`/`tcsh` also present) ✅ rather than `/bin/sh`. This is the same gotcha documented for the VA2000 driver's install script in the [VA2000 case study](case-studies/va2000.md).
 
-## The native kernel-driver build (and the m68k-amix-gcc cross gap)
+## Building drivers: native on-box, and the gcc-cross-amix cross-toolchain
 
-The modern Amix drivers are built **natively on the box**, not cross-compiled. The [Hydra STREAMS driver](case-studies/hydra.md)'s `Makefile` invokes the on-box compiler (`cc` / `ld -r`): `make` produces a relocatable object (`exp`), then `cd /usr/sys && make force` relinks the kernel with it ✅. A cross-compiler retargeted to Amix (**`m68k-amix-gcc`**, vendor triple `m68k-cbm-sysv4`) is conceivable for editing driver source on a modern host, but **no public recipe to build it exists** 🔴 (see below) — so in practice you build inside the emulator or on real hardware.
+There are now **two** working paths. The modern Amix drivers are built **natively on the box**: the [Hydra STREAMS driver](case-studies/hydra.md)'s `Makefile` invokes the on-box compiler (`cc` / `ld -r`) — `make` produces a relocatable object (`exp`), then `cd /usr/sys && make force` relinks the kernel ✅. **And as of 2026-06 there is also a public, reproducible *cross*-toolchain** — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) — that builds a Linux-hosted GCC targeting `m68k-cbm-sysv4`, so you can compile Amix userland binaries *and* kernel/driver objects on a modern host (see [Cross-compiling with gcc-cross-amix](#cross-compiling-on-linux-the-gcc-cross-amix-toolchain) below) ✅. That **resolves the long-standing "no public cross-toolchain recipe" gap.** Native is still the simplest path for a one-off driver; the cross-toolchain is the edit-on-a-modern-host option.
 
 ### The target triple
 
@@ -74,7 +74,7 @@ The `cbm` (Commodore) vendor field matches the kernel platform string `m68k-cbm-
 
 ### Kernel-driver build flags
 
-The Hydra `Makefile` compiles with these kernel flags, using the **native** on-box compiler — no `CC=m68k-amix-gcc` override ✅:
+The Hydra `Makefile` compiles with these kernel flags, using the **native** on-box compiler — no cross-compiler override ✅:
 
 ```sh
 # Native on-box build (the Makefile's own flags).
@@ -107,17 +107,28 @@ cd /usr/sys && make force                  # relink the kernel (elf2brel runs in
 
 Note the kernel image name: modern 2.1 systems and the community repos call the relinked kernel **`relocunix`** (the 1990 Ditto paper called the equivalent image `rdbunix` — a historical rename; verify per version 🟡). The boot-partition write step is covered in [building and relinking the kernel](kernel-build.md), and the Hydra specifics in the [Hydra case study](case-studies/hydra.md).
 
-### Open gap: no public cross-toolchain build recipe 🔴
+### Cross-compiling on Linux: the gcc-cross-amix toolchain ✅
 
-**There is no public, reproducible recipe to build `m68k-amix-gcc` from source** 🔴. A cross GCC would need the **licensed Amix SVR4 headers and C library** as a sysroot, which cannot be redistributed. But this is **not a blocker**: the driver repos do **not** use a cross-compiler — they build **natively** on a licensed Amix install. They are source-only because that licensed install (its kernel headers/libs) is what you must supply, not because of any cross toolchain ✅.
+The cross path is now **public and reproducible**: **[`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix)** is a `Makefile` that bootstraps a Linux-hosted toolchain for `m68k-cbm-sysv4` ✅. (This resolves the gap our earlier notes flagged as open 🔴.)
 
-Practical consequences:
+- **Components:** GNU **binutils 2.8.1** + **GCC 2.7.2.3** (the same GCC version Amix runs natively), downloaded from the GNU archive and built with `-std=gnu89` (the 1990s configure tests and sources predate C99). The installed cross driver is **`m68k-cbm-sysv4-gcc`** — our earlier docs called it `m68k-amix-gcc`, a placeholder; the real binary is the triple-prefixed one ✅.
+- **The one thing you must supply: a licensed Amix sysroot.** The repo deliberately ships **no** Amix headers/libraries/startup objects (the licensing boundary). You point it at your own Amix tree — `make all AMIX_ROOT=/path/to/usr-amix` — and its `sysroot` target copies `usr/include`, `usr/lib` (`libc.so.1`, `ld.so.1`), `usr/ccs/lib` (`crt1.o`/`crti.o`/`crtn.o`), and `usr/sys` into the toolchain ✅.
+- **Status (2026-06):** the C compiler, GNU `as`, and GNU `ld` all work, and a **dynamically-linked Amix C executable links and runs on real Amix** ✅. **C++ / `g++` is not complete yet** 🟡.
 
-- You cannot reconstruct `m68k-amix-gcc` purely from open materials today 🔴 — but you don't need to.
-- The actual build path is **on the box** (in the emulator or on real hardware) with native `cc`/GCC 2.7.2.3 (see [native compilers](#native-compilers-on-the-box)). Single-file drivers like the [VA2000 framebuffer driver](case-studies/va2000.md) build with `cc va2000.c`; the [Hydra STREAMS driver](case-studies/hydra.md) builds with `make` + `make force` ✅.
-- If you do have a licensed Amix install, you can extract its headers/libs to form a sysroot, but the exact configure/build invocation for the cross GCC is **not documented** in any source we hold 🔴.
+```sh
+make all AMIX_ROOT=/path/to/usr-amix      # build binutils+gcc, populate the sysroot, install the wrapper
+. build/env.sh
+m68k-cbm-sysv4-gcc hello.c -o hello        # -> ELF 32-bit MSB executable, m68k 68020, SYSV, dynamically linked
+```
 
-This is tracked as open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
+For a **kernel/driver object** (compile on Linux, link natively on the Amiga), the repo's `test-random` target cross-compiles a real Amix driver source to a relocatable object ✅:
+
+```sh
+make test-random AMIX_ROOT=/path/to/usr-amix CPUFLAGS=-m68030
+#   -> build/test/random.o : ELF 32-bit MSB relocatable M68000  (resembles native AMIX driver objects)
+```
+
+The wrapper compiles via `-S` → an `.lcomm` assembly fix-up → `as -m68020`, working around quirks of the old GCC's output ✅. So you can now develop a driver (e.g. the [A4091](a4091-53c710-driver.md) or a new NIC) on a modern host and do only the final relink on Amix — though the native on-box build (above) remains the simplest path for a single driver. This was open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), now closed.
 
 ## SVR4 packaging
 
@@ -166,6 +177,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 |---|---|---|
 | Building a single-file char driver | On-box native | `cc driver.c` (or newer GCC via `CC=`) ✅ |
 | Building a STREAMS / kernel driver | On-box native | `make` in the driver dir, then `make force` to relink ✅ |
+| Editing driver/userland source on a modern host | Linux cross | `gcc-cross-amix` → `m68k-cbm-sysv4-gcc` (needs your own Amix sysroot) ✅; C only, C++ WIP 🟡 |
 | Shipping userland software you compiled | SVR4 packaging | `pkgproto` → `pkgmk` → `pkgtrans` → `pkgadd` ✅ |
 | Installing community add-ons | AmixBP / `zoo`+`cpio` | `pkgadd` / `zoo`+`cpio` ✅ |
 | Rebuilding `/unix` after adding a driver | On-box or cross | see [kernel build](kernel-build.md) ✅ |
@@ -176,6 +188,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - [Writing a STREAMS Driver](writing-a-streams-driver.md) — the worked native build example.
 - [Hydra Case Study](case-studies/hydra.md) — the real STREAMS driver built natively on Amix (`make` / `make force`).
 - [VA2000 Case Study](case-studies/va2000.md) — a native single-file `cc` build and the pre-POSIX `/bin/sh` gotcha.
+- [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) — the Linux-hosted cross-toolchain bootstrap (`make all AMIX_ROOT=…`).
 - [The Amix Device-Driver Model](driver-model.md) — major/minor numbers and the `cdevsw`/`bdevsw` tables drivers plug into.
 - [Versions](../reference/versions.md) — version matrix (GCC 2.7.2.3 built under 2.03; `rdbunix`→`relocunix` rename).
 
@@ -184,6 +197,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra **native** build, GCC 2.7.2.3 from amigaunix.com), §11 (userland shells), and §13 (open gaps #1, #3).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (kernel build flow; `rdbunix` historical name).
 - `isoriano1968/hydra-amix` repo (the **native** `make` / `make force` build, `CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"`, `elf2brel` in `boot/`, native GCC 2.7.2.3 from amigaunix.com): <https://github.com/isoriano1968/hydra-amix>
+- `isoriano1968/gcc-cross-amix` repo (the Linux-hosted cross-toolchain: `Makefile` + `amix-gcc-wrapper.sh`; binutils 2.8.1 + GCC 2.7.2.3, target `m68k-cbm-sysv4`, user-supplied sysroot; `make all`/`test-hello`/`test-random`; C works, C++ WIP): <https://github.com/isoriano1968/gcc-cross-amix>
 - `asokero/va2000-amix` repo (native `cc va2000.c`; pre-POSIX `/bin/sh` gotchas — no `$(...)`, no `grep -q`): <https://github.com/asokero/va2000-amix>
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (install uses `amixpkg`/`cpio`/`dd` from tape).
 - amigaunix.com — *downloads* page (AmixBP, Michael Parson) and *more_software* / *tips-tricks*: <https://www.amigaunix.com/doku.php/home>

@@ -14,7 +14,7 @@ Each row carries the same confidence tag the [research brief](https://github.com
 
 ## /dev major/minor numbers
 
-The four stock entries below come from the `ls -l /dev` excerpt in the Ditto driver paper (§5 of the brief) ✅. The two community-driver entries (va2000, hydra) come from the modern driver repos (§6) ✅.
+The four stock entries below come from the `ls -l /dev` excerpt in the Ditto driver paper (§5 of the brief) ✅. The three community-driver entries (va2000, hydra, z3660eth) come from the modern driver projects ✅ — va2000 and hydra from §6 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), and z3660eth from the amix-z3660net project (see [## Sources](#sources)).
 
 | `/dev` node | Class | Major | Minor | Driver / purpose | Tag |
 |---|---|---|---|---|---|
@@ -24,8 +24,9 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 | `/dev/dsk/c0d0s1` | block | **18** | encoded (see below) | SCSI hard-disk driver | ✅ |
 | `/dev/va2000` | char | **68** | 0 | MNT VA2000 RTG framebuffer (`asokero/va2000-amix`) | ✅ |
 | `/dev/<hya>` | char | **47** | — | Hydra AmigaNet STREAMS/DLPI driver, tag `hya` (`isoriano1968/hydra-amix`) | ✅ |
+| `/dev/zen0` | char | **48** | 0 | Z3660 onboard-ethernet STREAMS/DLPI driver, tag `zen` (amix-z3660net) | ✅ |
 
-**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
+**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 48) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
 
 ### Minor-number encoding for the SCSI disk (major 18)
 
@@ -77,6 +78,18 @@ ifconfig hya0 <ip> netmask <mask> up -trailers
 
 hydra has a boot-time `init_tbl[]` entry (`hydrainit`) that only *probes* for the board; the full init (MAC read, DP8390 programming) is deferred to open (`slink`) time ✅. For the full driver internals see [the Hydra case study](../drivers/case-studies/hydra.md); for the networking stack it plugs into see [Networking](../how-it-works/networking.md).
 
+### The z3660eth STREAMS driver (char 48)
+
+`z3660eth` is the second modern STREAMS/DLPI network driver, for the **Z3660 accelerator's onboard ethernet** — interface **`zen0`**, tag **`zen`**, at **`cdevsw` slot 48** (the free `nostr` slot above hydra's 47 on the stock / A4091 kernel) ✅. Like hydra it is a character driver carrying a `streamtab`, brought up with `slink` (no `ifconfig plumb` on SVR4.0):
+
+```sh
+mknod /dev/zen0 c 48 0
+slink addaen /dev/zen0 zen0
+ifconfig zen0 <ip> netmask <mask> up -trailers
+```
+
+Unlike hydra it programs **no NIC chip** — it talks the Z3660 firmware's frame mailbox over MMIO — and it takes **no `init_tbl`/`int2_tbl` entry at all**: it autoconfigs on first `open` and services RX from a **polled `timeout()` callout**, so a GEM-less build kernel boots cleanly and `open()` just returns `ENXIO`. It is **real-hardware-verified** (A4000 + Z3660, 2026-06). See [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
+
 ### The va2000 framebuffer (char 68)
 
 The VA2000 driver is a single-file char framebuffer driver. After building and installing it you create the node with:
@@ -98,14 +111,15 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (not a `/dev` node — an `ifconfig` name) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
+| `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-48 driver) ✅ | ✅ |
 
-**Note:** `aen0` and `hya0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (the hydra driver was modelled on it) ✅.
+**Note:** `aen0`, `hya0` and `zen0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (both the hydra and z3660eth drivers were modelled on it) ✅.
 
 ## Supported expansion cards
 
 Everything **stock** here is **Zorro II only** — Amix's stock drivers just dereference the `autocon()` address, and Zorro II boards (≤ 24-bit, inside the 68030's TT0 transparent-translation window) are directly reachable while Zorro III space is not, by default ✅. That source was never shipped, so the *stock* card set cannot be community-fixed in place ✅. Cards are grouped by function. Tags follow the brief.
 
-> 🔴 **Correction (Zorro III is reachable after all):** "Amix can never drive a Zorro III board" was the long-standing belief, and it is **wrong for a driver that maps the board explicitly.** The A4091-on-Amix project drove the **Zorro III A4091** by page-table-mapping its register block with the kernel's own `sptalloc()` primitive (the board sits in the unmapped `0x40000000–0x7FFFFFFF` TT gap, so a plain pointer deref *does* fail — but `sptalloc()` gets a working kernel VA) 🟡 (reproduced in Amiberry; real-hardware confirmation pending). See [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md).
+> 🔴 **Correction (Zorro III is reachable after all):** "Amix can never drive a Zorro III board" was the long-standing belief, and it is **wrong for a driver that maps the board explicitly.** The A4091-on-Amix project drove the **Zorro III A4091** by page-table-mapping its register block with the kernel's own `sptalloc()` primitive (the board sits in the unmapped `0x40000000–0x7FFFFFFF` TT gap, so a plain pointer deref *does* fail — but `sptalloc()` gets a working kernel VA) 🟡 (reproduced in Amiberry; real-hardware confirmation pending). See [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md). A second, **real-hardware** data point: the **Z3660** accelerator presents a Zorro III AutoConfig identity (`0x144B0001`) and Amix now drives its **onboard ethernet** (`zen0`) via the `z3660eth` driver, `sptalloc`-mapping the firmware register page + frame windows ✅ — though here the windows sit at `0x10000000` (inside TT0), so the mechanism is the firmware mailbox rather than the A4091's TT-gap mapping. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md). The **same board's onboard "SCSI"** (the PiStorm `piscsi` mailbox, not a 53C710) is driven the same mailbox way — Amix boots **multiuser with root** on it on real hardware (2026-06); see [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 
 ### SCSI host adapters
 
@@ -115,11 +129,12 @@ Everything **stock** here is **Zorro II only** — Amix's stock drivers just der
 | **A2090** | A2000-family SCSI controller; product id `0x02020001` | ✅ |
 | **A2091** | A2000-family SCSI controller; product id `0x02020003` | ✅ |
 | **A4091** | **Zorro III** SCSI-2 host adapter (NCR/Symbios **53C710**); AutoConfig product id `0x02020054`, phys base `0x40000000`. Not stock — driven by the community [A4091 53C710 driver](../drivers/a4091-53c710-driver.md) 🟡 (Amiberry; real-hardware pending) | 🟡 |
+| **Z3660** (accelerator onboard piscsi "SCSI") | **Not a SCSI chip** — the PiStorm `piscsi` register mailbox on the card's Zynq ARM (no 53C710); AutoConfig product id `0x144B0001`, fixed combo base `0x10000000`. Driven by the community [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md); **works on real hardware (2026-06)** — Amix boots multiuser with **root** on it (`/dev/rdsk/c6d0s1`) | ✅ |
 | **GVP Series II** | Needs a **kernel rebuild + an RDB `dummy_handler`** | 🟡 |
 
 The A2090/A2091 interrupt handlers (`a2090intr`, `a2091intr`) appear in the kernel's level-2 autovector table `int2_tbl[]` ✅ — concrete evidence these controllers are wired into the stock kernel. Remember the disk sits at **SCSI ID 6** by convention (above).
 
-The kernel's `sd.c` selector maps these product ids to per-card queue functions in its `scsicard[]` registry; the A4091 work added the row `0x02020054, &a4091queue, "A4091 SCSI"` (verified in `src/kernel-patches/sd.c` ✅).
+The kernel's `sd.c` selector maps these product ids to per-card queue functions in its `scsicard[]` registry; the A4091 work added the row `0x02020054, &a4091queue, "A4091 SCSI"` (verified in `src/kernel-patches/sd.c` ✅). The Z3660 piscsi driver registers the same way, adding `0x144B0001, &z3660queue, "Z3660 SCSI"` — plus a `probe=z3660present` fallback hook (in the kerntools `sd.c` template) for the case where the 2.1 `bootinfo.autocon[]` table misses the board ✅. See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 
 #### Card index when both an A3000 SCSI and an A4091 are present ✅
 
@@ -143,8 +158,9 @@ The A2410 is the *officially* supported color option; the VA2000 path is the mod
 | **A2065** | `aen0` | Native Ethernet (LANCE); the A3000UX ships with it | ✅ |
 | **Ariadne I** | — | Via Gateway! Vol.2 drivers | 🟡 |
 | **Hydra AmigaNet** | `hya0` (char 47) | Via the modern `hydra-amix` STREAMS/DLPI driver (NE2000/DP8390); **works on real hardware (2026-06)** — ARP + ICMP ping verified | ✅ |
+| **Z3660** (accelerator onboard ethernet) | `zen0` (char 48) | Via the modern `z3660eth` STREAMS/DLPI driver (Zynq GEM over the firmware mailbox, **not** chip-level); **works on real hardware (2026-06)** — full bidirectional TCP/IP, telnet/ftp | ✅ |
 
-Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. See [Networking](../how-it-works/networking.md).
+Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. The Z3660 accelerator's AutoConfig id is **`0x144B0001`** (combo base `0x10000000` on AGA), station MAC `00:80:51:01:02:03` observed on the wire ✅. See [Networking](../how-it-works/networking.md).
 
 ### Serial
 
@@ -175,3 +191,5 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - `src/kernel-patches/sd.c` — the `0x02020054, &a4091queue, "A4091 SCSI"` `scsicard[]` row and the base-address-sorted `queue[]` insertion.
 - `src/a4091-wr.c` — `A4091_PROD = 0x02020054`, phys base `0x40000000`; the `sptalloc()`-mapped 53C710 driver.
 - a4091.device open-source project: [`A4091/a4091-software`](https://github.com/A4091/a4091-software) (A4091 ROM + SCRIPTS assembler).
+- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`src/z3660eth.{c,h}`, `driver.conf`'s `net z3660eth … 48 zen` stanza), **validated on a real A4000 + Z3660, 2026-06-21** ✅: `cdevsw` char major **48**, tag `zen` / interface `zen0`, AutoConfig `0x144B0001`, combo base `0x10000000`, MAC `00:80:51:01:02:03`. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
+- The amix-z3660scsi project @ `8ea1605` — the native `z3660` piscsi **block** driver (`src/z3660.c`, `src/kernel-patches/sd.c`, `driver.conf`'s `0x144B0001 z3660queue "Z3660 SCSI" z3660.c probe=z3660present` stanza), **validated on a real A4000 + Z3660, 2026-06-12/13** ✅: registers in `sd.c`'s `scsicard[]` (block major 18 / char major 40), root disk `/dev/rdsk/c6d0s1`, AutoConfig `0x144B0001`, fixed combo base `0x10000000`. See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).

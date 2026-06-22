@@ -44,7 +44,7 @@ The Hydra is a Zorro II Ethernet board in the NE2000 family ✅:
 | Media | **10Base2** (BNC / thin coax) and **10BaseT** (RJ-45) | ✅ |
 | AutoConfig ID | **2121 / 1**, i.e. manufacturer `2121` (0x0849), product `1` → combined **0x08490001** | ✅ |
 
-Because it is a Zorro II AutoConfig board, the Amiga firmware assigns its base address at reset and Amix discovers it through the kernel AutoConfig interface — see [Zorro II AutoConfig for drivers](../zorro-autoconfig.md) for how Amix maps these boards. Zorro III is categorically unsupported by Amix, so a Zorro III network card could not be driven this way ✅.
+Because it is a Zorro II AutoConfig board, the Amiga firmware assigns its base address at reset and Amix discovers it through the kernel AutoConfig interface — see [Zorro II AutoConfig for drivers](../zorro-autoconfig.md) for how Amix maps these boards. A Zorro III board is **not** reachable by the stock dereference-the-`autocon()`-address path this driver uses ✅; driving one needs a driver that maps the board explicitly — see the [A4091 SCSI](../a4091-53c710-driver.md) and [Z3660 ethernet](../z3660-ethernet-driver.md) drivers.
 
 ### Register / memory layout on the board
 
@@ -114,7 +114,7 @@ mknod /dev/hya0 c 47 0
 
 The native compiler is **GCC 2.7.2.3 for Amix**, distributed as an installable **pkg on [amigaunix.com](https://amigaunix.com)** (the stock AT&T SVR4 `cc` also compiles kernel C) ✅. The kernel-image/boot-relocatable conversion (`elf2brel`, the `stand/`/`boot/` tooling) is part of the on-box kernel build, not a cross step. See [Building and installing a kernel](../kernel-build.md) for the general relink-and-write-boot-partition cycle, and keep the old `/unix` as a fallback.
 
-> **Note on the toolchain "gap".** Earlier project notes flagged the `m68k-amix-gcc` *cross*-compiler as an open 🔴 gap (no public recipe). That gap is real but **not on the path to building this driver**: hydra builds **on-box** with the amigaunix.com GCC pkg. You still need a **licensed Amix install** (kernel headers/libs are not redistributable), which is why the repo is source-only ✅. See [Toolchain](../toolchain.md).
+> **Note on the toolchain.** hydra builds **on-box** with the amigaunix.com GCC pkg. As of 2026-06 a Linux-hosted cross-toolchain — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — also exists, closing the earlier "no public cross recipe" gap ✅. Either way you need a **licensed Amix install** (its headers/libs are the non-redistributable part — which is why the repo is source-only). See [Toolchain](../toolchain.md).
 
 ## Bringing the interface up: slink, not `ifconfig plumb`
 
@@ -173,7 +173,7 @@ If you are writing another NE2000/DP8390-class or Zorro II network driver for Am
 
 - [Writing a STREAMS driver](../writing-a-streams-driver.md) — the general method this case study illustrates.
 - [Networking on Amix](../../how-it-works/networking.md) — the SVR4 STREAMS TCP/IP stack, `aen0`, and how interfaces are configured.
-- [Toolchain](../toolchain.md) — native on-box build, the `m68k-cbm-sysv4` triple, and the (separate) cross-compiler gap.
+- [Toolchain](../toolchain.md) — native on-box build, the `m68k-cbm-sysv4` triple, and the `gcc-cross-amix` cross-toolchain.
 - [The Amix device-driver model](../driver-model.md) — major/minor numbers, `cdevsw`, STREAMS as the third device class, and `int2_tbl[]`.
 - [Zorro II AutoConfig for drivers](../zorro-autoconfig.md) — how Amix discovers and maps Zorro II boards by AutoConfig ID.
 - [Building and installing a kernel](../kernel-build.md) — the relink-and-write-boot-partition cycle the build feeds into.

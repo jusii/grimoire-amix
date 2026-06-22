@@ -26,9 +26,10 @@ Because the stack is statically linked into a monolithic kernel with **no loadab
 |---|---|---|---|---|
 | **A2065** (Am7990 LANCE Ethernet) | `aen0` | Zorro II | native (`aen/` in the kernel source tree) | ✅ |
 | **Hydra AmigaNet** (NE2000 / DP8390) | `hya0` | Zorro II | modern `hydra-amix` STREAMS/DLPI driver | ✅ |
+| **Z3660** (accelerator's onboard Zynq GEM) | `zen0` | Zorro III *(eth window at `0x10000000`, inside TT0)* | modern `z3660eth` STREAMS/DLPI driver — **works on real hardware (2026-06)** | ✅ |
 | **Ariadne I** | (Gateway! Vol.2 driver) | Zorro II | community | 🟡 |
 
-The A2065 is the card Commodore shipped and the only Ethernet board Amix supports out of the box ✅. `aen0` is what `ifconfig` and the routing tables refer to.
+The A2065 is the card Commodore shipped and the only Ethernet board Amix supports out of the box ✅. `aen0` is what `ifconfig` and the routing tables refer to. Both modern STREAMS/DLPI add-on drivers (Hydra → `hya0`, Z3660 → `zen0`) are real-hardware-verified — see [Adding other network cards](#adding-other-network-cards).
 
 **Note:** the loopback interface (`lo0`) and the conventional `127.0.0.1` are SVR4 standard; only the physical-interface name `aen0` is Amix-specific here.
 
@@ -177,7 +178,9 @@ Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card 
 
 Full detail — the build line, the DLPI flow, and the LANCE-mirroring design — is on [the Hydra case study](../drivers/case-studies/hydra.md). The general procedure for writing this class of driver is on [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md), and the relink/boot-partition steps are on [the kernel build page](../drivers/kernel-build.md).
 
-> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (a pkg on amigaunix.com) — no cross-compiler is needed. The `m68k-amix-gcc` *cross*-compiler still has no public, reproducible recipe 🔴, but that gap is **moot** for building network drivers on a real/emulated Amix. You do still need a licensed Amix install (kernel headers/libs aren't redistributable). See [the toolchain page](../drivers/toolchain.md).
+A second real-hardware-verified example is the **`z3660eth`** driver for the **Z3660 accelerator's onboard ethernet** (interface `zen0`) — the network analogue of the [A4091 SCSI work](../drivers/a4091-53c710-driver.md), giving Amix full bidirectional TCP/IP on a physical A4000 + Z3660 (2026-06) ✅. It is a contrasting design to hydra: instead of programming a NIC chip directly it speaks the Z3660 firmware's **frame mailbox** over MMIO, registers at **`cdevsw` slot 48** (tag `zen`), and **services RX from a polled `timeout()` callout — no `int2_tbl`/`init_tbl` edit**. The one real-hardware blocker was an **INT6 interrupt storm** (the firmware raised level-6 on every received frame, but Amix has no eth INT6 handler, so ARP broadcasts hard-locked the box); the fix was to disable the firmware interrupt and keep the polled drain. Bring-up is the same `slink` plumbing as hydra (`slink addaen /dev/zen0 zen0`, then `ifconfig zen0 … up -trailers`). See [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) for the mailbox protocol, the storm, and the build/deploy story.
+
+> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (a pkg on amigaunix.com). As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — so you can build driver objects on a modern host too ✅. Either way you need a licensed Amix install (its headers/libs aren't redistributable; the cross-toolchain consumes them as a sysroot). See [the toolchain page](../drivers/toolchain.md).
 
 ## Quick reference
 
@@ -185,6 +188,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 |---|---|---|
 | Bring A2065 up | `ifconfig aen0 <ip> netmask <mask> up` | ✅ |
 | Bring Hydra up | `slink addaen /dev/hya0 hya0`, then `ifconfig hya0 <ip> … up -trailers` (no `ifconfig plumb` on SVR4.0) | ✅ |
+| Bring Z3660 (`zen0`) up | `slink addaen /dev/zen0 zen0`, then `ifconfig zen0 <ip> … up -trailers` (cdevsw 48; real-HW) | ✅ |
 | Default route (metric required) | `route add default <gw> 1` | ✅/🟡 |
 | Static name→IP, resolver fallback | `/etc/hosts` | ✅ |
 | Enable DNS (1/2) | `ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so` + `/etc/resolv.conf` (nameservers only) | ✅ |
@@ -199,6 +203,7 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 
 - [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md) — how a network interface attaches to the SVR4 stack.
 - [Hydra case study](../drivers/case-studies/hydra.md) — a complete modern STREAMS/DLPI network driver (`hya0`).
+- [Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) — a real-hardware STREAMS/DLPI driver (`zen0`) over the Z3660 firmware mailbox; the INT6 storm and polled RX.
 - [Kernel architecture](kernel-architecture.md) — monolithic SVR4, STREAMS, no loadable modules.
 - [Filesystems and disks](filesystems-and-disks.md) — UFS/s5, needed for NFS server exports.
 - [Quirks](quirks.md) — DNS-off-by-default, the `route` metric, and the SLIP reboot bug in one list.
@@ -213,8 +218,9 @@ Full detail — the build line, the DLPI flow, and the LANCE-mirroring design �
 - Research brief §4 "Kernel architecture" (monolithic SVR4; STREAMS, TLI + BSD sockets; no loadable modules).
 - Research brief §3 / §10 (`amix_21_boot.adf` string analysis — embedded NFS/RPC client string table), via `tools/inspect-adf.sh`.
 - Research brief §12 "Quirks checklist" (DNS off by default; SLIP reboot bug).
-- Research brief §13 (🔴 no public `m68k-amix-gcc` cross-compiler recipe — moot for on-box driver builds).
+- Research brief §13 (cross-toolchain: `gcc-cross-amix` now provides a public `m68k-cbm-sysv4` recipe; native on-box build still simplest).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (cites the SVR4 *Streams Programmer's Guide* and *Network Programmer's Guide*).
 - [github.com/isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix)
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.
+- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`zen0`, cdevsw 48) for the Z3660's onboard ethernet, **validated on a real A4000 + Z3660, 2026-06-21** ✅ (`ifconfig zen0`, `netstat -in` zero-error, laptop↔box `ping`/`ftp`); the firmware-mailbox protocol, the INT6 storm, and the polled-RX design are on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).

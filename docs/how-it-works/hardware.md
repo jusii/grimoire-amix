@@ -95,9 +95,9 @@ The Amix kernel **predates the 68040 MMU** and has no support for it (or the lat
 
 🟡 **Real-hardware validation is still pending** — a physical AGA-equipped, 68030-class machine (and a physical A4000+A4091) have not yet been booted; the result is emulation-proven only. The Kickstart matrix in [Amix on Amiberry](../getting-started/emulation-amiberry.md) encodes which ROM each chipset profile needs.
 
-### No Zorro III — Zorro II only
+### Zorro III — stock support is Zorro II only
 
-Amix supports **Zorro II expansion only**; it has **no Zorro III support**. ✅ The kernel's memory-mapping layer cannot address Zorro III space, and — critically — **that source was never shipped**, so the community cannot fix it. ✅ Any card you want to use must work in (or fall back to) **Zorro II** address ranges.
+**Stock** Amix supports **Zorro II expansion only**; out of the box it has **no Zorro III support**. ✅ The stock drivers just dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside the 68030's TT0 window), and — because that kernel source was never shipped — the *stock* card set can't be patched in place. ✅ This is **not** a hard wall for a *purpose-written* driver, though: one that maps the board explicitly (the kernel's `sptalloc()` primitive, or a window that happens to fall inside TT0) **can** reach a Zorro III board — the [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do. For ordinary use, assume a card must work in (or fall back to) **Zorro II** address ranges.
 
 Board addresses are assigned at reset by the Amiga **AUTOCONFIG** mechanism, which Amix reads through the kernel's `autocon()` interface — again, **Zorro II only**. ✅ See [the Zorro autoconfig driver page](../drivers/zorro-autoconfig.md) for how drivers consume this.
 

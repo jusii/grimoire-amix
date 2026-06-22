@@ -33,6 +33,14 @@ if ! ip link show "$TAP" >/dev/null 2>&1; then
     fi
 fi
 ip link set "$TAP" up
+# Cap the tap MTU so the host advertises a smaller TCP MSS to the guest. The
+# emulated A2065 silently DROPS full ~1500-byte frames on TX (guest->host), which
+# stalls every bulk transfer OFF the box (ftp GET, large writes) at ~4 KB while
+# small transfers and host->guest pushes work. 1400 keeps the guest's frames under
+# the drop threshold (~1500). Confirmed 2026-06-22: a 1.5 MB GET went 0 bytes ->
+# full transfer once mtu <= 1450. (For UDP/NFS off the box, also lower the guest's
+# aen0 MTU: `ifconfig aen0 ... mtu 1400`.)
+ip link set "$TAP" mtu "${TAP_MTU:-1400}"
 ip addr replace "$TAP_ANCHOR/32" dev "$TAP"
 
 # 2. Route the guest's /32 out the tap, with a same-subnet source address so the
