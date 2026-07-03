@@ -56,6 +56,7 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 [Networking](how-it-works/networking.md) ·
 [X11 & desktop](how-it-works/x11-and-desktop.md) ·
 [Quirks](how-it-works/quirks.md) ·
+[Emulation fidelity](how-it-works/emulation-fidelity.md) ·
 [Glossary](how-it-works/glossary.md)
 
 ### Getting started (emulation-first)

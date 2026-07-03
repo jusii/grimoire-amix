@@ -20,6 +20,7 @@ order=(
   docs/how-it-works/networking.md
   docs/how-it-works/x11-and-desktop.md
   docs/how-it-works/quirks.md
+  docs/how-it-works/emulation-fidelity.md
   docs/how-it-works/glossary.md
   docs/getting-started/emulation-winuae.md
   docs/getting-started/emulation-fs-uae.md

@@ -367,6 +367,8 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   60-vs-64 CRC boundary lives there.
 - [Networking](../how-it-works/networking.md) — the SVR4 STREAMS TCP/IP stack `zen0` joins; static IP,
   DNS off by default, the `route` metric.
+- [Emulation Fidelity](../how-it-works/emulation-fidelity.md) — the 68030 bus-error-frame and SCSI
+  INT2-latency requirements of the **same Z3660 UAE-derived emulator** this driver runs on.
 - [Building and installing a kernel](kernel-build.md) — the relink → `relocunix` cycle and the D245
   clean-gate this driver's build depends on.
 - [Device & card list](../reference/device-list.md) — the `cdevsw` major 48 / `zen` assignment.

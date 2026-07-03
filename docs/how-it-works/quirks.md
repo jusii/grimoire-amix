@@ -29,7 +29,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 13 | **Enabling DNS adds ~3 min to every boot** unless the boot-time `ifconfig`s (`S69inet` `lo0`, `network-config` `aen0`) use **literal IPs** instead of hostnames | ✅ | [Networking](networking.md), [Networking on the LAN](../getting-started/networking-on-the-lan.md) |
 | 14 | **A board interrupt Amix has no handler for will storm the kernel** — the Z3660 firmware raised level-6 (INT6) on every RX frame; with no Amix eth-INT6 handler, ordinary ARP broadcasts hard-locked the box. Fix: disable the firmware IRQ and **poll** | ✅ | [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) |
 | 15 | **A board the 2.1 `bootinfo.autocon[]` table misses, registered via `autocon()` alone, silently never runs** — kernel banner, then a dead box (no panic, no I/O). Fix: multi-method detect (autocon → a chipset-gated fixed-base probe → a `probe=` fallback) | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md), [A4091](../drivers/a4091-53c710-driver.md) |
-| 16 | **On an emulated 68k, "boots then hangs" may be the *emulator*, not your driver** — the Z3660's 68k emulator faulted demand-paging the driver's own pages, while the driver carried every transfer byte-perfectly. Triage with serial instrumentation + core-dump analysis before blaming the driver | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md) |
+| 16 | **On an emulated 68k, "boots then hangs" may be the *emulator*, not your driver** — the Z3660's 68k emulator faulted demand-paging the driver's own pages, while the driver carried every transfer byte-perfectly. Triage with serial instrumentation + core-dump analysis before blaming the driver | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md), [Emulation Fidelity](emulation-fidelity.md) |
+| 17 | **An emulator that batches instructions between interrupt polls can hang the A3000-SCSI bootstrap** — that bootstrap is INT2-driven; too-coarse interrupt-service cadence starves it and Amix hangs *before the banner*. Keep INT2 latency low through boot (on the Z3660, `service_cadence ≤ 4`) | 🟡 | [Emulation Fidelity](emulation-fidelity.md) |
 
 The rest of this page expands each item.
 
@@ -148,7 +149,21 @@ itself software, so a crash there presents identically to a driver lock-up.
 were byte-correct) with **core-dump analysis** (`adb` / capstone disassembly of where the "CPU"
 actually died) to isolate the fault to the emulator rather than the driver, *before* rewriting working
 driver code ✅. The emulator fixes themselves are owned by the Z3660 firmware repo; the durable lesson
-here is the triage discipline.
+here is the triage discipline. The emulator-side mechanism — 68030 bus-error-frame semantics on the
+demand-paging path — is documented on [Emulation Fidelity](emulation-fidelity.md).
+
+### 17. An instruction-batching emulator can hang the SCSI bootstrap 🟡
+
+Amix's **A3000-mainboard SCSI** bootstrap is driven by an **INT2** (level 2) interrupt during the
+earliest kernel startup, *before* the banner. An emulator that, for throughput, runs several guest
+instructions between checks of the interrupt line raises the worst-case **INT2-detection latency** to
+roughly that batch size — and if the batch is too coarse the bootstrap is starved of timely service
+and **hangs before the banner** 🟡 (a pre-banner stall, distinct from the demand-paging faults in #16).
+On the Z3660's emulator this is exposed by a `service_cadence N` knob (instructions per
+interrupt-service poll, default 1): cadence 2 and 4 boot, but cadence 8 hangs the SCSI bootstrap, so
+the Amix-safe value is `service_cadence 4` (raise it only after boot). The knob mechanics are ✅; the
+INT2-latency attribution and the exact boundary are an author hardware sweep 🟡. Full story on
+[Emulation Fidelity](emulation-fidelity.md#scsi-int2-interrupt-latency-a3000-mainboard-bootstrap).
 
 ## Time & Y2K quirks
 
@@ -207,3 +222,4 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry isolated `S69inet` at 180 s; boot **210 s → 29 s** after switching the boot-time `ifconfig`s to literal IPs. Files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system (quirk 13).
 - The amix-z3660net project — the `z3660eth` driver bring-up on a real A4000 + Z3660, 2026-06-21 ✅: the firmware INT6-per-RX-frame storm (Amix has no level-6 ethernet handler) and the disable-IRQ/poll fix (`ZZ_CONFIG_DISABLE`, `timeout()` RX drain), diagnosed via the firmware serial `[PC]` heartbeat + `nm` of `relocunix` (quirk 14). See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
 - The amix-z3660scsi project @ `8ea1605` — the `z3660` piscsi block-driver bring-up on a real A4000 + Z3660, 2026-06-12/13 ✅: the 2.1 `bootinfo.autocon[]` miss and the multi-method detect that cleared the silent hang (quirk 15), and the firmware-emulator-vs-driver triage (quirk 16 — the apparent hang was the 68k emulator demand-paging the driver's own pages, not the driver; firmware-owned fix, cited not reproduced). See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
+- Research brief §19 (emulation fidelity), from the Z3660 firmware project (branch `amix-main`, 2026-06) — quirk 17 (the A3000-SCSI bootstrap's INT2 sensitivity to interrupt-service cadence; the `service_cadence` knob ✅ / the 4-boots-8-hangs boundary 🟡) and the emulator-side mechanism behind quirk 16 (68030 bus-error-frame fidelity on the demand-paging path). See [Emulation Fidelity](emulation-fidelity.md).

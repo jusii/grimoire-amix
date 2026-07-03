@@ -159,6 +159,7 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 - [Quirks](quirks.md) — the SCSI ID rules, 16 MB ceiling, no Zorro III, and the rest, as a checklist.
 - [Device list](../reference/device-list.md) — every supported device with its major/minor numbers.
 - [WinUAE emulation guide](../getting-started/emulation-winuae.md) — these limits as a config table.
+- [Emulation Fidelity](emulation-fidelity.md) — what a 68030/MMU/interrupt emulator must *implement* to boot Amix, beyond the config knobs.
 - [Glossary](glossary.md) — MMU, FPU, HAT, AUTOCONFIG, Zorro, RDB, STREAMS.
 
 ## Sources

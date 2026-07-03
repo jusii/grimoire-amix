@@ -159,8 +159,8 @@ so here the mapping is a clean convenience rather than being *forced* by the A40
 > `Z3660_FIXED` `0x10000000`:59, `BOUNCE_OFFSET`/`BOUNCE_THRESH`) ✅. The firmware-side taxonomy
 > (products `0x03`/`0x02`, base `0xE90000`, the `cpu_emulator.cpp` ext-ROM decode, the serial
 > `[Core1] Autoconfig RTG to 0x1000` print) is from `NOTES.md` §"Real-hardware findings (2026-06-12)",
-> verified against the deployed firmware fork (branch `amix-boot`) + live boots; **firmware specifics
-> are owned by the Z3660 firmware repo**.
+> verified against the deployed firmware repo (branch `amix-main`; the earlier `amix-boot` branch was
+> rebased into it) + live boots; **firmware specifics are owned by the Z3660 firmware repo**.
 
 ## Detection: the silent-hang trap and multi-method detect
 
@@ -240,7 +240,9 @@ the new disk driver. It was not. The apparent hang was the firmware **68k emulat
 demand-paging the driver's own text back in** — two MMU **format-`$B`** exception-frame bugs (a SIGILL
 on instruction-fetch-fault resume, then a SIGSEGV on mid-instruction replay state). `init` died at
 libc `_rt_boot+0`. Once the emulator was fixed, the driver booted clean and byte-perfect — confirming
-it had been correct all along ✅.
+it had been correct all along ✅. (The emulator-side mechanism, and a later fix generation, are
+documented on [Emulation Fidelity](../how-it-works/emulation-fidelity.md#68030-bus-error-frame-semantics-demand-paging);
+this page keeps only the driver-vs-emulator triage angle.)
 
 **The reusable lesson is the driver-vs-emulator triage method**: combine **kernel-side serial
 instrumentation** with **core-dump analysis** (`adb` / capstone disassembly) to *prove* the transfers
@@ -250,9 +252,14 @@ recorded as a gotcha on [the quirks checklist](../how-it-works/quirks.md).)
 
 > **Source & ownership.** `NOTES.md` §"banner-hang root cause is the EMU core, not SCSI" (:199-228)
 > and §"RESOLVED" (:269-296) ✅. The **mechanism and fix are firmware-owned** — the Z3660 firmware
-> fork, branch `amix-boot`, commits `c8b9398` (ifetch-fault resume) and `e3f9440` (mid-instruction
-> frame state). They are cited here by name + commit only, as the SCSI project's conclusion plus the
-> triage method.
+> repo (branch `amix-main`), commits `3069e22` (ifetch-fault resume, the SIGILL) and `0b42cb8`
+> (mid-instruction frame state, the SIGSEGV). *(These are the live successors of the earlier
+> `amix-boot`-branch commits once cited here as `c8b9398` / `e3f9440`, which no longer exist after that
+> branch was rebased away; `0b42cb8`'s own body names `c8b9398` as its predecessor.)* A **later,
+> distinct** pair — `7ff5774` + `acdfe15` — subsequently fixed a multi-fault-continuation frame
+> corruption that surfaced as an intermittent under-load `User BUS ERROR`, not this boot-time hang.
+> They are cited here by name + commit only, as the SCSI project's conclusion plus the triage method;
+> the full mechanism lives on [Emulation Fidelity](../how-it-works/emulation-fidelity.md).
 
 ## 🟡 Firmware-side debug lever and hazard
 
@@ -298,6 +305,9 @@ lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS
   the `scsicard[]` registry, and the card/target/slice minor scheme behind `c6d0s1`.
 - [The boot process](../how-it-works/boot-process.md) — booting Amix with **root on a non-stock SCSI
   controller** and the rootdev ↔ card-index numbering.
+- [Emulation Fidelity](../how-it-works/emulation-fidelity.md) — the emulator-side 68030
+  bus-error-frame mechanism behind the "boots then hangs" (and the later under-load `BUS ERROR`), and
+  the SCSI INT2-latency bootstrap gotcha.
 - [Quirks](../how-it-works/quirks.md) — the un-enumerated-board silent-hang and the
   driver-vs-emulator triage gotchas in the checklist.
 
@@ -317,8 +327,11 @@ lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS
   with root on `/dev/rdsk/c6d0s1`, ~100+ byte-perfect reads/writes per boot, `fsck` on the piscsi root,
   page-in spot checks of `/sbin/init` and `libc.so.1` (`NOTES.md` real-hardware sections).
 - **Firmware-side facts** (F4 product taxonomy + fixed-base/ext-ROM decode, the 🟡 serial-breadcrumb
-  lever and divide-by-zero hazard, the emulator format-`$B` fixes): the **Z3660 firmware fork**, branch
-  `amix-boot` (`c8b9398`, `e3f9440`) — **owned by the Z3660 firmware repo, cited not reproduced**.
+  lever and divide-by-zero hazard, the emulator format-`$B` fixes): the **Z3660 firmware repo**, branch
+  `amix-main` — the boot-time demand-paging frame fixes `3069e22` (SIGILL) and `0b42cb8` (SIGSEGV), the
+  live successors of the dead `amix-boot` hashes `c8b9398` / `e3f9440`, plus the later
+  multi-fault-continuation pair `7ff5774` / `acdfe15`. **Owned by the Z3660 firmware repo, cited not
+  reproduced**; see [Emulation Fidelity](../how-it-works/emulation-fidelity.md) for the full mechanism.
 - **Magic numbers** (✅): AutoConfig product id `0x144B0001`; fixed combo base `0x10000000`; piscsi
   page offset `0x2000`; bounce offset `0x80000`; bounce threshold `0x08000000`; `MAXXFER 65536`; root
   disk `/dev/rdsk/c6d0s1` (SCSI target 6, block major 18 / char major 40).

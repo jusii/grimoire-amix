@@ -18,6 +18,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [Networking](docs/how-it-works/networking.md): STREAMS TCP/IP, A2065, DNS-off default, NFS, SLIP.
 - [X11 & the Desktop](docs/how-it-works/x11-and-desktop.md): X11R4/R5, OpenLook, A2410 color, RTG.
 - [Quirks & Gotchas](docs/how-it-works/quirks.md): the Amiga-port surprises.
+- [Emulation Fidelity](docs/how-it-works/emulation-fidelity.md): what a 68030/MMU/interrupt emulator must implement — format-$B bus-error frames, SCSI INT2 latency — or Amix's demand-paging boot fails, sometimes silently.
 - [Glossary](docs/how-it-works/glossary.md): terms used across the docs.
 
 ## Getting started (emulation-first)

@@ -211,6 +211,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - [Kernel build and install](../drivers/kernel-build.md) — `make` → `relocunix` → `make bootpart` in detail.
 - [Hardware and requirements](hardware.md) — Superkickstart ROM, SCSI ID 6/ID 4, the 16 MB ceiling.
 - [Quirks checklist](quirks.md) — the dual-boot button and other surprises in one place.
+- [Emulation Fidelity](emulation-fidelity.md) — the 68030 bus-error-frame semantics the demand-paging boot leans on, and the SCSI INT2 bootstrap-latency gotcha.
 - [Install walkthrough](../getting-started/install-walkthrough.md) — running the whole flow under emulation.
 - [The A4091 (53C710) SCSI driver](../drivers/a4091-53c710-driver.md) — the driver behind the root-on-A4091 boot.
 - [Zorro III autoconfig and `autocon()`](../drivers/zorro-autoconfig.md) — the phantom-A3000 special case and the chipset-gated A4091 detection.
