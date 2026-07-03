@@ -122,11 +122,14 @@ and the [install walkthrough](../getting-started/install-walkthrough.md).
 
 ## pkgadd
 
-The SVR4 package installer (with siblings `pkgmk`, `pkgproto`, `pkgtrans`) used to install software
-on Amix ✅. The install scripts drive it through the `amixpkg` wrapper
-(`amixpkg -i -m -d -r /mnt -y standard`), which is widely reported as flaky/"broken" 🟡; `pkgproto`
-also omits symlinks 🟡. Michael Parson's **AmixBP** re-bundles 40+ `.pkg`s on amigaunix.com/downloads 🟡. See the
-[kernel architecture](kernel-architecture.md) and [toolchain](../drivers/toolchain.md).
+The SVR4 package installer (with siblings `pkgmk`, `pkgproto`, `pkgtrans`, `pkginfo`, `pkgrm`) used to
+install software on Amix ✅. The `root.adf` install scripts drive it through the **`amixpkg` wrapper**
+(`amixpkg -i -m -d -r /mnt -y standard`) — which is on the install media only, **not** the installed
+system ✅ (its "flaky/broken" reputation 🟡 is partly a corrupt-database defect on the stock image,
+not the raw tools). `pkgproto` also omits symlinks 🟡. Michael Parson's **AmixBP** re-bundles 40+
+`.pkg`s on amigaunix.com/downloads 🟡. See [package management](package-management.md) for the
+`/var/sadm` database internals, and the [kernel architecture](kernel-architecture.md) and
+[toolchain](../drivers/toolchain.md).
 
 ## RDB
 

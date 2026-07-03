@@ -116,7 +116,7 @@ Amix is laid out like any SVR4 system, with a few Amix-specific spots worth know
 |---|---|---|
 | `/usr/sys` | The **kernel source/object tree.** Compiled object libraries, per-driver subdirs, the `master.d/kernel.c` switch-table config file, and the makefiles you run to relink `/unix`. This is where all driver and kernel work happens. | ✅ |
 | `/stand` | **Standalone / bootstrap area.** You copy a freshly built kernel (`relocunix`) here, then `make bootpart KERNEL=relocunix` writes it to the boot partition. | ✅ |
-| `/var/sadm` | **SVR4 software-administration database** — the package install records used by `pkgadd`/`pkginfo` (and the `amixpkg` wrapper). Standard SVR4 location; this is where the system tracks what's installed. | 🟡 |
+| `/var/sadm` | **SVR4 software-administration database** — the package install records used by `pkgadd`/`pkginfo`. `install/contents` is the master installed-object DB; `pkg/<PKG>/` holds each package's metadata. Standard SVR4 location; where the system tracks what's installed (see [package management](../how-it-works/package-management.md)). | ✅ |
 | `/dev` | Device nodes (major/minor). E.g. `/dev/console` (char 0,0), `/dev/dsk/c0d0s1` (block 18), `/dev/par` (char 21), `/dev/fd0` (block 16). | ✅ |
 | `/etc/inittab` | `init` run-level config — controls the virtual consoles' `getty` lines and run levels. | ✅ |
 | `/unix` | The running kernel. **Always keep the old `/unix` as a fallback** before installing a rebuilt one. | ✅ |

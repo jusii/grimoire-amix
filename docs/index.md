@@ -55,6 +55,7 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 [Filesystems & disks](how-it-works/filesystems-and-disks.md) ·
 [Networking](how-it-works/networking.md) ·
 [X11 & desktop](how-it-works/x11-and-desktop.md) ·
+[Package management](how-it-works/package-management.md) ·
 [Quirks](how-it-works/quirks.md) ·
 [Emulation fidelity](how-it-works/emulation-fidelity.md) ·
 [Glossary](how-it-works/glossary.md)

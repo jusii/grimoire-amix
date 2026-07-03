@@ -23,7 +23,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 7 | **Y2K bugs**: `setclk` `%02d` year + kernel date cap at 1999 | ✅/🟡 | [Versions](../reference/versions.md), [Patch ADF anatomy](../boot-disks/anatomy-patch-adf.md) |
 | 8 | **SLIP is buggy** — reboot between sessions; no PPP at all | 🟡 | [Networking](networking.md) |
 | 9 | **X keymap is wrong**: y/z swapped, `/` is SHIFT-8 | 🟡 | [X11 & desktop](x11-and-desktop.md) |
-| 10 | **`amixpkg` is widely reported broken** (the wrapper, not `pkgadd`) | 🟡 | [Install walkthrough](../getting-started/install-walkthrough.md) |
+| 10 | **`amixpkg` is install-media-only, not an installed tool** — it drives the `root.adf` install; its "broken" reputation is partly the item below (the raw `pkgadd`/`pkgmk` tools *are* installed and work) | ✅/🟡 | [Package management](package-management.md), [Install walkthrough](../getting-started/install-walkthrough.md) |
 | 11 | **Clock drift** via SCSI interaction | 🟡 | [Networking](networking.md) |
 | 12 | **`/bin/sh` is pre-POSIX**: no `$(...)`, no `grep -q` | ✅ | [Driver model](../drivers/driver-model.md), [Writing a char driver](../drivers/writing-a-char-driver.md) |
 | 13 | **Enabling DNS adds ~3 min to every boot** unless the boot-time `ifconfig`s (`S69inet` `lo0`, `network-config` `aen0`) use **literal IPs** instead of hostnames | ✅ | [Networking](networking.md), [Networking on the LAN](../getting-started/networking-on-the-lan.md) |
@@ -31,6 +31,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 15 | **A board the 2.1 `bootinfo.autocon[]` table misses, registered via `autocon()` alone, silently never runs** — kernel banner, then a dead box (no panic, no I/O). Fix: multi-method detect (autocon → a chipset-gated fixed-base probe → a `probe=` fallback) | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md), [A4091](../drivers/a4091-53c710-driver.md) |
 | 16 | **On an emulated 68k, "boots then hangs" may be the *emulator*, not your driver** — the Z3660's 68k emulator faulted demand-paging the driver's own pages, while the driver carried every transfer byte-perfectly. Triage with serial instrumentation + core-dump analysis before blaming the driver | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md), [Emulation Fidelity](emulation-fidelity.md) |
 | 17 | **An emulator that batches instructions between interrupt polls can hang the A3000-SCSI bootstrap** — that bootstrap is INT2-driven; too-coarse interrupt-service cadence starves it and Amix hangs *before the banner*. Keep INT2 latency low through boot (on the Z3660, `service_cadence ≤ 4`) | 🟡 | [Emulation Fidelity](emulation-fidelity.md) |
+| 18 | **`pkgrm` and `pkginfo -l` fail out of the box on the stock 2.1c image** — one malformed `contents` record (a filename containing a space) aborts every full parse of the package DB (`bad read of contents file … unknown ftype`). Delete that one line to fix both | ✅ | [Package management](package-management.md#the-space-in-a-pathname-defect) |
 
 The rest of this page expands each item.
 
@@ -189,9 +190,29 @@ There are other X annoyances in the same family — `xload` crashes and the X11R
 
 ## Userland & packaging quirks
 
-### 10. `amixpkg` is flaky 🟡
+### 10. `amixpkg` is install-media-only, and its "broken" reputation is partly a data defect ✅/🟡
 
-The **`amixpkg` wrapper** around the SVR4 packaging tools is **widely reported to be broken** 🟡 — note this is the wrapper, not the underlying `pkgadd`/`pkgmk`/`pkgtrans`, which work. Despite the reputation, the official install path *does* drive it: the root-floppy installer runs `amixpkg -i -m -d -r /mnt -y standard` ✅. A related packaging gotcha: `pkgproto` omits symlinks 🟡. See [the install walkthrough](../getting-started/install-walkthrough.md).
+The **`amixpkg` wrapper** is **not present on the installed system at all** ✅ — it lives only on the
+`root.adf` install media, where it drives the whole distribution install (`amixpkg -i -m -d -r /mnt -y
+standard`) ✅ via the same `/var/sadm` machinery as `pkgadd`. So its long-standing "widely reported
+broken" reputation 🟡 is **not** about a flaky command you run day-to-day (you can't — it isn't
+installed); the raw SVR4 tools that *are* installed (`pkgadd`/`pkgrm`/`pkgmk`/`pkgtrans`/`pkginfo`)
+work. A large part of the "package tools are broken" lore is instead the concrete, reproducible defect
+in the next item. A separate build-side gotcha: `pkgproto` omits symlinks 🟡. Full internals on
+[package management](package-management.md); install flow in [the install walkthrough](../getting-started/install-walkthrough.md).
+
+### 18. The stock package database is corrupt out of the box ✅
+
+On a clean Amix 2.1c image, **`pkgrm <anything>` and `pkginfo -l <anything>` abort immediately** ✅
+with `ERROR: bad read of contents file … problem=unknown ftype`. The cause is a single malformed
+record in the `/var/sadm/install/contents` package database: an X11R5 font file **named with a space**
+(`…/MacFS/TrueType Fonts`). Because `contents(4)` is whitespace-delimited with no quoting, the parser
+ends the pathname at the space and reads the next word as the file-type field — which is invalid — so
+every tool that fully parses the database aborts ✅. Deleting that one line makes both `pkgrm` and
+`pkginfo -l` work again (and the DB is world-writable, so the fix needs no special privilege beyond
+root's normal access) ✅. This is a strong candidate for much of the "Amix package tools are broken"
+reputation (quirk 10). Full diagnosis and the fix on
+[package management](package-management.md#the-space-in-a-pathname-defect).
 
 ### 12. `/bin/sh` is pre-POSIX ✅
 
@@ -223,3 +244,4 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - The amix-z3660net project — the `z3660eth` driver bring-up on a real A4000 + Z3660, 2026-06-21 ✅: the firmware INT6-per-RX-frame storm (Amix has no level-6 ethernet handler) and the disable-IRQ/poll fix (`ZZ_CONFIG_DISABLE`, `timeout()` RX drain), diagnosed via the firmware serial `[PC]` heartbeat + `nm` of `relocunix` (quirk 14). See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
 - The amix-z3660scsi project @ `8ea1605` — the `z3660` piscsi block-driver bring-up on a real A4000 + Z3660, 2026-06-12/13 ✅: the 2.1 `bootinfo.autocon[]` miss and the multi-method detect that cleared the silent hang (quirk 15), and the firmware-emulator-vs-driver triage (quirk 16 — the apparent hang was the 68k emulator demand-paging the driver's own pages, not the driver; firmware-owned fix, cited not reproduced). See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 - Research brief §19 (emulation fidelity), from the Z3660 firmware project (branch `amix-main`, 2026-06) — quirk 17 (the A3000-SCSI bootstrap's INT2 sensitivity to interrupt-service cadence; the `service_cadence` knob ✅ / the 4-boots-8-hangs boundary 🟡) and the emulator-side mechanism behind quirk 16 (68030 bus-error-frame fidelity on the demand-paging path). See [Emulation Fidelity](emulation-fidelity.md).
+- Research brief §20 (stock SVR4 package system), from the amix-packagemanager project (firsthand on a clean Amix 2.1c image, 2026-07-01) — quirk 10's `amixpkg`-is-install-media-only correction ✅/🟡, and quirk 18 (the `/var/sadm/install/contents` space-in-pathname record that breaks `pkgrm`/`pkginfo -l` out of the box, ✅). See [Package management](package-management.md).

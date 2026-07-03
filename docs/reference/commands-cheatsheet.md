@@ -60,6 +60,14 @@ the install reboots.
 
 Amix ships the standard SVR4 packaging toolchain ✅. A package is a `datastream` or directory
 of files plus a `pkginfo`/`pkgmap`; you build with `pkgmk`/`pkgtrans` and install with `pkgadd`.
+For the on-disk internals — the `/var/sadm` database, the `contents(4)` record format, and a
+stock-image defect that breaks `pkgrm`/`pkginfo -l` out of the box — see
+[package management](../how-it-works/package-management.md).
+
+**Installed on the running system ✅:** `/usr/bin` has `pkginfo pkgmk pkgproto pkgparam pkgtrans`;
+`/usr/sbin` has `pkgadd pkgrm pkgchk installf` (`pkgadd`/`pkgrm`/`installf` are root-only, `r-x------`).
+**Not installed:** `pkgask`, `removef`, and `amixpkg` — the last lives only on the `root.adf` install
+media (see below). There are no `pkg*` man pages on the box (the man tree is Amiga-reorganised). ✅
 
 | Command | What it does | Tag |
 |---|---|---|
@@ -69,15 +77,19 @@ of files plus a `pkginfo`/`pkgmap`; you build with `pkgmk`/`pkgtrans` and instal
 | `pkgproto <paths> > Prototype` | Generate a prototype file from a file tree | ✅ |
 | `pkgmk -o -d <dir>` | Build a package (directory format) from a `Prototype` | ✅ |
 | `pkgtrans <src> <dest.pkg> <pkg>` | Convert a directory package to a single datastream file | ✅ |
-| `amixpkg -i -m -d <dev> -r /mnt -y standard` | Amix install-time package wrapper (used by the installer) | 🟡 |
+| `amixpkg -i -m -d <dev> -r /mnt -y standard` | Amix install-time package wrapper — **on the `root.adf` install media only, not the installed system** | 🟡 |
 
 **Gotchas.**
 - `pkgproto` **omits symbolic links** from the prototype 🟡 — add them back by hand or your
   package will be missing files.
-- The `amixpkg` wrapper is **widely reported broken** for general use 🟡, even though the
-  `root.adf` installer drives the whole distribution install through it
-  (`amixpkg -i -m -d … -r /mnt -y standard`) ✅. Prefer the raw `pkgadd`/`pkgmk` path for your
-  own packages.
+- **`amixpkg` isn't on the installed system** ✅ — it is the `root.adf` install-media wrapper that
+  drives the distribution install (`amixpkg -i -m -d … -r /mnt -y standard`) ✅, not a general-purpose
+  installed command. Its "widely reported broken" reputation 🟡 is at least partly explained by the
+  next item. For your own packages use the raw `pkgadd`/`pkgmk`/`pkgtrans` tools, which *are* installed.
+- **On the stock 2.1c image, `pkgrm` and `pkginfo -l` fail out of the box** ✅ — a single malformed
+  `contents` record (a file whose name contains a space) aborts every full parse of the package
+  database with `bad read of contents file … problem=unknown ftype`. Deleting that one line fixes both.
+  Full diagnosis and fix on the [package-management page](../how-it-works/package-management.md#the-space-in-a-pathname-defect).
 
 **Pre-built packages 🟡.** Michael Parson's **AmixBP** is 40+ re-bundled `.pkg` files hosted on
 [amigaunix.com/downloads](https://www.amigaunix.com/doku.php/downloads). An alternative
@@ -265,7 +277,8 @@ For the install in full, see the [install walkthrough](../getting-started/instal
   gotcha, AmixBP), §9 (install flow, tape `dd … | cpio` pipeline, `amixadm` finish, `viper_kludge`),
   §11 (networking: `aen0`, `route add default … 1`, DNS-enable steps, NFS/SLIP/PPP; userland shells
   and pre-POSIX `/bin/sh`), §12 (quirks: SCSI IDs, Y2K/`setclk`, DNS off by default), §13
-  (`rdbunix`/`relocunix` rename caveat).
+  (`rdbunix`/`relocunix` rename caveat), §20 (stock pkg-system internals — the installed toolset and
+  its three absences `pkgask`/`removef`/`amixpkg`, and the `contents`-DB space-in-pathname defect).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — `/dev/rmt/4hn`, `amixpkg -i -m -d -r /mnt -y standard`,
   `viper.README`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` (SCSI ID hard-coding).
 - `amix_21_patch.adf` analysis via `tools/inspect-adf.sh` — `uname -v` match `^2\.1.* 08004..$`,

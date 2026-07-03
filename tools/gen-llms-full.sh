@@ -19,6 +19,7 @@ order=(
   docs/how-it-works/filesystems-and-disks.md
   docs/how-it-works/networking.md
   docs/how-it-works/x11-and-desktop.md
+  docs/how-it-works/package-management.md
   docs/how-it-works/quirks.md
   docs/how-it-works/emulation-fidelity.md
   docs/how-it-works/glossary.md
