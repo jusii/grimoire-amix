@@ -16,7 +16,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [Kernel Architecture](docs/how-it-works/kernel-architecture.md): monolithic SVR4, /usr/sys, switch tables, MMU, STREAMS.
 - [Filesystems & Disk Layout](docs/how-it-works/filesystems-and-disks.md): RDB partitions, UFS vs s5, /dev disk naming.
 - [Networking](docs/how-it-works/networking.md): STREAMS TCP/IP, A2065, DNS-off default, NFS, SLIP.
-- [X11 & the Desktop](docs/how-it-works/x11-and-desktop.md): X11R4/R5, OpenLook, A2410 color, RTG.
+- [X11 & the Desktop](docs/how-it-works/x11-and-desktop.md): X11R4/R5, OpenLook, A2410 color, RTG (X11R5 + X11R6.3 generations, Mesa 3.1).
 - [Package Management](docs/how-it-works/package-management.md): the stock SVR4 pkg system — /var/sadm contents(4) DB, media formats, pkgadd mechanics, and a space-in-pathname defect that breaks pkgrm/pkginfo on the shipped image.
 - [Quirks & Gotchas](docs/how-it-works/quirks.md): the Amiga-port surprises.
 - [Emulation Fidelity](docs/how-it-works/emulation-fidelity.md): what a 68030/MMU/interrupt emulator must implement — format-$B bus-error frames, SCSI INT2 latency — or Amix's demand-paging boot fails, sometimes silently.
@@ -37,12 +37,15 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [Writing a Character Driver](docs/drivers/writing-a-char-driver.md): the Ditto par.c walkthrough.
 - [Writing a STREAMS/DLPI Driver](docs/drivers/writing-a-streams-driver.md): network drivers via hydra.
 - [Zorro II AUTOCONFIG for Drivers](docs/drivers/zorro-autoconfig.md): autocon(), board IDs, /dev/mem scanning.
-- [X11 RTG Graphics Drivers](docs/drivers/x11-rtg-drivers.md): the Xrtg server over a framebuffer driver.
+- [X11 RTG Graphics Drivers](docs/drivers/x11-rtg-drivers.md): an X server over a kernel framebuffer driver — two generations: Xrtg/VA2000 (X11R5) and Xzz9000/ZZ9000 (X11R6.3).
 - [Toolchain & Packaging](docs/drivers/toolchain.md): native cc/gcc + the gcc-cross-amix Linux cross-toolchain (m68k-cbm-sysv4), elf2brel, pkgadd.
 - [Case Study: va2000-amix](docs/drivers/case-studies/va2000.md): char framebuffer driver (MNT VA2000).
 - [Case Study: xrtg-amix](docs/drivers/case-studies/xrtg.md): X11R5 server for the VA2000.
 - [Case Study: lszorro-amix](docs/drivers/case-studies/lszorro.md): userspace Zorro II scanner.
 - [Case Study: hydra-amix](docs/drivers/case-studies/hydra.md): STREAMS/DLPI Ethernet driver.
+- [Case Study: zz9000-amix](docs/drivers/case-studies/zz9000.md): kernel framebuffer driver for the MNT ZZ9000 (Zorro II product 3; /dev/zz9000 char major 49) — mode setting, mmap, ioctl API, late-activated ANSI framebuffer console; the foundation of the X11R6.3 RTG stack.
+- [Case Study: x11r6.3-amix (Xzz9000)](docs/drivers/case-studies/x11r63-zz9000.md): an X11R6.3 port whose Xzz9000 server drives /dev/zz9000 through a card-generic RTG DDX layer; documents the native Amix shared-library ABI (ld -G -h runtime images + .sa stub archives, strict link order).
+- [Case Study: mesa-amix (Mesa 3.1)](docs/drivers/case-studies/mesa31.md): OpenGL on Amix — Mesa 3.1 software rendering via the Xlib driver against Xzz9000; static libGL/GLU/glut bootstrap, no server-side GLX.
 - [Case Study: A4091 / 53C710 SCSI driver](docs/drivers/a4091-53c710-driver.md): booting Amix from a Zorro III A4091 — the 68030 TT-gap obstacle, sptalloc, the 53C710 SCRIPTS driver, and chipset-gated auto-detection (emulation-proven).
 - [Case Study: Z3660 ethernet driver (zen0)](docs/drivers/z3660-ethernet-driver.md): native SVR4 STREAMS/DLPI driver for the Z3660 accelerator's onboard Zynq ethernet — the firmware frame-mailbox protocol, polled RX (no int2_tbl), the INT6 interrupt-storm fix; full bidirectional TCP/IP on real hardware (A4000 + Z3660, 2026-06).
 - [Case Study: Z3660 piscsi SCSI driver (z3660.c)](docs/drivers/z3660-scsi-driver.md): the Z3660's onboard "SCSI" is not a SCSI chip but the PiStorm piscsi register mailbox ported to its Zynq ARM — a ~5-poke synchronous block driver, the multi-method detect that cleared a silent hang, and the firmware-emulator bug that masqueraded as a driver hang; booted Amix multiuser with root on real hardware (A4000 + Z3660, 2026-06), first try.
@@ -67,4 +70,4 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 
 ## Optional
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home): the established community wiki (end-user/install/history).
-- [va2000-amix](https://github.com/asokero/va2000-amix), [xrtg-amix](https://github.com/asokero/xrtg-amix), [lszorro-amix](https://github.com/asokero/lszorro-amix), [hydra-amix](https://github.com/isoriano1968/hydra-amix), [gcc-cross-amix](https://github.com/isoriano1968/gcc-cross-amix) (Linux cross-toolchain): the modern Amix driver + toolchain repos this project documents.
+- [va2000-amix](https://github.com/asokero/va2000-amix), [xrtg-amix](https://github.com/asokero/xrtg-amix), [lszorro-amix](https://github.com/asokero/lszorro-amix), [hydra-amix](https://github.com/isoriano1968/hydra-amix), [zz9000-amix](https://github.com/isoriano1968/zz9000-amix), [x11r6.3-amix](https://github.com/isoriano1968/x11r6.3-amix), [mesa-amix](https://github.com/isoriano1968/mesa-amix), [gcc-cross-amix](https://github.com/isoriano1968/gcc-cross-amix) (Linux cross-toolchain): the modern Amix driver, graphics-stack, and toolchain repos this project documents.

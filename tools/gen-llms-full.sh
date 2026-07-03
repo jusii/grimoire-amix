@@ -41,6 +41,9 @@ order=(
   docs/drivers/case-studies/xrtg.md
   docs/drivers/case-studies/lszorro.md
   docs/drivers/case-studies/hydra.md
+  docs/drivers/case-studies/zz9000.md
+  docs/drivers/case-studies/x11r63-zz9000.md
+  docs/drivers/case-studies/mesa31.md
   docs/drivers/a4091-53c710-driver.md
   docs/drivers/z3660-ethernet-driver.md
   docs/drivers/z3660-scsi-driver.md

@@ -16,11 +16,12 @@ This page covers the historical X11 environment, how to bring up color on the A2
 
 | Layer | Historical Amix | Modern RTG reproduction |
 |---|---|---|
-| X server | `X` (mono) / `olinit -- -tiga` color via A2410 TIGA 🟡 | `Xrtg` (X11R5 DDX) ✅ |
-| Display HW | Built-in mono framebuffer; **A2410** "Lowell" TMS34010, 1024×768 color ✅ | Zorro II RTG card, e.g. MNT VA2000 ✅ |
+| X server | `X` (mono) / `olinit -- -tiga` color via A2410 TIGA 🟡 | `Xrtg` (X11R5 DDX) ✅ · `Xzz9000` (X11R6.3 DDX) ✅ |
+| Display HW | Built-in mono framebuffer; **A2410** "Lowell" TMS34010, 1024×768 color ✅ | Zorro II RTG card: MNT VA2000 (Xrtg) or MNT ZZ9000 (Xzz9000) ✅ |
 | Window manager | OpenLook `olwm` + `olwsm`; `tvtwm` on mono 🟡 | any (`olwm`, `twm`, …) |
-| X release | X11R4 default 🟡; X11R5 via *Gateway! Vol.2* 🟡 | X11R5 (the `Xrtg` server is R5) ✅ |
-| Fonts | needs the **Xol** OpenLook font set 🟡 | inherited from the X11R5 build |
+| X release | X11R4 default 🟡; X11R5 via *Gateway! Vol.2* 🟡 | X11R5 (`Xrtg`) ✅; **X11R6.3** (`Xzz9000`, installs to `/usr/x11r6` alongside R4/R5) ✅ |
+| Fonts | needs the **Xol** OpenLook font set 🟡 | inherited from the X11R5/R6.3 build |
+| OpenGL | — | Mesa 3.1 software rendering (Xlib driver) on the R6.3 stack, bootstrap stage ✅ |
 
 ## Which version of X?
 
@@ -124,11 +125,33 @@ olwm &
 - Getting the VA2000 driver into the kernel (the 6 patched kernel files, `mknod /dev/va2000 c 68 0`, `make install` → `relocunix`, `make bootpart KERNEL=relocunix`, reboot) is covered in the [VA2000 case study](../drivers/case-studies/va2000.md) and [kernel build](../drivers/kernel-build.md) ✅.
 - **Licensing:** the new code is MIT-licensed; the X11R5 portions retain X Consortium terms; both repos are **source-only** because they link against a licensed Amix SVR4 environment ✅.
 
+### The newer generation: X11R6.3 on the ZZ9000 (+ Mesa)
+
+A **second RTG stack** exists as of 2026-07 ✅ (brief §21), following the same recipe on a newer X
+release and a newer MNT card:
+
+1. **[`zz9000-amix`](../drivers/case-studies/zz9000.md)** — kernel framebuffer driver for the MNT
+   **ZZ9000** (Zorro II product 3): `/dev/zz9000`, **char major 49 minor 0**, mode setting up to
+   1920×800 RGB565, plus an optional late-activated ANSI framebuffer console ✅.
+2. **[`x11r6.3-amix`](../drivers/case-studies/x11r63-zz9000.md)** — an **X11R6.3** port whose server
+   `Xzz9000` draws into that framebuffer; installs under `/usr/x11r6` and coexists with the stock
+   X11R4/R5 ✅. It also documents the native Amix **shared-library ABI** (`ld -G -h` runtime images +
+   `.sa` stub archives) that dynamic Xt clients need ✅.
+3. **[`mesa-amix`](../drivers/case-studies/mesa31.md)** — **Mesa 3.1** software OpenGL (Xlib driver)
+   rendering through `Xzz9000` — no server-side GLX required; bootstrap stage (static
+   `libGL`/`libGLU`/`libglut` + demos) ✅.
+
+Status ✅ (author-reported, A3000UX + ZZ9000): `Xzz9000` builds with GCC 2.7.2.3, links, and starts a
+`twm`/`xterm`/`xclock` session at 1920×800; it is explicitly development software. The historical
+desktop notes on this page (OpenLook, Xol fonts, keymap quirks) apply to the *stock* servers — the
+R6.3 test session uses `twm` from its own tree ✅.
+
 ## See also
 
 - [X11 / RTG driver development](../drivers/x11-rtg-drivers.md) — how the DDX/RTG layers fit together.
 - [`xrtg-amix` case study](../drivers/case-studies/xrtg.md) — the X11R5 `Xrtg` server in detail.
 - [`va2000-amix` case study](../drivers/case-studies/va2000.md) — the framebuffer driver `Xrtg` sits on.
+- [`x11r6.3-amix` case study](../drivers/case-studies/x11r63-zz9000.md) · [`zz9000-amix`](../drivers/case-studies/zz9000.md) · [`mesa-amix`](../drivers/case-studies/mesa31.md) — the X11R6.3 / ZZ9000 / Mesa generation.
 - [Quirks checklist](quirks.md) — the full list of Amix gotchas, including the X keymap issues.
 - [Hardware](hardware.md) — the A2410 board and Zorro II constraints.
 - [Networking](networking.md) — the other big SVR4 subsystem (STREAMS TCP/IP, NFS).
@@ -141,4 +164,5 @@ olwm &
 - `sources/research-brief.md` §6 — `asokero/xrtg-amix` and `asokero/va2000-amix` repo facts (Xrtg DDX layering, RGB565/resolutions, `/dev/va2000` char major 68, imake/amix.cf build, MIT + X Consortium licensing).
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — X11R5 `Xrtg` server source (DDX `ddx/amix/`, RTG layer).
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — VA2000 framebuffer driver source.
+- `sources/research-brief.md` §21 — the X11R6.3 / ZZ9000 / Mesa 3.1 stack: [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix), [`isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix), [`isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) (repo source/READMEs, 2026-07-03).
 - [amigaunix.com — X11](https://www.amigaunix.com/doku.php/x11) — community-reported R4/R5, TIGA, OpenLook, and keymap quirks (🟡).

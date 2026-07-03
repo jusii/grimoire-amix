@@ -88,6 +88,9 @@ nav:
       - "Case study: xrtg": drivers/case-studies/xrtg.md
       - "Case study: lszorro": drivers/case-studies/lszorro.md
       - "Case study: hydra": drivers/case-studies/hydra.md
+      - "Case study: zz9000": drivers/case-studies/zz9000.md
+      - "Case study: x11r6.3 (Xzz9000)": drivers/case-studies/x11r63-zz9000.md
+      - "Case study: mesa 3.1": drivers/case-studies/mesa31.md
       - "Case study: A4091 / 53C710 SCSI": drivers/a4091-53c710-driver.md
       - "Case study: Z3660 ethernet (zen0)": drivers/z3660-ethernet-driver.md
       - "Case study: Z3660 piscsi SCSI": drivers/z3660-scsi-driver.md

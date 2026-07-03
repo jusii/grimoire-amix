@@ -1069,11 +1069,12 @@ This page covers the historical X11 environment, how to bring up color on the A2
 
 | Layer | Historical Amix | Modern RTG reproduction |
 |---|---|---|
-| X server | `X` (mono) / `olinit -- -tiga` color via A2410 TIGA 🟡 | `Xrtg` (X11R5 DDX) ✅ |
-| Display HW | Built-in mono framebuffer; **A2410** "Lowell" TMS34010, 1024×768 color ✅ | Zorro II RTG card, e.g. MNT VA2000 ✅ |
+| X server | `X` (mono) / `olinit -- -tiga` color via A2410 TIGA 🟡 | `Xrtg` (X11R5 DDX) ✅ · `Xzz9000` (X11R6.3 DDX) ✅ |
+| Display HW | Built-in mono framebuffer; **A2410** "Lowell" TMS34010, 1024×768 color ✅ | Zorro II RTG card: MNT VA2000 (Xrtg) or MNT ZZ9000 (Xzz9000) ✅ |
 | Window manager | OpenLook `olwm` + `olwsm`; `tvtwm` on mono 🟡 | any (`olwm`, `twm`, …) |
-| X release | X11R4 default 🟡; X11R5 via *Gateway! Vol.2* 🟡 | X11R5 (the `Xrtg` server is R5) ✅ |
-| Fonts | needs the **Xol** OpenLook font set 🟡 | inherited from the X11R5 build |
+| X release | X11R4 default 🟡; X11R5 via *Gateway! Vol.2* 🟡 | X11R5 (`Xrtg`) ✅; **X11R6.3** (`Xzz9000`, installs to `/usr/x11r6` alongside R4/R5) ✅ |
+| Fonts | needs the **Xol** OpenLook font set 🟡 | inherited from the X11R5/R6.3 build |
+| OpenGL | — | Mesa 3.1 software rendering (Xlib driver) on the R6.3 stack, bootstrap stage ✅ |
 
 ## Which version of X?
 
@@ -1177,11 +1178,33 @@ olwm &
 - Getting the VA2000 driver into the kernel (the 6 patched kernel files, `mknod /dev/va2000 c 68 0`, `make install` → `relocunix`, `make bootpart KERNEL=relocunix`, reboot) is covered in the [VA2000 case study](../drivers/case-studies/va2000.md) and [kernel build](../drivers/kernel-build.md) ✅.
 - **Licensing:** the new code is MIT-licensed; the X11R5 portions retain X Consortium terms; both repos are **source-only** because they link against a licensed Amix SVR4 environment ✅.
 
+### The newer generation: X11R6.3 on the ZZ9000 (+ Mesa)
+
+A **second RTG stack** exists as of 2026-07 ✅ (brief §21), following the same recipe on a newer X
+release and a newer MNT card:
+
+1. **[`zz9000-amix`](../drivers/case-studies/zz9000.md)** — kernel framebuffer driver for the MNT
+   **ZZ9000** (Zorro II product 3): `/dev/zz9000`, **char major 49 minor 0**, mode setting up to
+   1920×800 RGB565, plus an optional late-activated ANSI framebuffer console ✅.
+2. **[`x11r6.3-amix`](../drivers/case-studies/x11r63-zz9000.md)** — an **X11R6.3** port whose server
+   `Xzz9000` draws into that framebuffer; installs under `/usr/x11r6` and coexists with the stock
+   X11R4/R5 ✅. It also documents the native Amix **shared-library ABI** (`ld -G -h` runtime images +
+   `.sa` stub archives) that dynamic Xt clients need ✅.
+3. **[`mesa-amix`](../drivers/case-studies/mesa31.md)** — **Mesa 3.1** software OpenGL (Xlib driver)
+   rendering through `Xzz9000` — no server-side GLX required; bootstrap stage (static
+   `libGL`/`libGLU`/`libglut` + demos) ✅.
+
+Status ✅ (author-reported, A3000UX + ZZ9000): `Xzz9000` builds with GCC 2.7.2.3, links, and starts a
+`twm`/`xterm`/`xclock` session at 1920×800; it is explicitly development software. The historical
+desktop notes on this page (OpenLook, Xol fonts, keymap quirks) apply to the *stock* servers — the
+R6.3 test session uses `twm` from its own tree ✅.
+
 ## See also
 
 - [X11 / RTG driver development](../drivers/x11-rtg-drivers.md) — how the DDX/RTG layers fit together.
 - [`xrtg-amix` case study](../drivers/case-studies/xrtg.md) — the X11R5 `Xrtg` server in detail.
 - [`va2000-amix` case study](../drivers/case-studies/va2000.md) — the framebuffer driver `Xrtg` sits on.
+- [`x11r6.3-amix` case study](../drivers/case-studies/x11r63-zz9000.md) · [`zz9000-amix`](../drivers/case-studies/zz9000.md) · [`mesa-amix`](../drivers/case-studies/mesa31.md) — the X11R6.3 / ZZ9000 / Mesa generation.
 - [Quirks checklist](quirks.md) — the full list of Amix gotchas, including the X keymap issues.
 - [Hardware](hardware.md) — the A2410 board and Zorro II constraints.
 - [Networking](networking.md) — the other big SVR4 subsystem (STREAMS TCP/IP, NFS).
@@ -1194,6 +1217,7 @@ olwm &
 - `sources/research-brief.md` §6 — `asokero/xrtg-amix` and `asokero/va2000-amix` repo facts (Xrtg DDX layering, RGB565/resolutions, `/dev/va2000` char major 68, imake/amix.cf build, MIT + X Consortium licensing).
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — X11R5 `Xrtg` server source (DDX `ddx/amix/`, RTG layer).
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — VA2000 framebuffer driver source.
+- `sources/research-brief.md` §21 — the X11R6.3 / ZZ9000 / Mesa 3.1 stack: [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix), [`isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix), [`isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) (repo source/READMEs, 2026-07-03).
 - [amigaunix.com — X11](https://www.amigaunix.com/doku.php/x11) — community-reported R4/R5, TIGA, OpenLook, and keymap quirks (🟡).
 
 
@@ -4687,7 +4711,7 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 
 ---
 title: X11 RTG Graphics Drivers
-summary: Retargetable graphics on Amix — the Xrtg X11R5 server architecture layered over a kernel framebuffer driver such as /dev/va2000.
+summary: Retargetable graphics on Amix — an X server layered over a kernel framebuffer driver; two generations exist, the X11R5 Xrtg/VA2000 pairing and the X11R6.3 Xzz9000/ZZ9000 pairing.
 status: draft
 ---
 
@@ -4704,6 +4728,12 @@ This page explains the RTG concept, walks the full layered stack from X clients 
 shows how the server is built with `imake` and a custom `config/amix.cf`, and describes how mouse and keyboard
 input reach the server through the AMIX screen manager. RTG on Amix is a **two-part build**: you need the
 [`va2000` kernel driver](case-studies/va2000.md) working *first*, then the `Xrtg` server on top of it ✅.
+
+**Two generations of this pairing now exist** ✅: the X11R5 `Xrtg` + VA2000 stack this page walks through, and
+a newer **X11R6.3** port whose server `Xzz9000` drives the MNT **ZZ9000** through
+[`/dev/zz9000` (char major 49)](case-studies/zz9000.md) — same architecture, newer X release, and a
+card-generic `rtg/` DDX layer. See [the second generation](#the-second-generation-x11r63-xzz9000-zz9000)
+below.
 
 > **Confidence note.** Everything specific to `Xrtg`/`va2000` on this page is ✅ — it comes from the
 > repository source and READMEs (brief §6). Historical X11 context (X11R4 vs R5, OpenLook, TIGA) is
@@ -4872,9 +4902,35 @@ Once `Xrtg` is up you run an ordinary X session against it — e.g. an `xterm` a
 historical desktop environment (OpenLook `olwm`/`olwsm`, `tvtwm`, the X11R5 font-path gotcha), see
 [X11 & the Desktop](../how-it-works/x11-and-desktop.md) 🟡.
 
+## The second generation: X11R6.3 + Xzz9000 + ZZ9000
+
+In 2026 the same author as [hydra-amix](case-studies/hydra.md) published a **second, newer RTG stack**
+following the identical two-part recipe ✅ (brief §21):
+
+| Layer | First generation (this page) | Second generation |
+|---|---|---|
+| X release | X11R5 | **X11R6.3** (pristine x.org sources + overlay) |
+| Server binary | `Xrtg` | **`Xzz9000`** |
+| Card | MNT VA2000 | MNT **ZZ9000** (Zorro II product 3) |
+| Kernel driver | [`va2000`](case-studies/va2000.md), char 68 | [`zz9000`](case-studies/zz9000.md), **char 49** |
+| DDX card seam | `ddx/amix/rtg/va2000/` | `hw/amix/rtg/zz9000/` — an explicitly **card-generic `rtg/` layer** |
+| Drawing | VA2000 hardware blitter fills/copies | **CPU into the `mmap()`'d framebuffer** (kernel blit ioctls exist but are unused) |
+| Extra | — | documented native **shared-library ABI** (`ld -G -h` + `.sa` stubs); [Mesa 3.1](case-studies/mesa31.md) software GL on top |
+
+The architectural lesson carries over unchanged: **kernel char framebuffer driver at a free major +
+a card-specific backend under the server's `rtg/` directory**. The R6.3 tree makes the seam explicit —
+its `rtg/` layer is written so that *"each card provides its own header … and installs its drawing
+functions into the ScreenRec directly"* ✅ — which is exactly where a backend for another RTG-capable
+board (for example a future **Z3660 RTG** pairing) would plug in. Full detail:
+[x11r6.3-amix case study](case-studies/x11r63-zz9000.md) and the
+[zz9000-amix case study](case-studies/zz9000.md).
+
 ## See also
 - [`xrtg-amix` case study](case-studies/xrtg.md) — deep dive on the `Xrtg` server repo.
 - [`va2000` case study](case-studies/va2000.md) — the kernel framebuffer driver `Xrtg` requires.
+- [`x11r6.3-amix` case study](case-studies/x11r63-zz9000.md) — the X11R6.3 `Xzz9000` server (second generation).
+- [`zz9000-amix` case study](case-studies/zz9000.md) — the ZZ9000 kernel framebuffer driver (char 49).
+- [`mesa-amix` case study](case-studies/mesa31.md) — Mesa 3.1 software GL on the R6.3 stack.
 - [X11 & the Desktop](../how-it-works/x11-and-desktop.md) — historical X11R4/R5, OpenLook, A2410 TIGA, quirks.
 - [The Amix driver model](driver-model.md) — `cdevsw[]`, char vs block, statically-linked drivers.
 - [Writing a char driver](writing-a-char-driver.md) — the char-driver pattern the va2000 framebuffer follows.
@@ -4885,6 +4941,7 @@ historical desktop environment (OpenLook `olwm`/`olwsm`, `tvtwm`, the X11R5 font
 - Research brief [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`asokero/xrtg-amix` and `asokero/va2000-amix` repo facts) and §11 (X11 / RTG path).
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — README and source tree (`ddx/amix/`, `ddx/amix/rtg/`, `ddx/amix/rtg/va2000/`, `config/amix.cf`); X11R5 / `imake` build; `BuildPex=NO`; `OpenScreen()` / `SIOCACTIVATE` input; TrueColor RGB565; MIT (new code) + X Consortium (X11R5) licensing.
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — README and source; `/dev/va2000` char major 68 minor 0; RTG screen type patched into `amiga/console/{scrdev.c,c0.c,screen.c}`; `relocunix` relink + `make bootpart`.
+- Research brief §21 — the second-generation stack: [`isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix) (`Xzz9000`, card-generic `hw/amix/rtg/` layer) + [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) (`/dev/zz9000` char 49) + [`isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) (Mesa 3.1).
 - amigaunix.com — historical X11 context cross-referenced in [X11 & the Desktop](../how-it-works/x11-and-desktop.md) (🟡 community-reported).
 
 
@@ -5732,6 +5789,495 @@ If you are writing another NE2000/DP8390-class or Zorro II network driver for Am
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §11 (networking: SVR4 STREAMS TCP/IP, `aen0`) and §5 (driver model: `cdevsw`, STREAMS, `int2_tbl[]`). ✅
 - [vjouppi/hydra](https://github.com/vjouppi/hydra) — Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics), cited by the hydra-amix README. ✅
 - AT&T SVR4 *Streams Programmer's Guide* / *Network Programmer's Guide* and the DLPI specification (for the `DL_*` primitives), as cited in the Ditto paper. ✅
+
+
+================================================================================
+# FILE: docs/drivers/case-studies/zz9000.md
+================================================================================
+
+---
+title: "Case Study: zz9000-amix"
+summary: A kernel framebuffer driver for the MNT ZZ9000 (Zorro II product 3) — /dev/zz9000 char major 49, mode setting, mmap, ioctl API, and a late-activated ANSI framebuffer console.
+status: draft
+---
+
+# Case Study: zz9000-amix
+
+[`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) is an Amix **kernel
+framebuffer/mode driver** for the MNT **ZZ9000** graphics card, published 2026-07-03 (v0.1.0) by the
+`hydra-amix` author ✅. It exposes the card as **`/dev/zz9000` (char major 49, minor 0)** with mode
+setting, `mmap()` framebuffer access, an ioctl API, and an optional **kernel framebuffer console**
+with an ANSI escape parser ✅. It is the hardware foundation the ZZ9000 **X11R5 and
+[X11R6.3](x11r63-zz9000.md) RTG servers** sit on ✅.
+
+Everything on this page is ✅ from the repository source and README at the initial release
+(`75e2449`; brief §21) unless tagged otherwise. Hardware results (target machine **A3000UX**,
+tested primary mode **1920×800** RGB565) are the **author's reports** on his own hardware — not yet
+reproduced on this project's bench.
+
+## At a glance
+
+| Property | Value | Tag |
+|---|---|---|
+| Repo | [`github.com/isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) | ✅ |
+| Card | MNT **ZZ9000**, configured as **Zorro II product 3** (mfr `0x6d6e`) | ✅ |
+| Device | `/dev/zz9000`, **char major 49 minor 0** | ✅ |
+| Discovery | `autocon(0x6d6e0003)` + register sanity check; boot-time `init_tbl[]` probe | ✅ |
+| Framebuffer | board + `0x10000`; RGB565 primary (8/15/16/32-bit modes defined) | ✅ |
+| Tested mode | **1920×800** RGB565 (author-reported, A3000UX) | ✅ |
+| Acceleration | fill/copy ioctls are **CPU loops**; blitter code present but unwired in 0.1.0 | ✅ |
+| Console | optional 1920×800 ANSI framebuffer console, activated **late** via `/etc/rc2.d/S99zz9000` | ✅ |
+| Excluded | ZZ9000 USB and **ethernet** (not in this release); Zorro III product 4 rejected | ✅ |
+| License | MIT (source-only; builds in a licensed Amix `/usr/sys` tree) | ✅ |
+
+## Zorro II product 3 only — the Zorro III identity is rejected
+
+Amix has **no Zorro III bus support**, so the driver only binds the ZZ9000's **Zorro II identity**:
+manufacturer `0x6d6e` (MNT), product **3** ✅. If `autocon()` instead reports the **Zorro III
+product 4** (`0x6d6e0004`), the driver logs the board as unsupported and tells you to
+**reconfigure the card as Zorro II product 3** ✅. (The diagnostic tool still *detects* the Zorro III
+identity, so you can see what the card is currently configured as ✅.)
+
+Probe order at `zz9000init()` (wired into `init_tbl[]`) ✅:
+
+1. `autocon(0x6d6e0003, unit, &base, &size)` — the standard bootinfo lookup (see
+   [Zorro II AUTOCONFIG](../zorro-autoconfig.md)).
+2. A **presence sanity check** on the mapped registers: the hardware-version register (`0x00`) and
+   firmware-version register (`0xc0`) must not both read `0`/`0xffff`.
+3. Attach; warn if firmware is older than `0x010d`.
+
+## The board window
+
+From `zz9000.h` ✅:
+
+```text
+board + 0x0000 … 0x1FFF   registers (ZZ9K_REG_SIZE 0x2000)
+board + 0x10000 …         framebuffer (ZZ9K_FB_OFFSET)
+                          fb_size = board_size − 0x10000 − 0x20000
+                          (0x20000 = reserved Zorro II tail)
+```
+
+Key registers: `MODE 0x02` (packs `mode | color_mode<<8 | scale_mode<<12`), `CONFIG 0x04`, 32-bit
+pan at `0x0a/0x0c`, `VCAP_MODE 0x0e`, `VBLANK_STATUS 0x4c`, `FW_VERSION 0xc0`; a blitter register
+block at `0x10–0x5e`; the capture/CX block at `0x1000–0x1006` ✅. The mode table defines **18 mode
+IDs** (0–17) from 640×400 up to 2560×1440p30; `1920x800` is ID 17 and the author's tested primary ✅.
+Color modes: 8-bit (0), **RGB565 (1)**, 32-bit (2), 15-bit (3) ✅.
+
+## The driver API
+
+A classic statically-linked SVR4 char driver (see [the driver model](../driver-model.md)): `open`,
+`close`, `read`/`write` (`uiomove()` across the whole board window), **`mmap`**
+(`phystopfn(base + offset)` — the same page-frame pattern as [va2000](va2000.md)), and an ioctl set
+in group `'Z'<<8` ✅:
+
+| ioctl | # | Purpose |
+|---|---|---|
+| `ZZ9KIOC_GETINFO` | 1 | Board info: base, sizes, hw/fw version, current geometry |
+| `ZZ9KIOC_SETMODE` | 2 | Set mode by width/height + color mode (validates against `fb_size`) |
+| `ZZ9KIOC_SETPAN` | 3 | Set the 32-bit display pan offset |
+| `ZZ9KIOC_SETSWITCH` | 4 | **RTG (1)** vs native-video **capture pass-through (0)** |
+| `ZZ9KIOC_FILL` | 5 | Byte-fill a framebuffer range (used by X to clear) |
+| `ZZ9KIOC_GETREG` / `SETREG` | 6/7 | Raw 16-bit register peek/poke (offset < `0x2000`, even) |
+| `ZZ9KIOC_GETAUTOCON` | 8 | Dump the kernel's `bootinfo.autocon[]` table (16 entries) |
+| `ZZ9KIOC_PROBE` | 9 | (Re)probe the board; `ENXIO` if absent |
+| `ZZ9KIOC_CONSOLE` | 10 | Console control: enable / disable / redirect / test |
+| `ZZ9KIOC_GETFBINFO` | 11 | Framebuffer geometry + stride + RGB masks/shifts (what the X DDX consumes) |
+| `ZZ9KIOC_FILLRECT` / `COPYRECT` | 12/13 | Rectangle fill / overlap-safe copy — **CPU loops**, RGB565 only |
+
+`SETSWITCH` is how the single HDMI output is shared: **capture** (0) passes the native Amiga video
+through (restoring pan `0x00e00000`), **RTG** (1) shows the ZZ9000 framebuffer ✅.
+
+> **Acceleration status.** The driver *contains* blitter code (`zz9k_blit_fill`/`zz9k_blit_copy`
+> writing the `0x10–0x5e` block), but in v0.1.0 **no ioctl path calls it** — `FILLRECT`/`COPYRECT`
+> are bounds-checked CPU loops, and the [X11R6.3 server](x11r63-zz9000.md) draws purely into the
+> `mmap()`'d framebuffer anyway ✅. Hardware acceleration is scaffolded, not wired.
+
+## The framebuffer console — and why it activates late
+
+The driver includes a **kernel-mode color console** on the ZZ9000: 1920×800 RGB565, with an
+**ANSI/CSI escape parser** (cursor movement `A/B/C/D/H/f`, clears `J/K`, SGR `0/1/7/30–37/40–47`
+over an 8-color RGB565 palette), rendered with Amix's own console font (`builtinfont[0]`, magic
+`0x2a46` — the Makefile links `amiga/console/sunfont.o` into the driver) with a 5×7 built-in
+fallback ✅.
+
+The **safety model** is the page's most instructive lesson ✅: earlier experiments that took over the
+console **before** the native Amix console was initialized *could stop the machine before
+filesystems or networking came up*. The supported design therefore never touches the boot console —
+redirect is activated **after** normal startup by a SysV init script:
+
+```sh
+# /etc/rc2.d/S99zz9000 — late console redirect (installed by `make install-rc`)
+/etc/rc2.d/S99zz9000 start    # zz9k_test /dev/zz9000 redirect
+/etc/rc2.d/S99zz9000 stop     # back to the native HDMI capture path
+```
+
+The optional kernel-side hook is two lines in `c1write()` (`integration/c1-console.txt`), gated on
+**`sp == displayedscreen`** — without that test, output from *every* Amix virtual terminal is
+funneled into the same framebuffer console ✅. For **X11 use, neither the hook nor the init script is
+needed** — the X server talks to `/dev/zz9000` directly ✅.
+
+## Building and installing
+
+The repo is an **overlay**: `install-source.sh [prefix]` copies the self-contained subtree to
+`/usr/sys/amiga/driver/zz9000` without rewriting any Amix kernel file; the kernel integration is
+three small documented edits ✅ (`integration/`):
+
+1. `master.d/kernel.c` — `extern void zz9000init();` + `zz9000init,` in `init_tbl[]`, extern decls,
+   and a `cdevsw[49]` row (`zz9000open,…,zz9000ioctl, zz9000mmap, …`).
+2. `amiga/driver/Makefile` — add `zz9000/exp` to `OBJ` plus build/clean rules.
+3. *(optional)* `amiga/console/c1.c` — the displayed-VT console hook above.
+
+```sh
+sh install-source.sh                     # copy the subtree into /usr/sys
+# apply the integration/ edits, then:
+cd /usr/sys/amiga/driver/zz9000 && make  # gcc -O -traditional … ; ld -r → exp
+cd /usr/sys && make force                # relink the kernel (see kernel-build)
+sh /usr/sys/amiga/driver/zz9000/mkdev.sh # mknod /dev/zz9000 c 49 0
+make install-tools                       # zz9k_test, colorls, … → /usr/amiga/bin
+/usr/amiga/bin/zz9k_test /dev/zz9000 16 1920x800   # verify: mfr 0x6d6e, product 0x03
+```
+
+> ⚠ **Major 49 is a convention of the author's tree, not a registry.** His development kernel uses
+> **47 hydra, 48 `random`, 49 zz9000, 50 `sad`** — while this project's family puts
+> [`z3660eth`/`zen0` at 48](../z3660-ethernet-driver.md) ✅. Community drivers self-assign free
+> `cdevsw[]` slots, so **collisions between community trees are real**; INSTALL.md itself says to
+> verify 49 is free in *your* `kernel.c` before wiring it (see
+> [the device list](../../reference/device-list.md)).
+
+The tools are worth a look: `zz9k_test` is the all-in-one diagnostic (board report, autocon dump,
+mode tests, `blit`, and the console subcommands `console`/`consoletest`/`redirect`/`noconsole`), and
+`colorls` is an `LS_COLORS`-driven color `ls` to show the ANSI console off ✅.
+
+## What this release does not do
+
+- **No ZZ9000 ethernet** — the card has one, but this release covers graphics + console only ✅.
+  (For Amix networking today see [hydra](hydra.md) and the
+  [Z3660 ethernet driver](../z3660-ethernet-driver.md).)
+- **No USB** ✅.
+- **No Zorro III operation** — by design, as above ✅.
+
+## See also
+
+- [Case study: x11r6.3-amix (`Xzz9000`)](x11r63-zz9000.md) — the X11R6.3 server on top of this driver.
+- [Case study: mesa-amix](mesa31.md) — Mesa 3.1 software GL against that X server.
+- [Case study: va2000-amix](va2000.md) — the earlier MNT framebuffer driver this one parallels.
+- [X11 / RTG driver development](../x11-rtg-drivers.md) — the general kernel-driver + RTG-server pairing.
+- [The Amix device-driver model](../driver-model.md) · [Kernel build](../kernel-build.md) ·
+  [Zorro II AUTOCONFIG](../zorro-autoconfig.md).
+- [Device & card reference](../../reference/device-list.md) — the major-number table (and the 48/49 collision note).
+
+## Sources
+
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §21 — `isoriano1968/zz9000-amix` @ `75e2449` (v0.1.0, 2026-07-03).
+- [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) — `overlay/usr/sys/amiga/driver/zz9000/zz9000.{c,h}` (probe/attach, register map, ioctls, console, blitter scaffolding), `integration/{kernel.c,amiga-driver-Makefile,c1-console}.txt`, `INSTALL.md`, `README.md` (safety model, hardware scope), `CHANGELOG.md`, `tools/`, `init/S99zz9000`.
+- [MNT ZZ9000 drivers & hardware definitions](https://github.com/BlitterStudio/zz9000-drivers) — the upstream register/mode reference cited by the companion `x11r6.3-amix` README (🟡 not independently cross-checked here).
+
+
+================================================================================
+# FILE: docs/drivers/case-studies/x11r63-zz9000.md
+================================================================================
+
+---
+title: "Case Study: x11r6.3-amix (Xzz9000)"
+summary: An X11R6.3 port for Amix — the Xzz9000 server over /dev/zz9000, a card-generic RTG DDX layer, and the documented native shared-library ABI (.so via ld -G -h, .sa stub archives, strict link order).
+status: draft
+---
+
+# Case Study: x11r6.3-amix (`Xzz9000`)
+
+[`isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix) is an independent
+**X11R6.3 port to Amix**, published 2026-07-03, whose server binary **`Xzz9000`** drives the MNT
+ZZ9000 through the [`zz9000-amix` kernel driver](zz9000.md) at `/dev/zz9000` ✅. It is the
+generational successor to the [X11R5 `Xrtg`](xrtg.md) work: a newer X release, a **card-generic RTG
+DDX layer** designed for more cards than the ZZ9000, and — the part with value far beyond graphics —
+the first public write-up of the **native Amix shared-library ABI** that any dynamically-linked
+Amix program must obey ✅.
+
+Facts are ✅ from the repo source/READMEs at `43383c5` (brief §21). Runtime results are the
+**author's reports** (A3000UX + ZZ9000): the server **builds with GCC 2.7.2.3, links, and starts at
+16-bit modes including 1920×800**, with dynamic `xclock`/`xterm`/`twm` as the validation targets ✅.
+This is explicitly **development software**; it installs under `/usr/x11r6` and coexists with the
+stock X11R4/R5 ✅.
+
+## At a glance
+
+| Property | Value | Tag |
+|---|---|---|
+| Repo | [`github.com/isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix) | ✅ |
+| X release | **X11R6.3** (the three official `xc-{1,2,3}.tar.gz` from x.org) | ✅ |
+| Server binary | **`Xzz9000`** (DIX + mfb + cfb + cfb16 + `hw/amix` DDX) | ✅ |
+| Visual | TrueColor **RGB565**, 16-bit; software cursor | ✅ |
+| Modes | 640×480 … **1920×800** (default), `-mode` flag / `ZZ9K_MODE` env | ✅ |
+| Kernel dependency | [`zz9000-amix`](zz9000.md) — `/dev/zz9000` (char 49) | ✅ |
+| Compiler | native **GCC 2.7.2.3** + GNU cpp at `/usr/public/lib/gcc-cpp` | ✅ |
+| Shared libraries | **native Amix model**: `gcc -fpic` + `ld -G -h`, `.sa` stub archives | ✅ |
+| MIT-SHM | **disabled** (`HasShm NO`) — author found it unsafe on Amix | ✅ |
+| Install root | `/usr/x11r6` (does not replace X11R4/R5) | ✅ |
+| Distribution | **overlay-only**: `install.sh` fetches + SHA-256-verifies pristine X11R6.3, then applies `overlay/xc` | ✅ |
+| License | X Consortium (X11R6.3) · UC/Sun/MIT notices (historical glue) · MIT (new code) | ✅ |
+
+## The overlay pattern
+
+The repo contains **no X Consortium source** — only the Amix delta. `install.sh` downloads the three
+official archives from the [X.Org X11R6.3 archive](https://www.x.org/archive/X11R6.3/), verifies
+them against a committed `SOURCES.sha256`, extracts one `xc` tree, and copies `overlay/xc` over it ✅:
+
+```sh
+git clone https://github.com/isoriano1968/x11r6.3-amix.git
+cd x11r6.3-amix
+sh install.sh /export/amix/x11r6.3      # → /export/amix/x11r6.3/xc
+# copy or mount that tree as /usr/x11r6/xc on Amix
+```
+
+This is the same keep-upstream-out-of-the-repo licensing discipline this project uses for Amix
+media, applied to X11 ✅. The overlay is small: imake config, the `hw/amix` server directory, a few
+library Imakefiles, and compatibility shims for Amix's old `cpp`/`make`/`lex` ✅ (`PORT-FILES.md`).
+
+## Build configuration: `amix.cf`
+
+`config/cf/amix.cf` defines the platform ✅: `-DAMIX -Dm68k -DSVR4`, `SystemV4`, OS name
+"Amiga UNIX System V Release 4.0" (vendor Commodore-Amiga), `ProjectRoot /usr/x11r6`. The
+load-bearing choices:
+
+| Setting | Value | Why ✅ |
+|---|---|---|
+| `HasGcc2` / `CcCmd` | GCC 2.7.2.3, `CppCmd /usr/public/lib/gcc-cpp` | the community-standard native toolchain (see [toolchain](../toolchain.md)) |
+| `HasShm` | **NO** | MIT-SHM "is not safe on AMIX" — independent of the shared-lib choice |
+| `HasSharedLibraries` | YES, **SunOS-4-style shared-code/shared-data** (`-DSHAREDCODE`/`-DSUNSHLIB`, `SharedDataSeparation YES`, `-fpic`, load flags `-G`) | deliberately matches the ABI the working Amix X11R5 libraries use |
+| `XawI18nDefines` | `-DUSE_XWCHAR_STRING -DUSE_XMBTOWC` | Amix has no `wctype.h`/`widec.h`; use Xlib's internal wide-char helpers |
+| Libraries | `-lsocket -lnsl` everywhere; server adds `-ldbm -lscreen` | SVR4 sockets + the Amix screen-manager library |
+| `BuildPex` | NO (only PEX deferred) | same minimalism as the [R5 build](xrtg.md) |
+| `BuildXKB` | YES — but the launcher passes **`-kb`** | XKB *libraries* build; the XKB device path is unfinished |
+
+## Server architecture: a card-generic RTG layer
+
+`Xzz9000` keeps the R6.3 DIX and adds an Amix DDX under `programs/Xserver/hw/amix/` ✅. The input,
+keyboard, and console glue (`amixInit.c`, `amixKbd.c`, `amixMouse.c`, `amixIo.c`, …) carries 1987
+**Sun/UC-Regents** copyright — the same Sun-derived DDX lineage as the stock Amix X server — and its
+GC/clip patterns are explicitly modelled on the **TIGA** DDX (`dmi/tiggc.c`), i.e. the historical
+A2410 server ✅. On top of that:
+
+```text
+X clients
+   ▼
+Xzz9000                       # X11R6.3: DIX + mfb/cfb/cfb16 + hw/amix DDX
+   ▼
+hw/amix/                      # Sun-lineage Amix glue: input, keymap, cursor, init
+   ▼
+hw/amix/rtg/                  # NEW generic RTG layer: rtgProbe/rtgCreate/rtgScreenInit
+   ▼
+hw/amix/rtg/zz9000/           # card driver: Probe/InitHW/ScreenInit + drawing vector
+   ▼
+/dev/zz9000  (char 49)        # SETMODE → GETFBINFO → mmap → CPU rendering
+```
+
+The `rtg/` layer owns the per-screen record (`rtgScreenRec`: mmap base, geometry, pitch, depth) and
+the probe/create entry points wired into the DDX's `amixFbData[]` table; the card subdirectory owns
+everything ZZ9000-specific ✅. The header states the design intent: *"Each card provides its own
+header … and installs its drawing functions into the ScreenRec directly. First supported card in
+this tree: MNT ZZ9000"* ✅ — **supporting another RTG card means adding a new subdirectory under
+`rtg/`**, exactly the seam a future Z3660 RTG backend would use.
+
+Drawing is **pure CPU into the `mmap()`'d framebuffer**: solid fills go to
+`ZZ9000FillSpans`/`ZZ9000SolidRect`, `CopyArea` to `ZZ9000CopyArea`; tile/stipple currently fall
+back to solid (marked TODO); lines, arcs, and text delegate to the mi layer ✅. The kernel driver's
+`FILLRECT`/`COPYRECT` ioctls are **not** used — the driver contract is
+`PROBE → SETMODE (RGB565) → GETINFO/GETFBINFO → mmap → FILL (clear) → SETSWITCH RTG`, and
+`SETSWITCH CAPTURE` + munmap on close ✅. `servermd.h` gains the m68k `AMIX` block
+(`IMAGE_BYTE_ORDER`/`BITMAP_BIT_ORDER = MSBFirst`, `GLYPHPADBYTES 4`) ✅. A commit-level fix worth
+knowing: the R6 **pixmap-private storage** had to be made correct for both 16-bit pixmaps and the
+depth-1 bitmaps used for fonts and cursors ✅.
+
+## Input: `SIOCACTIVATE`, not `DisplayScreen()` — the SIGHUP trap
+
+Like [`Xrtg`](xrtg.md), input comes from the **Amix screen manager**: `OpenScreen()` returns an
+event fd, and `SIOCSETINPUTMODE SIM_RAWKEY` requests raw keycodes ✅. But the port documents a
+subtle and load-bearing refinement ✅:
+
+- **`DisplayScreen()` is avoided.** It would require `NewBitmap` (a chip-RAM native bitmap) and
+  would *take over the ECS display* — and when the native console loses its screen, the screen
+  manager **sends SIGHUP to the X server**.
+- **`SIOCACTIVATE`** instead selects the X screen as the *event target only*, leaving the native
+  Amiga display untouched — no display switch, no spurious SIGHUP. (The ZZ9000 reads its own
+  framebuffer, so nothing about the native display matters to RTG output.) The comment cross-checks
+  this against Klaus Burkert's `Xsvga`, which drives its card the same way.
+
+If `OpenScreen()` fails, the server starts **display-only** with a no-op wakeup handler — guarding
+against `FD_ISSET(-1)`, which is undefined behaviour and crashes on m68k SVR4 ✅.
+
+## The Amix shared-library ABI
+
+`SHARED-LIBRARIES.md` is the port's most broadly useful artifact: the native **SVR4 shared-library
+ABI with split shared-code/shared-data**, *"validated on AMIX with GCC 2.7.2.3 and the native link
+editor"* ✅. The rules — required for any dynamically-linked Xt client, and instructive for any Amix
+shared library:
+
+- **Runtime images:** `libfoo.so.N` is an ELF image built with the **native linker**:
+
+  ```sh
+  ld -G -h libXt.so.6.0 -o libXt.so.6.0 <objects>   # BOTH -G and the -h SONAME
+  ```
+
+  Compile the objects with `gcc -fpic`, but **never link the image with `gcc -G`** — GCC 2.7.2.3
+  silently adds executable startup objects, producing runtime errors about a missing `main` ✅.
+  `-Bsymbolic` was tested and does **not** fix loader failures ✅.
+- **Stub archives:** `libXt.sa` and `libXmu.sa` are ordinary `ar` archives containing exactly
+  `sharedlib.o`, supplying **executable-resident entry points and data** the shared-data ABI needs.
+  Xaw has no `.sa`. A `.sa` must never be renamed to or used as `libfoo.so` ✅.
+- **Link order is left-to-right and strict:** each `.sa` immediately after its `-l`, providers after
+  users ✅:
+
+  ```text
+  -lXaw -lXmu /path/libXmu.sa -lXt /path/libXt.sa -lSM -lICE -lXext -lX11 -lsocket -lnsl
+  ```
+
+  Omitting `libXt.sa` fails with unresolved `XtOpenApplication`/`XtToolkitInitialize` ✅.
+- **Hygiene:** never mix static and PIC objects in one library, and never reuse a `.so` built while
+  experimenting with link flags — a stale `libICE.so.6.3` crashed **every** Xt client before `main`
+  until relinked with `ld -G -h` ✅.
+
+`config/util/amix-shared-rebuild.sh` automates the clean rebuild (modes `libs` / `all` / `clients` /
+`shdata`): it deletes old objects, rebuilds, validates each image with `file` + `dump -Lv`, checks
+the `.sa` contents, and relinks the test clients (`xinit xsetroot xclock xterm twm`) — all **before**
+`Xzz9000` is ever started ✅.
+
+## Running it
+
+```sh
+cd /usr/x11r6/xc
+sh config/util/amix-shared-rebuild.sh /usr/x11r6/xc libs >/tmp/x11r6-shared.log 2>&1
+sh config/util/startXzz9000 :0        # 1920×800 twm + xterm + xclock session
+```
+
+The launcher honours `ZZ9K_MODE`, `ZZ9K_FONT_PATH`, and `X11R6_TOP`, and passes `-ac -kb
+-terminate` — access control off and XKB bypassed for the local bring-up test; **do not expose this
+server to an untrusted network** ✅. Prerequisites: Amix 2.1/SVR4, GCC 2.7.2.3 (+GNU cpp), the
+[ZZ9000 driver](zz9000.md) with `/dev/zz9000`, and the system libraries `socket`, `nsl`, `dbm`,
+`screen` ✅. GLX and [Mesa](mesa31.md) are **not** part of this tree yet ✅.
+
+## See also
+
+- [Case study: zz9000-amix](zz9000.md) — the kernel framebuffer driver underneath.
+- [Case study: mesa-amix](mesa31.md) — Mesa 3.1 (Xlib software GL) against this server.
+- [Case study: xrtg-amix](xrtg.md) — the X11R5 predecessor (VA2000).
+- [X11 / RTG driver development](../x11-rtg-drivers.md) — the general layering both generations follow.
+- [X11 & the desktop](../../how-it-works/x11-and-desktop.md) — the user-facing X story.
+- [Toolchain](../toolchain.md) — GCC 2.7.2.3, the GNU cpp, and cross options.
+
+## Sources
+
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §21 — `isoriano1968/x11r6.3-amix` @ `43383c5` (2026-07-03).
+- [`isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix) — `README.md`, `PORT-FILES.md`, **`SHARED-LIBRARIES.md`** (the ABI), `install.sh` + `SOURCES.sha256`, `overlay/xc/config/cf/amix.{cf,rules}`, `overlay/xc/programs/Xserver/Imakefile` (the `Xzz9000` target), `hw/amix/` + `hw/amix/rtg/` + `hw/amix/rtg/zz9000/` source (rtgInit.c input/SIGHUP notes, zz9000hw.c driver contract), `config/util/{amix-shared-rebuild.sh,startXzz9000,xinitrc.zz9000}`.
+- [X.Org X11R6.3 archive](https://www.x.org/archive/X11R6.3/) — the pristine upstream sources `install.sh` fetches.
+- [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) / [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — the X11R5/VA2000 predecessors the README credits.
+
+
+================================================================================
+# FILE: docs/drivers/case-studies/mesa31.md
+================================================================================
+
+---
+title: "Case Study: mesa-amix (Mesa 3.1)"
+summary: OpenGL on Amix — a Mesa 3.1 software-rendering bootstrap using the Xlib driver against the Xzz9000 X11R6.3 server; static libGL/GLU/glut first, no server-side GLX.
+status: draft
+---
+
+# Case Study: mesa-amix (Mesa 3.1)
+
+[`isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) is a **Mesa 3.1
+software-rendering port bootstrap** for Amix, published 2026-07-03 alongside the
+[X11R6.3 port](x11r63-zz9000.md) it depends on ✅. The design goal is deliberately modest: get
+OpenGL rendering on Amix via **Mesa's Xlib software driver**, which renders client-side and ships
+pixels over the X protocol — so it needs **no server-side GLX extension and no ZZ9000 3D
+acceleration** ✅. Facts are ✅ from the repo at `78fe054` (brief §21); this is the *bootstrap*
+stage — the static libraries and demos are the first milestone, not a finished GL stack.
+
+## At a glance
+
+| Property | Value | Tag |
+|---|---|---|
+| Repo | [`github.com/isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) | ✅ |
+| Mesa version | **3.1** (`MesaLib-3.1` + `MesaDemos-3.1` from the official Mesa archive) | ✅ |
+| Rendering | **Xlib software driver** — client-side; no GLX server extension needed | ✅ |
+| Display target | [`Xzz9000`](x11r63-zz9000.md) (16-bit TrueColor), headers/libs from `/usr/x11r6` | ✅ |
+| Compiler | GCC 2.7.2.3; `-O -ansi -finline-functions -DAMIX -Dm68k -DSVR4` | ✅ |
+| First milestone | **static** `libGL.a` / `libGLU.a` / `libglut.a` + `xdemos` | ✅ |
+| Excluded (for now) | MIT-SHM, threads, CPU assembly, DRI, server-side GLX, ZZ9000 HW accel, shared libs | ✅ |
+| Distribution | overlay-only: `install.sh` fetches + SHA-256-verifies pristine Mesa 3.1 | ✅ |
+| License | Mesa's own terms (upstream) · MIT (new material) | ✅ |
+
+## The interesting part: Mesa 3.1 already knew about Amix
+
+Upstream Mesa 3.1 — a 1999 release — **already contains a historical AMIX build target** ✅. The port
+keeps that target name but replaces the upstream multi-platform `Make-config` **wholesale** with an
+Amix-only version (`config/Make-config.amix`), because of a genuinely Amix-shaped problem: the old
+Amix `make` **parses every rule in an included file**, and upstream's `Make-config` contains
+malformed backslash continuations in *unrelated* platform targets that make it fail outright ✅.
+Deleting the other platforms, not fixing them, is the practical cure.
+
+The Amix target boils down to ✅:
+
+```make
+amix:
+	$(MAKE) $(MFLAGS) -f Makefile.X11 targets \
+	"GL_LIB = libGL.a"  "GLU_LIB = libGLU.a"  "GLUT_LIB = libglut.a" \
+	"CC = gcc" \
+	"CFLAGS = -O -ansi -finline-functions -DAMIX -Dm68k -DSVR4 \
+		-I/usr/x11r6/xc/exports/include -I/usr/x11r6/include" \
+	"XLIBS = -L/usr/x11r6/xc/exports/lib -L/usr/x11r6/lib \
+		-lX11 -lsocket -lnsl -lm"
+```
+
+## Preparing and building
+
+Same overlay pattern as the sibling repos ✅ — the repo holds only the Amix delta; `install.sh`
+downloads `MesaLib-3.1.tar.gz` + `MesaDemos-3.1.tar.gz` from the
+[official Mesa archive](https://archive.mesa3d.org/older-versions/3.x/), verifies SHA-256 against
+`SOURCES.sha256`, extracts, swaps in `Make-config.amix`, and adds `amix-build.sh`:
+
+```sh
+git clone https://github.com/isoriano1968/mesa-amix.git
+cd mesa-amix
+sh install.sh /export/amix/mesa3
+# copy or mount /export/amix/mesa3/Mesa-3.1 as /usr/mesa3/Mesa-3.1 on Amix
+```
+
+On Amix, **static first** ✅:
+
+```sh
+cd /usr/mesa3/Mesa-3.1
+sh amix-build.sh libs      # src → libGL.a (Xlib driver), src-glu → libGLU.a, src-glut → libglut.a
+sh amix-build.sh xdemos    # minimal visual test clients
+
+# run a demo against the ZZ9000 server:
+DISPLAY=:1
+LD_LIBRARY_PATH=/usr/x11r6/xc/exports/lib:/usr/lib
+export DISPLAY LD_LIBRARY_PATH
+```
+
+Native Amix **shared** Mesa libraries (the [`ld -G -h` / `.sa` ABI](x11r63-zz9000.md#the-amix-shared-library-abi))
+come only *after* the static renderer and demos are proven ✅ — the same
+prove-the-simple-path-first discipline as the rest of the stack.
+
+## Ownership split with the X11R6.3 repo
+
+Stated explicitly in `PORTING.md` ✅: the **X11R6.3 repo owns any future server-side GLX extension**;
+the Mesa repo owns the renderer, the GL/GLU/GLUT libraries, the demos, and the client-side
+GLX/Xlib integration. Mesa's tree is deliberately independent of the `xc` tree
+(`/usr/mesa3/Mesa-3.1` vs `/usr/x11r6`) ✅.
+
+## See also
+
+- [Case study: x11r6.3-amix (`Xzz9000`)](x11r63-zz9000.md) — the X server this renders to (and the shared-library ABI shared libs will need).
+- [Case study: zz9000-amix](zz9000.md) — the kernel framebuffer driver at the bottom of the stack.
+- [Toolchain](../toolchain.md) — GCC 2.7.2.3 and the Amix `make`/`cpp` quirks that shaped `Make-config.amix`.
+- [X11 / RTG driver development](../x11-rtg-drivers.md) — where the display stack this GL rides on is explained.
+
+## Sources
+
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §21 — `isoriano1968/mesa-amix` @ `78fe054` (2026-07-03).
+- [`isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) — `README.md`, `PORTING.md`, `install.sh` + `SOURCES.sha256`, `config/Make-config.amix`, `overlay/Mesa-3.1/amix-build.sh`.
+- [Mesa 3.x archive](https://archive.mesa3d.org/older-versions/3.x/) — the pristine upstream sources `install.sh` fetches.
 
 
 ================================================================================
@@ -8558,8 +9104,16 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 | `/dev/va2000` | char | **68** | 0 | MNT VA2000 RTG framebuffer (`asokero/va2000-amix`) | ✅ |
 | `/dev/<hya>` | char | **47** | — | Hydra AmigaNet STREAMS/DLPI driver, tag `hya` (`isoriano1968/hydra-amix`) | ✅ |
 | `/dev/zen0` | char | **48** | 0 | Z3660 onboard-ethernet STREAMS/DLPI driver, tag `zen` (amix-z3660net) | ✅ |
+| `/dev/zz9000` | char | **49** | 0 | MNT ZZ9000 RTG framebuffer (`isoriano1968/zz9000-amix`) — ⚠ see the collision note below | ✅ |
 
-**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 48) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
+**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 48, zz9000 took char 49) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
+
+> ⚠ **Community majors collide across trees.** The `zz9000-amix` author's development kernel assigns
+> **47 hydra, 48 `random`, 49 zz9000, 50 `sad`** ✅ — while this project's family tree assigns **48 to
+> `z3660eth`/`zen0`** ✅. Both are legitimate self-picked free slots; the numbers in this table are
+> **per-project conventions, not a registry**. Before merging drivers from different community trees,
+> check your own `cdevsw[]` in `master.d/kernel.c` and renumber (driver + `mknod`) as needed — the
+> zz9000 INSTALL.md itself tells you to verify 49 is free first ✅.
 
 ### Minor-number encoding for the SCSI disk (major 18)
 
@@ -8633,6 +9187,22 @@ mknod /dev/va2000 c 68 0
 
 It supports 800×600 / 1024×768 / 1280×720 at 16-bit ✅, and it is the device the `Xrtg` X11 server draws into. See [the VA2000 case study](../drivers/case-studies/va2000.md) and [X11/RTG drivers](../drivers/x11-rtg-drivers.md).
 
+### The zz9000 framebuffer (char 49)
+
+The second MNT framebuffer driver, for the **ZZ9000** — but only its **Zorro II product 3** identity
+(mfr `0x6d6e`); the Zorro III product 4 identity is detected and rejected because Amix has no Zorro
+III bus support ✅. Node and defaults:
+
+```sh
+mknod /dev/zz9000 c 49 0        # done by the repo's mkdev.sh
+```
+
+Mode setting up to 1920×800 RGB565 (18 mode IDs defined), `mmap()` framebuffer access, a
+13-ioctl API (`'Z'<<8` group), and an optional late-activated ANSI framebuffer console ✅. It is the
+device the **X11R6.3 `Xzz9000`** server draws into. Mind the ⚠ major-collision note above (48/49
+differ between community trees). See [the zz9000 case study](../drivers/case-studies/zz9000.md) and
+[the x11r6.3-amix case study](../drivers/case-studies/x11r63-zz9000.md).
+
 ### Other device nodes referenced in the brief
 
 These appear in the brief but without an authoritative major/minor pairing, so they are listed for orientation only:
@@ -8680,9 +9250,10 @@ Because `sd.c` inserts detected controllers **sorted ascending by board base add
 | **Built-in (mono X)** | Default; monochrome X server, reportedly slow | ✅ / 🟡 |
 | **A2410 "Lowell"** | TMS34010, 1024×768, native color graphics via TIGA (`olinit -- -tiga`) | ✅ |
 | **MNT VA2000 (RTG)** | Via the `va2000-amix` char-68 driver + the `Xrtg` X11R5 server | ✅ |
+| **MNT ZZ9000 (RTG)** | Via the `zz9000-amix` char-49 driver + the `Xzz9000` X11R6.3 server; **must be configured as Zorro II product 3** (its Zorro III product 4 identity is rejected); Mesa 3.1 software GL available on top | ✅ |
 | Picasso II / Piccolo / Domino / etc. | Added by Gateway! Vol.2 CD; **Zorro II / linear modes only** | 🟡 |
 
-The A2410 is the *officially* supported color option; the VA2000 path is the modern community route. See [X11 & the desktop](../how-it-works/x11-and-desktop.md) and [X11/RTG drivers](../drivers/x11-rtg-drivers.md).
+The A2410 is the *officially* supported color option; the VA2000 (X11R5) and ZZ9000 (X11R6.3) paths are the modern community routes. See [X11 & the desktop](../how-it-works/x11-and-desktop.md) and [X11/RTG drivers](../drivers/x11-rtg-drivers.md).
 
 ### Networking
 
@@ -8719,6 +9290,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (supported machines & expansion cards, Zorro II only, SCSI ID 6 / tape ID 4), §6 (va2000 char 68, hydra char 47/`hya`, AutoConfig IDs).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (`/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).
 - Driver repos: [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix), [`asokero/lszorro-amix`](https://github.com/asokero/lszorro-amix), [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
+- [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) @ `75e2449` (brief §21) — `/dev/zz9000` char major 49 minor 0, Zorro II product 3 (`0x6d6e0003`) only, the author's-tree major assignments (47 hydra / 48 random / 49 zz9000 / 50 sad) behind the collision note. See [the zz9000 case study](../drivers/case-studies/zz9000.md).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — A2232, requirements, networking pages (community-reported items: GVP Series II, Ariadne, Gateway! graphics cards).
 - The A4091-on-Amix project — `NOTES.md` §3, §8, §12–§15 (lab notebook, reproduced locally ✅) and `src/`/`tools/`. The minor decode (`sdunit`/`sdcard`/`sdpart`, `SDCARDS`), block major 18 / char major 40, and `dev_t = (major<<18)|minor` are verified against `amiga/alien/sd.h`; the `/dev/scsi` char major 11 `gsioctl` path against `src/gsio.c`.
 - `src/kernel-patches/sd.c` — the `0x02020054, &a4091queue, "A4091 SCSI"` `scsicard[]` row and the base-address-sorted `queue[]` insertion.
@@ -9096,12 +9668,14 @@ Cite local analysis in the form **"`amix_21_root.adf` analysis via `tools/inspec
 reader can reproduce the finding against their own copy. The deeper unpack of the root miniroot uses
 `tools/unpack-root.sh`.
 
-### The modern Amix repositories (drivers + cross-toolchain)
+### The modern Amix repositories (drivers, X11/Mesa ports, cross-toolchain)
 
-These are recent, AI-assisted hobby projects — four drivers plus a Linux cross-toolchain — targeting
-**Amix 2.1p2 on an Amiga 3000 / 68030**. ✅ Their READMEs and source ground the [driver case studies](../drivers/case-studies/va2000.md)
-and much of the [driver model](../drivers/driver-model.md). All are source-only (building them needs a
-licensed Amix install and headers).
+These are recent, AI-assisted hobby projects — drivers, an X11R6.3 + Mesa graphics stack, and a Linux
+cross-toolchain — targeting **Amix 2.1 on an Amiga 3000 / 68030**. ✅ Their READMEs and source ground
+the [driver case studies](../drivers/case-studies/va2000.md) and much of the
+[driver model](../drivers/driver-model.md). All are source-only or overlay-only (building them needs a
+licensed Amix install and headers; the overlays fetch + SHA-256-verify their upstream X11/Mesa
+sources rather than committing them).
 
 | Repository | What it is | Case study |
 |---|---|---|
@@ -9110,6 +9684,9 @@ licensed Amix install and headers).
 | <https://github.com/asokero/lszorro-amix> | ✅ Userspace `lspci`-style Zorro II scanner | [lszorro](../drivers/case-studies/lszorro.md) |
 | <https://github.com/isoriano1968/hydra-amix> | ✅ STREAMS/DLPI network driver for the Hydra AmigaNet card (`cdevsw` slot 47, `hya`); now also carries a slice of the Amix `/usr/sys` kernel + boot source tree. **2026-06: verified on real hardware** (ARP + ICMP ping) — "believed to be the first working Amix net driver for the card" 🟡 | [hydra](../drivers/case-studies/hydra.md) |
 | <https://github.com/isoriano1968/gcc-cross-amix> | ✅ Linux-hosted **cross-toolchain** bootstrap for `m68k-cbm-sysv4` (`Makefile` + wrapper; binutils 2.8.1 + GCC 2.7.2.3; user-supplied Amix sysroot). C works (a dynamically-linked Amix exe runs on real hardware); C++ WIP 🟡 | [toolchain](../drivers/toolchain.md) |
+| <https://github.com/isoriano1968/zz9000-amix> | ✅ Kernel framebuffer driver for the MNT **ZZ9000** (Zorro II product 3; `/dev/zz9000`, char major 49) with mode setting, mmap, and a late-activated ANSI framebuffer console (2026-07) | [zz9000](../drivers/case-studies/zz9000.md) |
+| <https://github.com/isoriano1968/x11r6.3-amix> | ✅ **X11R6.3 port** (`Xzz9000` server over `/dev/zz9000`); card-generic `hw/amix/rtg/` DDX layer; documents the native Amix shared-library ABI (`ld -G -h` + `.sa` stubs) (2026-07) | [x11r6.3](../drivers/case-studies/x11r63-zz9000.md) |
+| <https://github.com/isoriano1968/mesa-amix> | ✅ **Mesa 3.1** software-rendering bootstrap (Xlib driver against `Xzz9000`; static GL/GLU/glut first, no server-side GLX) (2026-07) | [mesa](../drivers/case-studies/mesa31.md) |
 | <https://github.com/vjouppi/hydra> | 🟡 Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics); cited by the hydra-amix README | [hydra](../drivers/case-studies/hydra.md) |
 
 🟡 An earlier research note claimed "asokero handle not found / isoriano1968 only does AmigaOS Mesa."

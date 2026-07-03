@@ -1,6 +1,6 @@
 ---
 title: X11 RTG Graphics Drivers
-summary: Retargetable graphics on Amix — the Xrtg X11R5 server architecture layered over a kernel framebuffer driver such as /dev/va2000.
+summary: Retargetable graphics on Amix — an X server layered over a kernel framebuffer driver; two generations exist, the X11R5 Xrtg/VA2000 pairing and the X11R6.3 Xzz9000/ZZ9000 pairing.
 status: draft
 ---
 
@@ -17,6 +17,12 @@ This page explains the RTG concept, walks the full layered stack from X clients 
 shows how the server is built with `imake` and a custom `config/amix.cf`, and describes how mouse and keyboard
 input reach the server through the AMIX screen manager. RTG on Amix is a **two-part build**: you need the
 [`va2000` kernel driver](case-studies/va2000.md) working *first*, then the `Xrtg` server on top of it ✅.
+
+**Two generations of this pairing now exist** ✅: the X11R5 `Xrtg` + VA2000 stack this page walks through, and
+a newer **X11R6.3** port whose server `Xzz9000` drives the MNT **ZZ9000** through
+[`/dev/zz9000` (char major 49)](case-studies/zz9000.md) — same architecture, newer X release, and a
+card-generic `rtg/` DDX layer. See [the second generation](#the-second-generation-x11r63-xzz9000-zz9000)
+below.
 
 > **Confidence note.** Everything specific to `Xrtg`/`va2000` on this page is ✅ — it comes from the
 > repository source and READMEs (brief §6). Historical X11 context (X11R4 vs R5, OpenLook, TIGA) is
@@ -185,9 +191,35 @@ Once `Xrtg` is up you run an ordinary X session against it — e.g. an `xterm` a
 historical desktop environment (OpenLook `olwm`/`olwsm`, `tvtwm`, the X11R5 font-path gotcha), see
 [X11 & the Desktop](../how-it-works/x11-and-desktop.md) 🟡.
 
+## The second generation: X11R6.3 + Xzz9000 + ZZ9000
+
+In 2026 the same author as [hydra-amix](case-studies/hydra.md) published a **second, newer RTG stack**
+following the identical two-part recipe ✅ (brief §21):
+
+| Layer | First generation (this page) | Second generation |
+|---|---|---|
+| X release | X11R5 | **X11R6.3** (pristine x.org sources + overlay) |
+| Server binary | `Xrtg` | **`Xzz9000`** |
+| Card | MNT VA2000 | MNT **ZZ9000** (Zorro II product 3) |
+| Kernel driver | [`va2000`](case-studies/va2000.md), char 68 | [`zz9000`](case-studies/zz9000.md), **char 49** |
+| DDX card seam | `ddx/amix/rtg/va2000/` | `hw/amix/rtg/zz9000/` — an explicitly **card-generic `rtg/` layer** |
+| Drawing | VA2000 hardware blitter fills/copies | **CPU into the `mmap()`'d framebuffer** (kernel blit ioctls exist but are unused) |
+| Extra | — | documented native **shared-library ABI** (`ld -G -h` + `.sa` stubs); [Mesa 3.1](case-studies/mesa31.md) software GL on top |
+
+The architectural lesson carries over unchanged: **kernel char framebuffer driver at a free major +
+a card-specific backend under the server's `rtg/` directory**. The R6.3 tree makes the seam explicit —
+its `rtg/` layer is written so that *"each card provides its own header … and installs its drawing
+functions into the ScreenRec directly"* ✅ — which is exactly where a backend for another RTG-capable
+board (for example a future **Z3660 RTG** pairing) would plug in. Full detail:
+[x11r6.3-amix case study](case-studies/x11r63-zz9000.md) and the
+[zz9000-amix case study](case-studies/zz9000.md).
+
 ## See also
 - [`xrtg-amix` case study](case-studies/xrtg.md) — deep dive on the `Xrtg` server repo.
 - [`va2000` case study](case-studies/va2000.md) — the kernel framebuffer driver `Xrtg` requires.
+- [`x11r6.3-amix` case study](case-studies/x11r63-zz9000.md) — the X11R6.3 `Xzz9000` server (second generation).
+- [`zz9000-amix` case study](case-studies/zz9000.md) — the ZZ9000 kernel framebuffer driver (char 49).
+- [`mesa-amix` case study](case-studies/mesa31.md) — Mesa 3.1 software GL on the R6.3 stack.
 - [X11 & the Desktop](../how-it-works/x11-and-desktop.md) — historical X11R4/R5, OpenLook, A2410 TIGA, quirks.
 - [The Amix driver model](driver-model.md) — `cdevsw[]`, char vs block, statically-linked drivers.
 - [Writing a char driver](writing-a-char-driver.md) — the char-driver pattern the va2000 framebuffer follows.
@@ -198,4 +230,5 @@ historical desktop environment (OpenLook `olwm`/`olwsm`, `tvtwm`, the X11R5 font
 - Research brief [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`asokero/xrtg-amix` and `asokero/va2000-amix` repo facts) and §11 (X11 / RTG path).
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — README and source tree (`ddx/amix/`, `ddx/amix/rtg/`, `ddx/amix/rtg/va2000/`, `config/amix.cf`); X11R5 / `imake` build; `BuildPex=NO`; `OpenScreen()` / `SIOCACTIVATE` input; TrueColor RGB565; MIT (new code) + X Consortium (X11R5) licensing.
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — README and source; `/dev/va2000` char major 68 minor 0; RTG screen type patched into `amiga/console/{scrdev.c,c0.c,screen.c}`; `relocunix` relink + `make bootpart`.
+- Research brief §21 — the second-generation stack: [`isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix) (`Xzz9000`, card-generic `hw/amix/rtg/` layer) + [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) (`/dev/zz9000` char 49) + [`isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) (Mesa 3.1).
 - amigaunix.com — historical X11 context cross-referenced in [X11 & the Desktop](../how-it-works/x11-and-desktop.md) (🟡 community-reported).

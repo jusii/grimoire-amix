@@ -65,12 +65,14 @@ Cite local analysis in the form **"`amix_21_root.adf` analysis via `tools/inspec
 reader can reproduce the finding against their own copy. The deeper unpack of the root miniroot uses
 `tools/unpack-root.sh`.
 
-### The modern Amix repositories (drivers + cross-toolchain)
+### The modern Amix repositories (drivers, X11/Mesa ports, cross-toolchain)
 
-These are recent, AI-assisted hobby projects — four drivers plus a Linux cross-toolchain — targeting
-**Amix 2.1p2 on an Amiga 3000 / 68030**. ✅ Their READMEs and source ground the [driver case studies](../drivers/case-studies/va2000.md)
-and much of the [driver model](../drivers/driver-model.md). All are source-only (building them needs a
-licensed Amix install and headers).
+These are recent, AI-assisted hobby projects — drivers, an X11R6.3 + Mesa graphics stack, and a Linux
+cross-toolchain — targeting **Amix 2.1 on an Amiga 3000 / 68030**. ✅ Their READMEs and source ground
+the [driver case studies](../drivers/case-studies/va2000.md) and much of the
+[driver model](../drivers/driver-model.md). All are source-only or overlay-only (building them needs a
+licensed Amix install and headers; the overlays fetch + SHA-256-verify their upstream X11/Mesa
+sources rather than committing them).
 
 | Repository | What it is | Case study |
 |---|---|---|
@@ -79,6 +81,9 @@ licensed Amix install and headers).
 | <https://github.com/asokero/lszorro-amix> | ✅ Userspace `lspci`-style Zorro II scanner | [lszorro](../drivers/case-studies/lszorro.md) |
 | <https://github.com/isoriano1968/hydra-amix> | ✅ STREAMS/DLPI network driver for the Hydra AmigaNet card (`cdevsw` slot 47, `hya`); now also carries a slice of the Amix `/usr/sys` kernel + boot source tree. **2026-06: verified on real hardware** (ARP + ICMP ping) — "believed to be the first working Amix net driver for the card" 🟡 | [hydra](../drivers/case-studies/hydra.md) |
 | <https://github.com/isoriano1968/gcc-cross-amix> | ✅ Linux-hosted **cross-toolchain** bootstrap for `m68k-cbm-sysv4` (`Makefile` + wrapper; binutils 2.8.1 + GCC 2.7.2.3; user-supplied Amix sysroot). C works (a dynamically-linked Amix exe runs on real hardware); C++ WIP 🟡 | [toolchain](../drivers/toolchain.md) |
+| <https://github.com/isoriano1968/zz9000-amix> | ✅ Kernel framebuffer driver for the MNT **ZZ9000** (Zorro II product 3; `/dev/zz9000`, char major 49) with mode setting, mmap, and a late-activated ANSI framebuffer console (2026-07) | [zz9000](../drivers/case-studies/zz9000.md) |
+| <https://github.com/isoriano1968/x11r6.3-amix> | ✅ **X11R6.3 port** (`Xzz9000` server over `/dev/zz9000`); card-generic `hw/amix/rtg/` DDX layer; documents the native Amix shared-library ABI (`ld -G -h` + `.sa` stubs) (2026-07) | [x11r6.3](../drivers/case-studies/x11r63-zz9000.md) |
+| <https://github.com/isoriano1968/mesa-amix> | ✅ **Mesa 3.1** software-rendering bootstrap (Xlib driver against `Xzz9000`; static GL/GLU/glut first, no server-side GLX) (2026-07) | [mesa](../drivers/case-studies/mesa31.md) |
 | <https://github.com/vjouppi/hydra> | 🟡 Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics); cited by the hydra-amix README | [hydra](../drivers/case-studies/hydra.md) |
 
 🟡 An earlier research note claimed "asokero handle not found / isoriano1968 only does AmigaOS Mesa."

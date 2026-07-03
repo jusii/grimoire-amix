@@ -25,8 +25,16 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 | `/dev/va2000` | char | **68** | 0 | MNT VA2000 RTG framebuffer (`asokero/va2000-amix`) | ✅ |
 | `/dev/<hya>` | char | **47** | — | Hydra AmigaNet STREAMS/DLPI driver, tag `hya` (`isoriano1968/hydra-amix`) | ✅ |
 | `/dev/zen0` | char | **48** | 0 | Z3660 onboard-ethernet STREAMS/DLPI driver, tag `zen` (amix-z3660net) | ✅ |
+| `/dev/zz9000` | char | **49** | 0 | MNT ZZ9000 RTG framebuffer (`isoriano1968/zz9000-amix`) — ⚠ see the collision note below | ✅ |
 
-**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 48) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
+**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 48, zz9000 took char 49) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
+
+> ⚠ **Community majors collide across trees.** The `zz9000-amix` author's development kernel assigns
+> **47 hydra, 48 `random`, 49 zz9000, 50 `sad`** ✅ — while this project's family tree assigns **48 to
+> `z3660eth`/`zen0`** ✅. Both are legitimate self-picked free slots; the numbers in this table are
+> **per-project conventions, not a registry**. Before merging drivers from different community trees,
+> check your own `cdevsw[]` in `master.d/kernel.c` and renumber (driver + `mknod`) as needed — the
+> zz9000 INSTALL.md itself tells you to verify 49 is free first ✅.
 
 ### Minor-number encoding for the SCSI disk (major 18)
 
@@ -100,6 +108,22 @@ mknod /dev/va2000 c 68 0
 
 It supports 800×600 / 1024×768 / 1280×720 at 16-bit ✅, and it is the device the `Xrtg` X11 server draws into. See [the VA2000 case study](../drivers/case-studies/va2000.md) and [X11/RTG drivers](../drivers/x11-rtg-drivers.md).
 
+### The zz9000 framebuffer (char 49)
+
+The second MNT framebuffer driver, for the **ZZ9000** — but only its **Zorro II product 3** identity
+(mfr `0x6d6e`); the Zorro III product 4 identity is detected and rejected because Amix has no Zorro
+III bus support ✅. Node and defaults:
+
+```sh
+mknod /dev/zz9000 c 49 0        # done by the repo's mkdev.sh
+```
+
+Mode setting up to 1920×800 RGB565 (18 mode IDs defined), `mmap()` framebuffer access, a
+13-ioctl API (`'Z'<<8` group), and an optional late-activated ANSI framebuffer console ✅. It is the
+device the **X11R6.3 `Xzz9000`** server draws into. Mind the ⚠ major-collision note above (48/49
+differ between community trees). See [the zz9000 case study](../drivers/case-studies/zz9000.md) and
+[the x11r6.3-amix case study](../drivers/case-studies/x11r63-zz9000.md).
+
 ### Other device nodes referenced in the brief
 
 These appear in the brief but without an authoritative major/minor pairing, so they are listed for orientation only:
@@ -147,9 +171,10 @@ Because `sd.c` inserts detected controllers **sorted ascending by board base add
 | **Built-in (mono X)** | Default; monochrome X server, reportedly slow | ✅ / 🟡 |
 | **A2410 "Lowell"** | TMS34010, 1024×768, native color graphics via TIGA (`olinit -- -tiga`) | ✅ |
 | **MNT VA2000 (RTG)** | Via the `va2000-amix` char-68 driver + the `Xrtg` X11R5 server | ✅ |
+| **MNT ZZ9000 (RTG)** | Via the `zz9000-amix` char-49 driver + the `Xzz9000` X11R6.3 server; **must be configured as Zorro II product 3** (its Zorro III product 4 identity is rejected); Mesa 3.1 software GL available on top | ✅ |
 | Picasso II / Piccolo / Domino / etc. | Added by Gateway! Vol.2 CD; **Zorro II / linear modes only** | 🟡 |
 
-The A2410 is the *officially* supported color option; the VA2000 path is the modern community route. See [X11 & the desktop](../how-it-works/x11-and-desktop.md) and [X11/RTG drivers](../drivers/x11-rtg-drivers.md).
+The A2410 is the *officially* supported color option; the VA2000 (X11R5) and ZZ9000 (X11R6.3) paths are the modern community routes. See [X11 & the desktop](../how-it-works/x11-and-desktop.md) and [X11/RTG drivers](../drivers/x11-rtg-drivers.md).
 
 ### Networking
 
@@ -186,6 +211,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (supported machines & expansion cards, Zorro II only, SCSI ID 6 / tape ID 4), §6 (va2000 char 68, hydra char 47/`hya`, AutoConfig IDs).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (`/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).
 - Driver repos: [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix), [`asokero/lszorro-amix`](https://github.com/asokero/lszorro-amix), [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
+- [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) @ `75e2449` (brief §21) — `/dev/zz9000` char major 49 minor 0, Zorro II product 3 (`0x6d6e0003`) only, the author's-tree major assignments (47 hydra / 48 random / 49 zz9000 / 50 sad) behind the collision note. See [the zz9000 case study](../drivers/case-studies/zz9000.md).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — A2232, requirements, networking pages (community-reported items: GVP Series II, Ariadne, Gateway! graphics cards).
 - The A4091-on-Amix project — `NOTES.md` §3, §8, §12–§15 (lab notebook, reproduced locally ✅) and `src/`/`tools/`. The minor decode (`sdunit`/`sdcard`/`sdpart`, `SDCARDS`), block major 18 / char major 40, and `dev_t = (major<<18)|minor` are verified against `amiga/alien/sd.h`; the `/dev/scsi` char major 11 `gsioctl` path against `src/gsio.c`.
 - `src/kernel-patches/sd.c` — the `0x02020054, &a4091queue, "A4091 SCSI"` `scsicard[]` row and the base-address-sorted `queue[]` insertion.
