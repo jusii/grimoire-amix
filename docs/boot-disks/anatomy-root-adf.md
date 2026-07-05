@@ -1,12 +1,14 @@
 ---
 title: Anatomy of the Root (miniroot) Floppy
-summary: The UFS miniroot — installer ELF binaries, the partition/filesystem logic, the SCSI-tape distribution pipeline, and viper_kludge.
+summary: The s5 miniroot — installer ELF binaries, the partition/filesystem logic, the SCSI-tape distribution pipeline, and viper_kludge.
 status: draft
 ---
 
 # Anatomy of the Root (miniroot) Floppy
 
-The Amix **root floppy** (`amix_21_root.adf`, 901,120 bytes / 880 KB) is a **UFS "miniroot"**: a small Berkeley-FFS filesystem packed with the *installer* — about 30 m68k ELF binaries (`cpio`, `fsck`, `mkfs`, `dd`, `amixpkg`, `rdb`, …), the `/bin/sh` install scripts that drive partitioning and the tape extraction, a POSIX `tar` member, and the `viper_kludge` tape work-around plus its `viper.README`. ✅ (local analysis of `amix_21_root.adf`)
+The Amix **root floppy** (`amix_21_root.adf`, 901,120 bytes / 880 KB) is a **System V `s5` "miniroot"**: a small s5 filesystem packed with the *installer* — about 30 m68k ELF binaries (`cpio`, `fsck`, `mkfs`, `dd`, `amixpkg`, `rdb`, …), the `/bin/sh` install scripts that drive partitioning and the tape extraction, a POSIX `tar` member, and the `viper_kludge` tape work-around plus its `viper.README`. ✅ (local analysis of `amix_21_root.adf`)
+
+> **Correction (2026-07-05):** this floppy's on-disk filesystem is **`s5`, not UFS**. Its superblock sits at byte `0x200` with the s5 magic `0xfd187e20` (`s_type=2` = 1024-byte logical blocks, `s_fsize=880` = exactly the image size). The UFS magic `0x00011954` appears in the image **only inside the bundled `mkfs_ufs`/`fsck_ufs` ELF binaries**, never at a superblock — which is why the string-based `tools/inspect-adf.sh` heuristic (it keys off `lost+found`) mislabels it "UFS miniroot." This is consistent with the installer's own `ROOT_FSYS="s5"` ("Johann ROM can only boot s5 filesystem", below): s5 is the boot-capable root fs. ✅ (forensic superblock analysis, 2026-07-05)
 
 Unlike the [boot floppy](anatomy-boot-adf.md), the root floppy has **no AmigaDOS bootblock** — its first sectors are zeroed and the Kickstart ROM never boots it directly. It is mounted *by* the install kernel after you swap it in. This page dissects its on-disk structure and the install logic it carries. For the end-to-end procedure, see the [install walkthrough](../getting-started/install-walkthrough.md); to understand how all three install disks are produced, see the [build pipeline](build-pipeline.md).
 

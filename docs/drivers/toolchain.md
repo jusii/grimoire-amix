@@ -89,7 +89,7 @@ The native compiler is **GCC 2.7.2.3** (or the AT&T `cc`), available as a pkg on
 
 ### ELF → boot format: elf2brel
 
-The compiler emits **ELF** objects (m68k, SVR4) ✅. Amix's kernel boot path does not consume raw ELF directly; the kernel build converts the linked image to the **Amix boot ("brel") format** with the **`elf2brel`** tool that lives in the kernel source tree's **`boot/`** (a.k.a. `stand/`) directory ✅. This conversion is part of the on-box kernel relink, not a separate cross step:
+The compiler emits **ELF** objects (m68k, SVR4) ✅. Amix's kernel boot path does not consume raw ELF directly; the kernel build converts the linked image to the **Amix boot ("brel") format** (`e_type=0xff00`, ET_LOPROC) with the **`elf2brel`** tool that lives in the kernel source tree's **`boot/`** (a.k.a. `stand/`) directory ✅. In the *native* on-box build this conversion runs automatically as part of `make force` (below); for a **cross** build it becomes an explicit step (see the host-side port below):
 
 ```text
 native cc / GCC 2.7.2.3  →  ELF kernel image
@@ -106,6 +106,8 @@ cd /usr/sys && make force                  # relink the kernel (elf2brel runs in
 ```
 
 Note the kernel image name: modern 2.1 systems and the community repos call the relinked kernel **`relocunix`** (the 1990 Ditto paper called the equivalent image `rdbunix` — a historical rename; verify per version 🟡). The boot-partition write step is covered in [building and relinking the kernel](kernel-build.md), and the Hydra specifics in the [Hydra case study](case-studies/hydra.md).
+
+**Host-side `elf2brel` (2026-07-05):** `elf2brel` is a portable ELF filter, so it can also run as a **cross step** — `amix-kerntools/tools/elf2brel.py` is an endian-explicit Python port of `amiga/boot/elf2brel.c` that converts a **cross-built** `ld -r` kernel (from `gcc-cross-amix`) to the brel form on the host, no Amix box needed (it fuses `.text/.rodata/.data/.bss` into one section, folds the `.rela.*` tables into the compact `.rel.boot` table the boot loader consumes, and drops the symtab). This matters for **boot floppies**: framing a *raw* cross-linked ET_REL (`e_type=0x1`) Guru's with `D245 4C41` at relocation — so a cross-built kernel must pass through `elf2brel` (→ `unix.brel`, `e_type=0xff00`) before [`build-bootfloppy.sh`](../boot-disks/adding-drivers-to-boot-disk.md). ✅ (verified live under WinUAE)
 
 ### Cross-compiling on Linux: the gcc-cross-amix toolchain ✅
 

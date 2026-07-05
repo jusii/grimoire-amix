@@ -14,7 +14,7 @@ was an open reverse-engineering problem. It is now solved (see
 | Surface | Use it for | Status |
 |---|---|---|
 | **(a) On-HD boot partition** | adding a driver to an already-installed system | ✅ supported, normal kernel rebuild |
-| **(b) Custom bootable floppy** | install/recovery media that boots *your* kernel | ✅ boots in Amiberry (same kernel) · 🟡 driver-modified kernel untested |
+| **(b) Custom bootable floppy** | install/recovery media that boots *your* kernel | ✅ boots in Amiberry (same kernel) · ✅ a **driver-modified** kernel boots + runs a **full install** (WinUAE) |
 | **(c) Self-extracting add-on disk** | *distributing* a driver to other users to install | ✅ host-verified · 🟡 not yet run on real Amix |
 
 A driver in Amix is **statically linked into a monolithic kernel — there are no loadable modules** ✅, so
@@ -166,6 +166,14 @@ What you get and what to watch:
   `.Z`), so it loads with **no overrun and no checksum warning**. *(A naive rebuild that leaves `IBLK`
   stale fails with `WARNING! Kernel decompression overrun.` — the bootstrap reads the old, longer length
   and decodes your zero-padding. Don't do that; the tool handles it.)*
+- ⚠️ **The kernel you supply must be in `elf2brel` "brel" boot format (`e_type=0xff00`, ET_LOPROC), NOT
+  the raw `ld -r` ET_REL (`e_type=0x1`).** Framing a raw ET_REL Guru's with **`D245 4C41`** during
+  bootstrap relocation (the loader consumes the compact `.rel.boot` table `elf2brel` builds, not standard
+  ELF relocations). On a native on-box `make`, `elf2brel` runs automatically; a **cross-built** kernel
+  must pass through `elf2brel` **explicitly** first (there is a host Python port,
+  `amix-kerntools/tools/elf2brel.py`, mirroring `amiga/boot/elf2brel.c`). `build-bootfloppy.sh` does
+  **not** run `elf2brel` — it only ever worked because it re-framed the already-brel *donor* kernel. ✅
+  (Proven 2026-07-05: a raw-ET_REL floppy `D245`'d; re-framing the brel booted and ran a full install.)
 - ✅ **Verified in an emulator (Amiberry):** a rebuilt floppy boots and reaches the original's
   `Insert floppy disk 2 (root file system)` prompt. Still worth verifying your own builds in
   [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md).
@@ -200,7 +208,7 @@ This disk runs *on* an already-booted Amix — it is not itself bootable.
 | Goal | Use | Status |
 |---|---|---|
 | Add a driver to a running system | (a) relink + `make bootpart` | ✅ works |
-| Make custom install/recovery media that boots your kernel | (b) `build-bootfloppy.sh` | ✅ boots in Amiberry |
+| Make custom install/recovery media that boots your kernel | (b) `build-bootfloppy.sh` | ✅ driver kernel boots + full install (WinUAE) |
 | Distribute a driver for users to install | (c) `build-custom-bootdisk.sh` | ✅ host-verified · 🟡 emulator-test |
 
 Recommended workflow regardless: **build and test the driver the manual way first** (relink into a live
@@ -212,11 +220,15 @@ The boot floppy format is solved (layout, `compress`/LZW kernel, `IBLK` descript
 folded-byte-sum checksum are all pinned) and a rebuilt floppy boots in Amiberry to the root-disk prompt;
 these are the remaining loose ends, none blocking:
 
-- 🟡 **Driver-modified kernel** end-to-end: the rebuild was verified with the *same* kernel; booting a
-  floppy whose kernel was relinked with a new driver (needs a kernel built on Amix `/usr/sys`) is the
-  next validation.
-- 🟡 **Full install** through the tape stage needs A3000 SCSI/tape emulation (see
-  [Amiberry status](../getting-started/emulation-amiberry.md)).
+- ✅ **Driver-modified kernel** end-to-end (WinUAE, 2026-07-05): a floppy whose kernel was relinked with
+  new drivers (a4091 + z3660scsi, cross-built on the host and `elf2brel`'d) boots and runs a **full Amix
+  install** from tape to disk; the laid-down system then boots from the disk into first-boot config. This
+  closes the long-standing "next validation." (The install/floppy kernel carried the drivers; making the
+  *installed* system's boot-partition kernel carry them is a further step — see the install-media project.)
+- ✅ **Full install** through the tape stage: done under WinUAE. Note the emulator specifics — the install
+  **target disk must be on the A3000 onboard SCSI**, not the a4091 (WinUAE emulates a4091 **tapes** but
+  not a4091 hard disks), and the tape (ID 4) must sit on the **same controller / card 0** as the disk
+  (the `/dev/rmt/4hn` device routes to card 0). See [the WinUAE setup](../getting-started/emulation-winuae.md).
 - ✅ **RDB partition type IDs** Amix uses are now known — read from the installer (`/etc/rdb -F`): boot
   `0x554e4900` (`UNI\0`), UNIX root `0x554e4901` (`UNI\1`), swap `0x72657376` (`resv`); see
   [the boot process](../how-it-works/boot-process.md) and
@@ -235,6 +247,12 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
 - [VA2000 case study](../drivers/case-studies/va2000.md) · [Hydra case study](../drivers/case-studies/hydra.md).
 
 ## Sources
+- **Driver-modified-kernel full install + the `elf2brel`/brel requirement** (2026-07-05, live under WinUAE):
+  a host-cross-linked universal kernel (a4091 + z3660scsi), `elf2brel`'d to brel (`e_type=0xff00`) and framed
+  with `build-bootfloppy.sh`, boots and drives the Amiga UNIX installer through a full install (partition →
+  format → read tape → install all package sets → laid-down system boots). Framing a raw `ld -r` ET_REL
+  (`e_type=0x1`) instead Guru's `D245 4C41` at relocation. From `amix-kerntools/tools/elf2brel.py` (port of
+  `amiga/boot/elf2brel.c`) + `amix-installng/tools/build-universal-bootfloppy.sh`.
 - [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) and research brief §3, §10, §13
   ([`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)): the `compress`/LZW kernel at
   `0x2800` → m68k ELF, the 16-bit folded **non-fatal** checksum (bootstrap disassembly), and the
