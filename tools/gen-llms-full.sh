@@ -32,6 +32,7 @@ order=(
   docs/getting-started/first-login-and-tour.md
   docs/drivers/driver-model.md
   docs/drivers/kernel-build.md
+  docs/drivers/kernel-reverse-engineering.md
   docs/drivers/writing-a-char-driver.md
   docs/drivers/writing-a-streams-driver.md
   docs/drivers/zorro-autoconfig.md

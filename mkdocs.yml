@@ -79,6 +79,7 @@ nav:
   - Driver development:
       - Driver model: drivers/driver-model.md
       - Building the kernel: drivers/kernel-build.md
+      - Reverse-engineering the kernel: drivers/kernel-reverse-engineering.md
       - Writing a char driver: drivers/writing-a-char-driver.md
       - Writing a STREAMS driver: drivers/writing-a-streams-driver.md
       - Zorro II AUTOCONFIG: drivers/zorro-autoconfig.md
