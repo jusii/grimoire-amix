@@ -67,6 +67,32 @@ Why does **s5** linger as a nominal default at all? 🟡 The most plausible expl
 - The standard SVR4 toolset is present: `fsck`, `dd`, and `cpio` all appear as m68k ELF binaries inside the root miniroot ✅, used during install and available afterward.
 - s5 is the older System V filesystem with smaller block sizes and weaker crash recovery than FFS; it is functional but offers no advantage here.
 
+## Mounting a CD: the read-only `cdfs` optical filesystem
+
+`s5` and UFS are the on-disk *root* choices; for **CD-ROM** media Amix adds a third, mount-only filesystem — `cdfs`, an in-kernel **read-only** optical filesystem ported from the AmigaOS `ODFileSystem` (`reinauer/ODFileSystem`) that understands **ISO9660, Rock Ridge, Joliet, and UDF** ✅. It is not part of the stock distribution; you add it to the kernel like any other filesystem (a `vfssw[]` row plus a relink — see below) ✅. On the Amiberry-A4091 bench a `cdfs`-enabled **Amix 2.1c** kernel mounts and reads a genuine CD **byte-for-byte**: `ls -la /cdrom` lists every Rock Ridge entry with correct names, sizes and dates (including UTF-8 `café.txt`, `long filename with spaces.txt`, a `MixedCase.Txt`, a symlink, and a 3-level `deep/subdir/nested.txt`), `cat` returns the correct bytes, and the on-box SysV `sum` matches the host `sum -s` exactly (e.g. `SHORT.TXT` → `538 1`, `twentychars.dat` → `1060 1`) ✅.
+
+### Mounting a CD
+
+`cdfs` is a real SVR4 fstype, so you mount it with `mount -F cdfs`. Like `s5` and `bfs` it needs a **per-fstype user helper** at `/usr/lib/fs/cdfs/mount` — a small ELF binary that the generic `mount(1M)` execs, which just issues `mount(spec, dir, MS_DATA|MS_RDONLY, "cdfs", 0, 0)` ✅. If that helper is missing, `mount(1M)` refuses with **`operation not applicable to FSType cdfs`** — note this is *not* `errno 22` ✅.
+
+The mount **spec is not a `/dev` path.** `cdfs` takes a `"<card><sep><unit>"` string that names the SCSI drive directly — e.g. `"1,3"` is a4091 **card 1, unit 3** (an A3000 onboard controller is **card 0**); `cdfs` parses the string itself ✅. This deliberately sidesteps the [`/dev/dsk/cXdYsZ` naming below](#device-name-scsi-address-mapping) — there is no disk-slice node for the CD, the card/unit pair is the whole address.
+
+```sh
+# once: compile the per-fstype helper (a minimal mount(2) caller) into place
+cc -o /usr/lib/fs/cdfs/mount <helper>.c
+# then mount a CD by "card,unit" — NOT /dev/dsk/...
+mount -F cdfs 1,3 /cdrom
+ls -la /cdrom
+```
+
+### Confirming `cdfs` is live in the booted kernel
+
+`mount -F cdfs` returning **`errno 22` (`EINVAL`)** almost always means `cdfs` is *not* in the running kernel — the classic SVR4 ghost: the kernel was patched on disk but never relinked-and-rebooted, or the wrong kernel is booted ✅. `cdfs` registers exactly like the built-in filesystems: a static `vfssw[]` row whose `cdfsinit` hook `vfsinit` calls automatically at boot, so injecting the row and relinking is sufficient to register it ✅. Confirm live registration with `sysfs(GETFSIND, "cdfs")` — **≥ 1** means registered (it is `12` on the bench kernel), **`-1`** means absent from this boot ✅. The disassembly-backed mechanism (why `22` is unambiguous here, `vfs_getvfssw`, the numeric-vs-string fstype dispatch) is documented on the [kernel reverse-engineering page](../drivers/kernel-reverse-engineering.md).
+
+### Kernel prerequisites
+
+A bootable a4091 + `cdfs` kernel additionally needs the **a4091 `a3091.c` super-DMAC boot patch**; without it the larger `cdfs` kernel panics `s5mountroot VOP_OPEN error 6` before it can mount root ✅. The separate GSIO `scsi.c.patch` (which grows the iobuf from 1 KB to 64 KB) is only needed by the *userspace* `/dev/scsi` path — the in-kernel `cdfs` read path goes through `sdqueue` and does not need it ✅. See [Building & installing a kernel](../drivers/kernel-build.md) for the relink/install/reboot cycle and the boot patch detail.
+
 ## Device name → SCSI address mapping
 
 Under Unix a device is just a file in `/dev` with a **major** number (which driver) and a **minor** number (which sub-device); the kernel keys off the numbers, not the filename ✅. Amix follows the SVR4 controller/disk/slice naming for SCSI disks.
@@ -122,6 +148,7 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
 - [Hardware & requirements](hardware.md) — the SCSI target IDs and the 16 MB RAM ceiling.
 - [Install walkthrough](../getting-started/install-walkthrough.md) — partitioning and filesystem choice in context.
 - [Quirks](quirks.md) — the SCSI-ID constraints (tape hard-coded at ID 4, disk ID 6 by convention) and other gotchas.
+- [Kernel reverse-engineering](../drivers/kernel-reverse-engineering.md) — the `vfssw[]` registration and the `mount -F cdfs` → `EINVAL(22)` "not in the booted kernel" diagnosis behind the `cdfs` section above.
 
 ## Sources
 
@@ -129,3 +156,5 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — `ls -l /dev` example (`/dev/dsk/c0d0s1` block major 18 minor 1; `/dev/fd0` block major 16; `/dev/console` char major 0).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — install scripts: `BOOTSIZE=2`, `BOOTLEN=BOOTSIZE*2048`, `BREAKPT=120`, `ANS="ufs"`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`, `dd if=/dev/rmt/4hn bs=256k | cpio -imdcu`; UFS miniroot (`lost+found`, `fsck` strings).
 - amigaunix.com (installation / requirements pages) — UFS-recommended consensus, ~1 GB partition guidance, SCSI ID 6 disk / ID 4 tape.
+- amix-cdfs in-kernel mount verification — firsthand Amiberry-A4091 bench, Amix 2.1c (2026-07-10): `mount -F cdfs 1,3 /cdrom` reads a Rock Ridge test CD byte-for-byte (`ls -la` of all 7 RR entries with correct names/sizes/dates; `cat` correct; on-box SysV `sum` == host `sum -s`, `SHORT.TXT 538 1`, `twentychars.dat 1060 1`); per-fstype ELF helper `/usr/lib/fs/cdfs/mount` (missing → "operation not applicable to FSType cdfs", not errno 22); card/unit spec `"1,3"` (a4091 card 1 unit 3; A3000 onboard = card 0), not a `/dev` path; `sysfs(GETFSIND,"cdfs")` liveness (12 live / -1 absent); a4091 `a3091.c` super-DMAC boot patch required (else `s5mountroot VOP_OPEN error 6`); GSIO `scsi.c.patch` needed only by the userspace `/dev/scsi` path, not the in-kernel `sdqueue` path ✅.
+- `cdfs` = a port of the AmigaOS `ODFileSystem` (`reinauer/ODFileSystem`), read-only ISO9660 / Rock Ridge / Joliet / UDF; the fstype registration mechanism (`vfssw[]` row + `cdfsinit` via `vfsinit`, `vfs_getvfssw`, and the `EINVAL(22)` dispatch) is cross-documented on `docs/drivers/kernel-reverse-engineering.md`.

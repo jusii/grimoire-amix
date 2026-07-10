@@ -59,6 +59,8 @@ awk '/^0*1814 <mount>:/{f=1} f{ if(/^0*1814/){print;next}
 The `R_68K_32 lookupname` / `R_68K_32 vfs_getvfssw` reloc lines under each `jsr` tell you what is being
 called without any guessing. This is what makes a source-free object tractable.
 
+The same reloc-annotated disassembly reaches well past the VFS/mount functions tabled above. The in-kernel **SCSI path** was cracked the same way — `sdopen` (the `sd` disk driver's open entry) and `getrdb` (the RDB / Rigid Disk Block parser) — reading their `jsr` targets by name straight out of their `exp` objects ✅. Any source-free subsystem, core *or* driver, is fair game.
+
 ## Step 3 — read a *running* kernel from a savestate
 
 The on-guest debuggers are unreliable here: `adb -k /stand/unix /dev/kmem` reads garbage because the
@@ -81,6 +83,30 @@ W = lambda o: struct.unpack(">I", ram[o:o+4])[0]      # runtime VA = BASE + o
 ```
 
 This recovered the live `vfssw[]` (each row `{char *vsw_name; int (*vsw_init)(); struct vfsops *vsw_vfsops; long vsw_flag}`, 16 bytes) and the `int nfstype` immediately after it ✅ — see the worked example below.
+
+### Grabbing the snapshot — the two-arg `SAVESTATE` IPC
+
+Amiberry's `SAVESTATE` verb takes **two** arguments — a statefile *and* a configfile. Called with one it errors and saves nothing ✅:
+
+```sh
+printf 'SAVESTATE\t/tmp/x.uss\t/tmp/x.cfg\n' \
+  | socat - UNIX-CONNECT:/run/user/<uid>/amiberry.sock
+```
+
+It works even at a kernel **panic screen**, so you can snapshot a wedged kernel and read *why* it wedged ✅. A bench scanner, `scan_a3k1.py`, automates pulling the `A3K1` chunk and resolving globals out of the resulting `.uss` ✅.
+
+### Locating a global by symbol — `nm` values are *section-relative*
+
+Step 3's walk above found `vfssw[]` by a string anchor (`"BADVFS"`). When a global has no such anchor, resolve it by symbol with the cross `nm` on the **linked kernel image** `/usr/sys/relocunix` — but its values are **section-relative, not absolute** ✅. The kernel loads **packed** as `text | data | bss` at base `0x07800000`, so the byte offset of a symbol into the `A3K1` chunk is:
+
+| Symbol's section | Byte offset into `A3K1` |
+|---|---|
+| **bss** | `text_size + data_size + nmval` |
+| **data** | `text_size + nmval` |
+
+with `text_size` / `data_size` read from `size /usr/sys/relocunix` (cross `size`). Taking the raw `nmval` as the offset — the naïve reading — lands you in kernel **code**, not the variable ✅.
+
+Validated at the computed offsets: `scsicard[]` shows the `0xc0de0001` / `0xc0de0002` product codes and the global `block` shows the `UNIX_Root` `PART` record ✅.
 
 ## Worked example — how `mount(2)` and fstype registration actually work
 
@@ -145,6 +171,10 @@ This was verified end-to-end: on a kernel **without** cdfs compiled in, `sysfs(G
 the relink/install/reboot cycle and [Filesystems & disks](../how-it-works/filesystems-and-disks.md) for
 the `/etc/vfstab` side.
 
+## A throwaway-global diagnostic — the `cdfs_diag` pattern
+
+When the console is dead but a savestate still works ([Step 3](#step-3-read-a-running-kernel-from-a-savestate)), a **throwaway global** turns the snapshot into a poor-man's `printf`. cdfs used one, `cdfs_diag`: a struct filled as a mount/read path advanced — reached-stage, `errno`, the first bytes read — then dumped afterward out of the `.uss` ✅. The trick that makes it findable in the packed image: write its **magic word** `0x0DF50001` **last**, so the populated struct is the one whose magic is set. One caveat when you scan the `A3K1` chunk for that magic — it also occurs **coincidentally inside code**, so take the **4-aligned** hit ✅.
+
 ## See also
 
 - [Kernel architecture](../how-it-works/kernel-architecture.md) — the object-library build model these `exp` files come from.
@@ -160,3 +190,7 @@ the `/etc/vfstab` side.
 - On-box reproduction on Amix 2.1c: `sysfs(GETFSIND,"cdfs")` and a string-form `mount(2)` probe, showing `errno 22` ⇔ fstype absent from the booted kernel's `vfssw[]` ✅.
 - `<sys/mount.h>` (`MS_RDONLY=0x01`, `MS_FSS=0x02`, `MS_DATA=0x04`; `int mount(const char *, const char *, int, ...)`), `<sys/fstyp.h>` (`GETFSIND=1`, `GETFSTYP=2`, `GETNFSTYP=3`), `<sys/errno.h>` (`EINVAL=22`) from the Amix sysroot ✅.
 - SVR4.0 reference behaviour cross-checked against `calmsacibis995/svr4-src` `uts/i386/fs/vfs.c` (the `mount()`/`vfs_getvfssw` ordering) — Amix is a straight SVR4.0 port ✅.
+- Two-arg Amiberry `SAVESTATE` IPC (`statefile` + `configfile`; one arg saves nothing, works at a panic screen) and the `A3K1`-chunk global scanner `scan_a3k1.py` — firsthand bench, amix-cdfs CD-ROM port effort (2026-07-09/10) ✅.
+- Section-relative `nm` offset model for the linked kernel image `/usr/sys/relocunix` (bss offset = `text_size + data_size + nmval`, data offset = `text_size + nmval`; sizes from `size`), validated against the `scsicard[]` `0xc0de0001`/`0xc0de0002` product codes and the `block` global's `UNIX_Root` `PART` record in the A3K1 dump — firsthand ✅.
+- Same `objdump -dr` reloc-annotated method extended to the in-kernel SCSI path — `sdopen` and `getrdb` (RDB parser) traced by name out of their `exp` objects — firsthand ✅.
+- cdfs's `cdfs_diag` throwaway-global diagnostic (magic `0x0DF50001` written last; scan the `A3K1` chunk for the 4-aligned hit) — firsthand from the amix-cdfs port ✅.

@@ -335,6 +335,101 @@ Two more SVR4-box gotchas that bite build scripts ✅:
 - **SVR4 `grep` has no `\|` alternation** — use separate `grep` invocations instead of one
   alternation pattern. (This is in addition to the pre-POSIX `/bin/sh` limits noted above.)
 
+## Building an a4091 (or a4091 + cdfs) kernel — two required kernel patches
+
+Building a working **a4091** kernel — and, above all, an a4091 **+ cdfs** kernel — needs **two**
+`amix-a4091` kernel patches, both under `src/kernel-patches/` ✅:
+
+- **`scsi.c.patch`** enlarges the userspace `/dev/scsi` **GSIO** bounce iobuf to **64 KB** ✅. The
+  GSIO path bounces every transfer through this iobuf — which is why userspace `/dev/scsi` reads can
+  be multi-sector even though the *in-kernel* SCSI path cannot (see the DMA gotcha below).
+- **`a3091.c.patch`** (commit `e70c1d7`; `patch -p0` on `amiga/alien/a3091.c`) adds a high-address
+  DMA **bounce** to the A3000 onboard SCSI **super-DMAC** (WD33C93 at `0xDD0000`) ✅. Stock
+  `startdma()` set `device->sac = cp->addr` — the caller's 32-bit buffer address — **directly, with
+  no bounce**, unlike the A2091-card sibling `a2091.c`, which bounces any buffer ≥ `0x1000000`
+  (16 MB) through `AllocMem(cp->tc, MEMF_CHIP)` (copy-out before a write, copy-back after a read,
+  freed in `stopdma`). The patch ports that same chip-mem bounce into `a3091.c`.
+
+### The `s5mountroot VOP_OPEN error 6` panic — why a *bigger* kernel stops booting
+
+Without `a3091.c.patch`, adding the in-kernel **cdfs** filesystem (~64 KB of kernel) is by itself
+enough to break the boot with ✅:
+
+```
+s5mountroot VOP_OPEN error 6
+PANIC vfs_mountroot errno 30
+```
+
+The trigger is **size/layout, not a cdfs code bug** ✅. Growing the kernel pushes `getrdb()`'s static
+RDB buffer (the `union block` in `sdpart.c`) up to a higher address, **past the super-DMAC's reach**;
+the boot root-device read then DMAs to an address the super-DMAC can't hit and **returns all-zeros**,
+so `sdopen()` fails `ENXIO` → `s5mountroot VOP_OPEN error 6`. Proof it is size-driven: a
+section-matched, code-**inert** cdfs stub of the same size panics identically, and the a4091-only
+"golden" kernel (same `scsi.c.patch`, no cdfs) boots fine ✅.
+
+**Savestate-diff root cause** ✅: comparing an Amiberry savestate of the *booting* golden kernel
+against the *panicking* cdfs kernel, the same RDB buffer held a valid `RDSK`/`PART` block named
+`UNIX_Root` in the golden kernel but was **all-zeros** in the cdfs kernel (now at a higher VA —
+~`0x078F…` vs ~`0x078E…`), while `queue[0].f` (the registered card's dispatch function) was
+**populated in both**. So the card is registered (autoconfig is fine) — the **DMA read itself** is
+what fails. With `a3091.c.patch` the a4091 + cdfs kernel boots both **warm and cold** and mounts a CD
+byte-exact ✅.
+
+Unlike the **D245 boot-breaker** (a *random* `ld` write corruption, covered above), this failure is
+**deterministic and genuinely size-triggered**.
+
+> **Distinct from the error-*5* panic.** This is `VOP_OPEN error 6` (`ENXIO` — a super-DMAC
+> high-address DMA failure). The `s5mountroot VOP_OPEN error 5` (`EIO`) seen on an A4091-only machine
+> was a *different* fault — the "phantom A3000" device-**dispatch** bug, where the root read went to a
+> non-existent internal SCSI — see the [boot process](../how-it-works/boot-process.md) and the
+> [`autocon()` phantom-A3000 special case](zorro-autoconfig.md). Don't conflate them.
+
+🔴 **Open:** the exact reach limit of the super-DMAC is uncharacterized. The `≥ 0x1000000` (16 MB)
+threshold is `a2091`'s proven-safe cutoff, not a measured `a3091` boundary — and the failing buffer
+sat around VA `0x078F0000`, well above 16 MB, so a plain 24-bit-address story is incomplete. Treat the
+bounce as a safe over-approximation pending real-hardware measurement.
+
+## Two kernel gotchas that bite any module (found porting cdfs)
+
+Both were hit while porting cdfs, but both are **general** — any kernel module doing the same thing is
+exposed ✅.
+
+### Gotcha: the kernel's `bzero` under-clears a region larger than ~1 KB ✅
+
+Zeroing a buffer larger than **~1 KB** with the SVR4 kernel's `bzero` — or with a `memset` that
+delegates its `c == 0` case to `bzero` — leaves the **tail uncleared** (stale garbage) on this m68k
+build ✅. It bit cdfs **twice** from a single ~1.1 KB struct clear: an uncleared `has_child_link`
+clobbered a filesystem node's extent (empty/garbage root), and an uncleared `is_relocated` made the
+ISO directory walk skip every child (empty directory). **Fix:** a `memset` that clears with its own
+**byte loop** (amix-cdfs `ad09035`). **Any module relying on `bzero`/`memset` to clear a > 1 KB buffer
+is exposed** — audit for it. (Working theory: a size/alignment/`int`-truncation bug in `bzero` around
+~1 KB.)
+
+### Gotcha: in-kernel SCSI DMA corrupts transfers larger than one 2048-byte block ✅
+
+On this board an **in-kernel** SCSI transfer (`struct sdcom` + `sdqueue()`) of **more than one CD
+sector (2048 B)** comes back as **kernel text / garbage** and can **wedge the box**; **single-block
+(2048 B) transfers are reliable** (PVD, mount reads, and RDB reads are all single-block and fine) ✅.
+cdfs's block-cache read-ahead issued one 16 KB (8-sector) DMA → garbage → empty/garbage directory +
+hang; the fix **caps the media transfer to one sector** and lets the chunk loop split multi-sector
+requests (amix-cdfs `a5c6915`). This is the **same DMA-limitation family** as the `a3091` super-DMAC
+high-address bounce above.
+
+The **userspace** `/dev/scsi` **GSIO** path is *not* affected — it bounces through the 64 KB iobuf
+(`scsi.c.patch`) and *does* do multi-sector reads; this limit is specific to the in-kernel `sdqueue`
+path ✅. 🔴 **Open:** the real HBA/DMA limit is uncharacterized, so the one-sector cap can't yet be
+raised.
+
+> The concrete in-kernel cdfs fixes for both gotchas above live in the **amix-cdfs** repo — the
+> byte-loop `memset` (`ad09035`) and the one-sector DMA cap (`a5c6915`).
+
+### Verify which kernel actually booted 🟡
+
+Warm reboot (`shutdown -i6`) was intermittently a **no-op** in one bench session — the box stayed
+multiuser on the **old** kernel — while **cold boot** (Amiberry down/up, which reloads the boot
+partition) was reliable 🟡. Always identity-check *which* kernel actually booted (a version marker, or
+`sysfs(GETFSIND, …)`) before trusting a test result.
+
 ## See also
 
 - [Driver model overview](driver-model.md) — what `cdevsw`/`bdevsw`, majors/minors, and the
@@ -374,3 +469,22 @@ Two more SVR4-box gotchas that bite build scripts ✅:
   (symtab **and** relocation records).
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + SCRIPTS
   assembler), referenced by the A4091-on-Amix work.
+- amix-a4091 kernel patches `src/kernel-patches/scsi.c.patch` (userspace `/dev/scsi` GSIO bounce iobuf
+  → 64 KB) and `src/kernel-patches/a3091.c.patch` (commit `e70c1d7`) — the A3000 super-DMAC
+  high-address chip-mem DMA bounce for buffers ≥ `0x1000000`, ported from the `a2091.c` sibling;
+  evidence = source + Amiberry-savestate differential.
+- The `s5mountroot VOP_OPEN error 6` / `PANIC vfs_mountroot errno 30` boot panic and its size/layout
+  root cause — cdfs (~64 KB) grows the kernel, pushing `getrdb()`'s `union block` RDB buffer
+  (`sdpart.c`) past the super-DMAC's reach; savestate diff shows a valid `UNIX_Root` `RDSK`/`PART`
+  block in the booting golden kernel vs all-zeros in the panicking cdfs kernel, with `queue[0].f`
+  populated in both (amix-a4091 CD-ROM-effort handoff, 2026-07-10).
+- amix-cdfs `ad09035` — byte-loop `memset` replacing the SVR4 kernel `bzero` that under-clears a
+  > ~1 KB region (tail left as garbage); it bit cdfs twice from one ~1.1 KB struct clear
+  (`has_child_link`, `is_relocated`).
+- amix-cdfs `a5c6915` — caps the in-kernel SCSI (`struct sdcom` + `sdqueue()`) media transfer to one
+  2048-byte sector; a multi-sector in-kernel DMA returns kernel text / wedges the box, while the
+  userspace `/dev/scsi` GSIO path (64 KB iobuf) is unaffected (Amix kernel-RE + gotchas handoff,
+  CD-ROM effort, 2026-07-10).
+- Bench caveat (2026-07-10): warm reboot (`shutdown -i6`) was intermittently a no-op (box stayed on
+  the old kernel); cold boot reloads the boot partition reliably — always identity-check which kernel
+  actually booted.
