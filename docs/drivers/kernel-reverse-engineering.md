@@ -108,6 +108,41 @@ with `text_size` / `data_size` read from `size /usr/sys/relocunix` (cross `size`
 
 Validated at the computed offsets: `scsicard[]` shows the `0xc0de0001` / `0xc0de0002` product codes and the global `block` shows the `UNIX_Root` `PART` record ✅.
 
+## Live-probing a running kernel with `adb` on `/dev/kmem` — the load-bias trap ✅
+
+The savestate route above reads a *frozen* kernel. When the box is **alive**, you can read **and write**
+live kernel memory in place with `adb` on `/dev/kmem`, turning an instrumented kernel into a re-armable
+probe with **no rebuild/reboot cycle** ✅:
+
+```sh
+echo '<runtime-VA>/D'      | adb - /dev/kmem      # read one long by runtime virtual address
+echo '<runtime-VA>/W 0'    | adb -w - /dev/kmem   # write it (adb -w enables writes)
+```
+
+This was proven by zeroing a driver's static log counter mid-session and watching it increment again on
+the next I/O ✅.
+
+**The trap — `adb`'s symbol addresses are FILE-relative, so you must add the kernel's load bias.** ✅
+The reason the earlier `adb -k /stand/unix /dev/kmem` invocation
+[reads garbage](#step-3-read-a-running-kernel-from-a-savestate) is the same one that bites here: given a
+**namelist** (`adb /stand/unix /dev/kmem`), `adb` resolves a symbol to the address recorded in the
+**kernel file**, which on this **relocated** kernel is only an *offset* — reading it directly returns
+garbage (`freemem` read back as `0xFFFFFFFF`). Drop the namelist and address by **runtime VA** instead:
+
+```
+runtime VA = (nm/adb symbol value) + kernel_load_base
+```
+
+On the real A4000 + **Z3660** box the kernel loads at **`0x08000000`**, verified by hand: `z3660_enter`
+at `nm` offset `54932` (`0xD694`) is live at `0x0800D694`, matching its instruction bytes ✅. (That base
+is **machine/config-specific** — it is wherever the bootstrap relocated the kernel; the Amiberry
+A3000-fastmem savestate above sees the kernel at `0x07800000` instead. Confirm your box's base with a
+known symbol before trusting any poke.)
+
+**For a `static`-scoped variable with no global symbol:** disassemble the function that touches it, read
+the operand address straight out of the **live instruction stream**, then poke *that* address — the same
+trick that recovers file-scoped statics from the `exp` objects, applied to the running image ✅.
+
 ## Worked example — how `mount(2)` and fstype registration actually work
 
 Disassembling the three `fs.exp` functions above yields the complete, source-accurate picture ✅:
@@ -194,3 +229,4 @@ When the console is dead but a savestate still works ([Step 3](#step-3-read-a-ru
 - Section-relative `nm` offset model for the linked kernel image `/usr/sys/relocunix` (bss offset = `text_size + data_size + nmval`, data offset = `text_size + nmval`; sizes from `size`), validated against the `scsicard[]` `0xc0de0001`/`0xc0de0002` product codes and the `block` global's `UNIX_Root` `PART` record in the A3K1 dump — firsthand ✅.
 - Same `objdump -dr` reloc-annotated method extended to the in-kernel SCSI path — `sdopen` and `getrdb` (RDB parser) traced by name out of their `exp` objects — firsthand ✅.
 - cdfs's `cdfs_diag` throwaway-global diagnostic (magic `0x0DF50001` written last; scan the `A3K1` chunk for the 4-aligned hit) — firsthand from the amix-cdfs port ✅.
+- Live `adb` on `/dev/kmem` (read with `adb - /dev/kmem`, write with `adb -w`; symbol addresses are file-relative so runtime VA = `nm` value + kernel load base, `0x08000000` on the real A4000 + Z3660, verified `z3660_enter` `nm` `0xD694` → live `0x0800D694`; poke a `static` by reading its operand address out of the live instruction stream) — the **amix-kerntools** bench forensics @ `8a76775`, real hardware 2026-07-12 ✅.

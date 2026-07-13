@@ -32,6 +32,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 16 | **On an emulated 68k, "boots then hangs" may be the *emulator*, not your driver** — the Z3660's 68k emulator faulted demand-paging the driver's own pages, while the driver carried every transfer byte-perfectly. Triage with serial instrumentation + core-dump analysis before blaming the driver | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md), [Emulation Fidelity](emulation-fidelity.md) |
 | 17 | **An emulator that batches instructions between interrupt polls can hang the A3000-SCSI bootstrap** — that bootstrap is INT2-driven; too-coarse interrupt-service cadence starves it and Amix hangs *before the banner*. Keep INT2 latency low through boot (on the Z3660, `service_cadence ≤ 4`) | 🟡 | [Emulation Fidelity](emulation-fidelity.md) |
 | 18 | **`pkgrm` and `pkginfo -l` fail out of the box on the stock 2.1c image** — one malformed `contents` record (a filename containing a space) aborts every full parse of the package DB (`bad read of contents file … unknown ftype`). Delete that one line to fix both | ✅ | [Package management](package-management.md#the-space-in-a-pathname-defect) |
+| 19 | **`mount(2)` silently *stacks* a second mount on an already-mounted directory** — the second `mount` returns 0, `umount` then pops one layer and returns 0 while the media looks "still mounted": a perfect fake broken-umount. An in-kernel filesystem must refuse it itself. Smoking gun: duplicate fstype lines in `/etc/mnttab` | ✅ | [Driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract) |
+| 20 | **"Password expired" at login is the *future-`lastchg`* check, not max-age** — a dead RTC battery boots the box in 1978; if a previous session set the clock forward, `/etc/shadow`'s `lastchg` is now in the future and SVR4 `login` forces a password change every boot. **Never set the box RTC forward** | ✅ | [Time & Y2K](#20-password-expired-is-the-future-lastchg-check-never-set-the-rtc-forward) |
 
 The rest of this page expands each item.
 
@@ -166,6 +168,20 @@ the Amix-safe value is `service_cadence 4` (raise it only after boot). The knob 
 INT2-latency attribution and the exact boundary are an author hardware sweep 🟡. Full story on
 [Emulation Fidelity](emulation-fidelity.md#scsi-int2-interrupt-latency-a3000-mainboard-bootstrap).
 
+### 19. mount(2) silently stacks mounts (a fake broken-umount) ✅
+
+`mount(2)`'s **only** busy check is `v_vfsmountedhere` on the vnode `lookupname` returns — but for a
+directory that is *already* a mount point, `lookupname` **traverses into** the mounted filesystem,
+whose root has that flag clear ✅. So a second identical `mount` of the same media on the same
+directory **returns 0 and stacks a second layer**; a later `umount` pops exactly one layer and also
+returns 0, while the disc appears "still mounted." This imitates a **broken `umount`** so convincingly
+that it was chased as one (a direct `umount(2)` probe returned 0 with the filesystem apparently still
+there) — the real bug was silent stacking on repeated mounts ✅. Stock filesystems guard this in their
+*own* mount op (`prmount`/`fdmount` refuse when the covered vnode has `v_count > 1` or `VROOT`), and an
+in-kernel filesystem must do the same (return `EBUSY` on the second mount). **Diagnostic:** count the
+fstype's lines in `/etc/mnttab` — duplicates are the smoking gun. Full contract on
+[the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
+
 ## Time & Y2K quirks
 
 ### 7. Y2K: `setclk` and the kernel's 1999 date cap ✅/🟡
@@ -176,6 +192,24 @@ Amix has **two** millennium problems ✅/🟡:
 2. The **kernel caps the date at 1999** — even the finishing-touches install step (`amixadm`) only accepts a date **≤ 1999** ✅.
 
 These are **community-patched** ✅/🟡: applying the patch disk (which upgrades to **2.1p2a / kernel 2.1c**) ships Y2K fixes, after which you run the corrected `setclk` ✅. See the patch mechanism in [the patch ADF anatomy](../boot-disks/anatomy-patch-adf.md) and the version timeline in [versions](../reference/versions.md).
+
+### 20. Password expired is the future-lastchg check, never set the RTC forward ✅
+
+An SVR4 box whose RTC battery is dead boots believing it is **January 1978** (~day 2923 of the Unix
+epoch). If a previous session ever "fixed" the clock by **setting it forward**, that stamped
+`/etc/shadow`'s `lastchg` field far in the future (e.g. 8117 = 1992). On the next cold boot — back at
+1978 — `lastchg` is now **in the future relative to "today"**, and SVR4 `login` treats a future
+`lastchg` as **expired**, forcing a password change at every login ✅. This is the *future-dated*
+check, **not** the max-age rule, so it recurs on every 1978 boot and stalls `amixrun.py`-style
+automation at the password dialog. Root-caused on a real A4000 + Z3660 after it cost hours and a full
+lockout ✅.
+
+**Reliable fix at the prompt:** set the new password to the **same value** (SVR4 accepted a 4-char root
+password here); with the clock at 1978 the new `lastchg` (~2923) is not future-dated, so it does not
+recur. **Do NOT "fix" it by setting the RTC to now** — that re-arms the trap for the next cold boot ✅.
+The deep fix for a golden image is to set `lastchg` to a **pre-1978 value offline**. (This is a
+distinct problem from the [Y2K/`setclk`](#7-y2k-setclk-and-the-kernels-1999-date-cap) cap above —
+here the danger is setting the clock *forward*, not past 1999.)
 
 ## X11 & desktop quirks
 
@@ -245,3 +279,5 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - The amix-z3660scsi project @ `8ea1605` — the `z3660` piscsi block-driver bring-up on a real A4000 + Z3660, 2026-06-12/13 ✅: the 2.1 `bootinfo.autocon[]` miss and the multi-method detect that cleared the silent hang (quirk 15), and the firmware-emulator-vs-driver triage (quirk 16 — the apparent hang was the 68k emulator demand-paging the driver's own pages, not the driver; firmware-owned fix, cited not reproduced). See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 - Research brief §19 (emulation fidelity), from the Z3660 firmware project (branch `amix-main`, 2026-06) — quirk 17 (the A3000-SCSI bootstrap's INT2 sensitivity to interrupt-service cadence; the `service_cadence` knob ✅ / the 4-boots-8-hangs boundary 🟡) and the emulator-side mechanism behind quirk 16 (68030 bus-error-frame fidelity on the demand-paging path). See [Emulation Fidelity](emulation-fidelity.md).
 - Research brief §20 (stock SVR4 package system), from the amix-packagemanager project (firsthand on a clean Amix 2.1c image, 2026-07-01) — quirk 10's `amixpkg`-is-install-media-only correction ✅/🟡, and quirk 18 (the `/var/sadm/install/contents` space-in-pathname record that breaks `pkgrm`/`pkginfo -l` out of the box, ✅). See [Package management](package-management.md).
+- The **amix-cdfs** project @ `31e8c3b` — quirk 19 (`mount(2)` silently stacks on an already-mounted directory; `mount(2)`'s only busy check is `v_vfsmountedhere`, which `lookupname` clears by traversing into the mount; guard in the fs's own mount op like `prmount`/`fdmount`), from stock-kernel disassembly + reproduction on a real A4000 + Z3660, 2026-07-13 ✅ (`844c2ed`). See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
+- The **amix-kerntools** bench forensics @ `8a76775` — quirk 20 (SVR4 `login`'s future-`lastchg` "expired" trap on an RTC-1978 box after a clock was set forward; same-password workaround, never set the RTC forward), root-caused on a real A4000 + Z3660, 2026-07-11 ✅.

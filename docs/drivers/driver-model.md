@@ -8,7 +8,7 @@ status: draft
 
 In Amix, a device is just a file in `/dev` carrying two numbers — a **major** (which driver) and a **minor** (which sub-device). The kernel never looks at the name; it indexes a per-class **switch table** by the major number to find the driver's entry points. Everything else in this page is the elaboration of that one idea ✅. The authoritative source is Michael Ditto's *Writing Amix Device Drivers* (1990 European Amiga Developer's Conference), §5 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), and it is the conceptual core for the rest of the drivers pillar.
 
-This page is **uniformly ✅** (primary source: the Ditto paper) except where a tag says otherwise.
+This page is **uniformly ✅** except where a tag says otherwise. The core model's primary source is the Ditto paper; the later [HBA/DMA driver contract](#the-amix-hbadma-driver-contract-real-hardware) and [in-kernel filesystem](#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract) sections are first-party, real-hardware-verified findings (amix-z3660scsi / amix-cdfs) cited inline.
 
 ## The user-level view: /dev nodes, major + minor
 
@@ -152,6 +152,52 @@ The Ditto paper's `par.c` exercises the standard SVR4 DDI/DKI surface that an Am
 
 `autocon()` ties into the Amiga **AUTOCONFIG** mechanism that assigns Zorro II board addresses at reset; see [Zorro II autoconfig for drivers](zorro-autoconfig.md). Note Amix supports **Zorro II only** — there is no Zorro III mapping ✅.
 
+## The Amix HBA/DMA driver contract (real hardware)
+
+Everything above is the 1990 Ditto-paper model. This section adds the parts of the contract that the paper never spells out but that **bite hard on real hardware** — recovered by bringing up the native [Z3660 piscsi SCSI driver](z3660-scsi-driver.md) and the [cdfs](../how-it-works/filesystems-and-disks.md) in-kernel filesystem on a physical A4000 + Z3660, and by disassembling the stock Amix kernel. Each item below cost real silent corruption or a wild-jump panic. They are all **✅** (fix commit + real-hardware reproduction, or stock-kernel disassembly) and they **generalize to any HBA/DMA driver on this platform**, the a4091 included.
+
+### Completion runs in the caller's context, iteratively — never from a callout ✅
+
+The SVR4 block layer hands your queue routine a `struct sdcom` (command + buffer + the `cp->intr` completion callback). Two facts about its lifetime and context are non-negotiable:
+
+1. **The `sdcom` may live on the *caller's stack*.** ✅ Callers are allowed to allocate it as a local — the cdfs media backend does exactly this (`struct sdcom` inside a stack-local request struct). So a driver that **defers completion to a clock callout** (`timeout(done, cp)`) reads `cp->intr` from a *dead* stack frame once the caller returns, and jumps through reclaimed memory — kernel corruption and a wild-jump panic (seen the moment `mount -F cdfs` touched the CD). **Rule: complete the command before your queue routine returns**, or the caller must explicitly guarantee the `sdcom` outlives the completion — and nothing in the interface says it does. The a4091 driver was immune only because it already completes inline. ✅
+2. **…but a *bare* inline `(*cp->intr)(cp)` blows the kernel stack**, because disk completion **re-issues the next I/O** (`ihandle → startio → sdqueue → your queue routine`), so a naive recursive completion burns **one stack frame per chunk** and dies on the first big multi-chunk burst (~100 I/Os into boot on real hardware). ✅ The working shape is **synchronous but *iterative*: a driver-owned completion FIFO plus a `completing` guard**, so the first caller drains the queue in a loop and re-entrant completions are *enqueued*, not recursed. A silent, kmem-readable FIFO-overflow counter is cheap insurance and must stay 0. ✅
+
+*(This is exactly the correction the Z3660 piscsi driver landed after its first cut deferred completion to `timeout()`; see [that page](z3660-scsi-driver.md#the-per-io-sequence).)*
+
+### `sdcom.addr` is already a physical (bus) address ✅
+
+The buffer address in `sdcom.addr` is **physical by contract — the caller has already run it through `vtop()`** before handing it over (both `dd.c` and the cdfs media backend do). A driver that "helpfully" adds its own `vtop()` **double-translates** and corrupts the transfer. ✅ It is an attractive wrong turn because the field is named `addr` and the rest of the kernel is virtual-addressed. (Related: raw/`physio` I/O never hands a driver a *user* VA either — `dd.c → breakup() → amiga_dma_pageio()` stages through a 2 KB kernel buffer — so a raw readback is trustworthy for verifying a write.) ✅
+
+### The spl / callout-IPL contract: spl2 sections are sound; an unguarded mailbox is not ✅
+
+Amix **callouts dispatch at IPL4** (`SR 0x2400`), which at first suggests every `sdspl`-guarded (**spl2**) critical section in the SCSI path is unsound against a callout-driven completion. It is **not**: the *only* thing that triggers a callout is the **level-2 CIA-A clock**, so masking at spl2 genuinely blocks it, and the stock `sdspl` (spl2) sections are correct. ✅ The real exposure is a driver's **own hardware mailbox transaction** carrying *no* spl masking — bracket the whole transaction (the Z3660 driver uses **spl6**, with permanent silent nest counters that must read 0). Platform quirk from the same disassembly: **spl5/spl6/spl7 all emit the same `_spl4` (`SR 0x2400`)** on this kernel. ✅
+
+### The DMA-alignment contract: a `vtop()`'d buffer must NOT cross a page boundary ✅
+
+**On Amix, a DMA target handed through `vtop()` is valid for exactly ONE page** (`NBPP = 2048`, `sys/immu.h`) — because **large kmem allocations are virtually contiguous but physically *scattered*.** ✅ A `kmem_alloc` above 4096 bytes goes through `sptalloc → segkmem_alloc`, which pops **arbitrary frames** off `page_freelist` and maps them at consecutive *virtual* addresses with **no physical adjacency**. So `vtop()` translates only the first page; the moment a single DMA transfer crosses the page boundary, its tail bytes land in the **physically-next frame — owned by someone else.**
+
+This is a **wild-write** bug, and its two traps are what make it nearly invisible ✅:
+
+- **An allocator header silently destroys alignment.** A portable allocator wrapper that prepends an 8-byte length header (SVR4 `kmem_free` needs the original size) shifts every "page-sized" buffer **8 bytes off page alignment** — so cdfs's 2048-byte sector buffers sat 8 bytes into a page and every sector DMA spilled its last 8 bytes into the next frame. The spilled bytes were the CD sector's zero padding, so the signature was **"a short run of zeros at the start of an innocent page"**: it zeroed `/usr/sbin/umount`'s 16-byte ELF ident **on disk** (buffer-cache page → `fsflush`) and scribbled libc's resident pages. (It also rounds a 2056-byte request into the 4096 buddy class — a size no stock consumer uses.)
+- **Byte-correct *reads* prove nothing about wild *writes*.** Bulk file reads verified byte-identical against the source ISO throughout the hunt, because they happened to use a *different*, accidentally page-aligned buffer; only misaligned metadata/mount-time reads did the damage, and the bytes they lost were padding nobody compares. The reliable detector was a **canary soak**: `sum -r` a set of resident binaries (`libc.so.1`, `sh`, `init`, `mount`, `umount`, `ls`, `sum`, `df`) before and after N mount/umount cycles and diff. That one-liner caught in a single cycle what two theories missed (15/15 clean after the fix vs corruption by cycle 2–10 before). ✅
+
+**Fix pattern:** page-align every DMA target (sector == page ⇒ one buffer = exactly one frame), bounce unaligned targets, never DMA into a stack buffer, and add a **permanent kernel-side guard that refuses any request with `(va & (NBPP-1)) + nbyte > NBPP` via `cmn_err`** instead of corrupting memory. ✅ For the allocator internals behind this (why >4096 is scattered, the buddy pools, the freelist-link corruption signature) see [Kernel architecture → the kmem allocator](../how-it-works/kernel-architecture.md#the-kmem-allocator-what-a-driver-can-assume). *(This is the deeper root cause of the "in-kernel SCSI DMA corrupts multi-sector transfers" gotcha noted under [kernel-build](kernel-build.md#gotcha-in-kernel-scsi-dma-corrupts-transfers-larger-than-one-2048-byte-block): a transfer that stays inside one aligned page is one physical frame and is safe.)*
+
+## Writing an in-kernel filesystem: the SVR4 VFS_MOUNT contract ✅
+
+A new in-kernel filesystem (cdfs was the first non-stock one) must honor a `mount(2)` contract that hands it a `struct vfs` full of **recycled garbage**, with several "obvious" moves being wrong ✅ (all from disassembling `mount(2)`/`dounmount`/`vfs_add`/`s5mount`/`prmount`/`fdmount`/`getudev` and diffing cdfs against the stock filesystems):
+
+- **`mount(2)` does not zero the `vfs`, and it takes the lock *before* dispatching.** It `kmem_alloc`s the 48-byte `struct vfs` (not zeroed), inlines its own `VFS_INIT`, then calls `vfs_lock()` (setting `VFS_MLOCK` in `vfs_flag`) **before** dispatching your `VFS_MOUNT`. A filesystem that calls `VFS_INIT()` inside its own mount op therefore **wipes the kernel's own lock bit** — only ever **OR** into `vfs_flag`, never assign it. ✅
+- **`vfs_dev`, `vfs_fsid`, `vfs_bcount` arrive as heap garbage and must be set** (stock s5 sets all three). A garbage `vfs_dev` leaks to userland via `statvfs` and can falsely match in `vfs_devsearch()` (used by `umount(2)`, `bdevbsize`, NFS `getvfs`). ✅
+- **The device-less convention is *not* `vfs_dev = 0`.** `prinit`/`fdinit` latch a unique major from **`getudev()`** once at init and stamp `makedevice(udev, 0)` per mount. ✅
+- **`vfs_add` clears `VFS_RDONLY` unless the caller passed `MS_RDONLY`.** A read-only filesystem that merely sets the flag itself will be believed **writable** — gate the mount on `MS_RDONLY` (return `EROFS`) or the kernel's state lies. ✅
+
+And two userland-side halves of the same contract:
+
+- **`mount(2)` silently *stacks* mounts on an already-mounted directory** — its only busy check is `v_vfsmountedhere` on the vnode `lookupname` returns, but for a mounted-on dir `lookupname` *traverses into* the mounted filesystem whose root has that flag clear. So a second identical `mount` returns 0 and stacks, and `umount` then pops one layer and returns 0 while the media "is still there" — a perfect imitation of a broken umount. Guard it in your own mount op (`v_count > 1` or `VROOT` → `EBUSY`), exactly as `prmount`/`fdmount` do. ✅ This one is on the [quirks checklist](../how-it-works/quirks.md#19-mount2-silently-stacks-mounts-a-fake-broken-umount) too.
+- **`/etc/mnttab` is userland-maintained, and `umount(1M)` unmounts by the SPECIAL field.** The kernel never writes `mnttab`; the per-fstype helper `/usr/lib/fs/<fstype>/mount` does (and **without that binary the fstype cannot be mounted at all** — SVR4 `mount(1M)` execs it). Because `umount(1M)` locates the mount by the entry's **special** field, a device-less filesystem must record its **mount point** as the special (`/proc`/`/dev/fd` set the precedent, e.g. `/proc /proc proc rw …`); recording a `<card>,<unit>` spec instead makes `umount` silently fail while deleting the entry. Trade-off to document: `mnttab` then no longer records *which* unit is mounted. Append the line with a single `O_APPEND` write, and **never fail the mount because bookkeeping failed** (warn, exit 0). ✅
+
 ## Adding a driver: the table workflow
 
 The paper's end-to-end procedure ties the whole model together ✅. Full mechanics (file edits, relink, boot-partition write) are in [Building and installing a kernel](kernel-build.md); the conceptual steps are:
@@ -177,4 +223,23 @@ The paper's end-to-end procedure ties the whole model together ✅. Full mechani
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §5 (device-driver model), §4 (kernel architecture: monolithic, no loadable modules, `kernel.c` in source), §2 (SCSI ID hard-coding, Zorro II only).
 - `asokero/va2000-amix` repo (`io_init[]` / `cdevsw[]` slot 68 patches): <https://github.com/asokero/va2000-amix>
 - `isoriano1968/hydra-amix` repo (`hya` at `cdevsw` slot 47, `hydraopen`/`hydrawput`/`hydraintr`): <https://github.com/isoriano1968/hydra-amix>
+- **The HBA/DMA driver contract** (the "real hardware" section) — **amix-z3660scsi** @ `2a463b8`: `a5af58a`
+  (`sdcom` stack-lifetime → synchronous in-context *iterative* completion via a driver-owned FIFO +
+  `completing` guard; a callout deferral read a dead-stack `cp->intr`), `908f40a` (spl6 mailbox bracket
+  + nest counters), the `sdcom.addr`-is-physical / no-double-`vtop()` rule (source-verified across
+  `dd.c:240` and the cdfs media backend), and the callout-IPL verdict (callouts dispatch at IPL4 but
+  only the level-2 CIA-A clock triggers them, so spl2 sections are sound; `spl5/6/7` all emit `_spl4`)
+  from stock-kernel disassembly; repo `NOTES.md` §"two load-bearing contracts". Validated on a real
+  A4000 + Z3660 (T2.P3, 2026-07-10 → 07-12). ✅
+- **The DMA-alignment contract + the VFS_MOUNT / mnttab contract** — **amix-cdfs** @ `31e8c3b`:
+  `fa9db1a`+`31e8c3b` (page-align DMA targets + a permanent `(va & (NBPP-1)) + nbyte > NBPP` guard;
+  `NBPP = 2048` from `sys/immu.h`; >4096 kmem is physically scattered so `vtop()` is valid for one page
+  — the 8-byte allocator header shifted sector buffers off-page and wild-wrote the next frame),
+  `0fcf308` (VFS_MOUNT contract: don't `VFS_INIT` over the kernel's lock bit; set `vfs_dev`/`fsid`/`bcount`;
+  `getudev()` for device-less; `vfs_add` clears `VFS_RDONLY`), `844c2ed` (anti-stacking + `getudev`),
+  `6f727b1`+`d3beca7` (`platform/amix/mount.c` userland helper + `mnttab` special-field semantics);
+  `tests/unit/test_remount.c`. Stock-kernel disassembly (symbol-bearing relocatable kernel, period
+  m68k binutils). Live on a real A4000 + Z3660 (2026-07-12 → 07-13): canary soak 15/15 byte-identical
+  post-fix vs corruption by cycle 2–10 pre-fix (the `/usr/sbin/umount` ELF-ident zeroing incident);
+  mount-stacking reproduction; `mnttab` special-field A/B test. ✅
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>

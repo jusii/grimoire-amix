@@ -13,9 +13,17 @@ note and a confidence tag. Where a command is nuanced enough to need its own pag
 links to the deep dive.
 
 **Read this first:** Amix is **AT&T System V Release 4 (SVR4)** on the 68030 ✅, so most SVR4
-admin conventions apply. But two SVR4-isms bite hard: the **`/bin/sh` is pre-POSIX** ✅ (no
-`$(...)` command substitution, no `grep -q` — use backticks and `grep … >/dev/null`), and the
-default shell is **ksh** ✅. Commands below assume you are `root` unless noted.
+admin conventions apply. But a few SVR4-isms bite hard:
+
+- the **`/bin/sh` is pre-POSIX** ✅ — no `$(...)` command substitution, no `grep -q` (use backticks
+  and `grep … >/dev/null`); the default *interactive* shell is **ksh** ✅.
+- **`grep` is classic SVR4: no `\|` alternation and no `grep -w`** ✅. A multi-pattern
+  `grep 'a\|b'` matches **nothing** and exits 1 — so it reads as "the symbol is absent," which is
+  exactly the wrong conclusion when you are, say, checking whether a de-instrumented kernel still
+  carries a diagnostic. Use **one simple pattern per `grep`, or `egrep`**. (Root-caused on a real
+  A4000 + Z3660 where `nm /stand/unix | grep 'a\|b'` returned empty for two symbols that both exist.)
+
+Commands below assume you are `root` unless noted.
 
 For terminology (major/minor numbers, STREAMS, `cdevsw`, RDB, etc.) see the
 [glossary](../how-it-works/glossary.md). For every device node and its major/minor, see the
@@ -194,6 +202,21 @@ Deep dive: [networking](../how-it-works/networking.md). For the interface device
 
 ---
 
+## Mounting filesystems
+
+Amix uses the SVR4 `mount(1M)`/`umount(1M)` front-ends. `mount -F <fstype> <special> <dir>` execs the
+per-fstype helper **`/usr/lib/fs/<fstype>/mount`** — **without that helper binary the fstype cannot be
+mounted at all** ✅. Two gotchas worth knowing:
+
+| Fact | Detail | Tag |
+|---|---|---|
+| `/etc/mnttab` is **userland-maintained** | The kernel never writes it; the per-fstype `mount` helper appends the line (a single `O_APPEND` write), the way `/proc`/`/dev/fd` do | ✅ |
+| `umount(1M)` matches by the **special** field | It locates the mount by the entry's *special* (first) field — so a **device-less** filesystem must record its **mount point** there (like `/proc /proc proc …`), or `umount` silently fails while still deleting the mnttab line | ✅ |
+| Repeated `mount` **stacks** silently | A second `mount` of the same media on the same dir returns 0 and stacks; the fs must reject it. Duplicate fstype lines in `/etc/mnttab` are the tell — see [quirks #19](../how-it-works/quirks.md#19-mount2-silently-stacks-mounts-a-fake-broken-umount) | ✅ |
+
+The kernel-side half of this contract (writing an in-kernel filesystem) is on
+[the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
+
 ## Time and the clock
 
 | Command | What it does | Tag |
@@ -288,4 +311,6 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 - `asokero/va2000-amix` repo — `rm -f amiga/config/unix.o master.d/exp unix`, `cp relocunix /stand`,
   `make bootpart KERNEL=relocunix`, `mknod /dev/va2000 c 68 0`, pre-POSIX `/bin/sh` note.
 - `isoriano1968/hydra-amix` repo — `slink addaen /dev/hya0 hya0`, native `make` / `make force`, `mknod /dev/hya0 c 47 0`, STREAMS `cdevsw` slot 47.
+- The **amix-kerntools** bench forensics @ `8a76775` — SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660, 2026-07-12 ✅.
+- The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).

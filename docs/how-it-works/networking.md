@@ -160,6 +160,27 @@ mount -F nfs server:/export/home /mnt
 
 `share`/`shareall`/`dfstab` and `mount -F nfs` are the SVR4 distributed-filesystem (DFS) interfaces; Amix carries them as part of the SVR4 base ✅. For local disk and filesystem details (UFS vs s5) see [filesystems and disks](filesystems-and-disks.md).
 
+## STREAMS message-block exhaustion — the box wedges with memory to spare 🟡
+
+Under **sustained bench sessions** a box can **wedge while `freemem` is still healthy** 🟡. The console
+signature is `WARNING: ldterm: (ldtermsrv) out of blocks` and `console_get_buffer: out of blocks`; the
+kernel is still alive (it echoes those warnings on each keypress) but **TCP dies first and console echo
+second**. Crucially `freemem` was still ~2100 pages (≈4.3 MB) when it happened, so this is **not** page
+exhaustion — SVR4 STREAMS `mblk`s come from their **own preallocated arena**, which the entire network
+stack lives on, and that arena can starve while the page pool is fine ✅ (mechanism) / 🟡 (the leak).
+
+It tracked the number of **telnet/FTP sessions opened**, not the filesystem workload — pointing at a
+**per-connection / per-packet `mblk` leak on the network path** (the specific driver is not yet
+isolated, so this is carried **🟡**). Bench workarounds: power-cycle after heavy session churn, and run
+long scripts as a **single** session with output redirected to a file *on the box* rather than streamed
+over many short-lived connections.
+
+**Distinguishing it from a heap/page leak is easy once you know the shape:** sample `freemem` (via
+[live `adb` on `/dev/kmem`](../drivers/kernel-reverse-engineering.md#live-probing-a-running-kernel-with-adb-on-devkmem-the-load-bias-trap)) —
+if it barely moves while the box dies, the culprit is **STREAMS `mblk`s**, not the heap. (This is an
+**open** issue on the [`z3660eth`](../drivers/z3660-ethernet-driver.md) / TCP network path; cdfs was
+ruled out with these numbers.)
+
 ## Serial networking: SLIP is buggy, no PPP
 
 - **PPP is not available** on Amix ✅ — there is no PPP stack to dial out with.
@@ -198,6 +219,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 | NFS export / mount | `share` / `shareall`; `mount -F nfs host:/path /mnt` | ✅ |
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
 | PPP | not available | ✅ |
+| STREAMS `mblk` starvation | box wedges (`ldterm: out of blocks`) while `freemem` is fine; tracks session churn — power-cycle, single-session long jobs | 🟡 |
 
 ## See also
 
@@ -224,3 +246,4 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.
 - The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`zen0`, cdevsw 48) for the Z3660's onboard ethernet, **validated on a real A4000 + Z3660, 2026-06-21** ✅ (`ifconfig zen0`, `netstat -in` zero-error, laptop↔box `ping`/`ftp`); the firmware-mailbox protocol, the INT6 storm, and the polled-RX design are on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
+- The **amix-kerntools** bench forensics @ `8a76775` — STREAMS `mblk`-arena exhaustion wedges the box (`ldterm: (ldtermsrv) out of blocks`, `console_get_buffer: out of blocks`; TCP then console echo die) while `freemem` stays ~2100 pages, tracking telnet/FTP session count rather than filesystem load; suspected per-connection/per-packet leak on the network path, driver not yet isolated — real A4000 + Z3660, 2026-07-12, carried **🟡**.

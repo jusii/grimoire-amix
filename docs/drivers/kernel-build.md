@@ -423,6 +423,25 @@ raised.
 > The concrete in-kernel cdfs fixes for both gotchas above live in the **amix-cdfs** repo — the
 > byte-loop `memset` (`ad09035`) and the one-sector DMA cap (`a5c6915`).
 
+### `make install` does not update `/stand/unix` — copy it yourself ✅
+
+A successful `cd /usr/sys; make install` prints `installed. Old kernel kept as /stand/OLDunix` but
+was observed to leave **`/stand/unix` still holding the *previous* kernel** ✅ — confirmed by
+`sum -r`: `/usr/sys/relocunix` was the freshly-built image (checksum 44416) while `/stand/unix` was
+still the old one (38553). Because the Amiga bootstrap boots the **boot-partition image written from
+`/stand/unix`**, rebooting at that point silently re-boots the **old** kernel and any "verified on the
+new kernel" result is worthless. Do the copy explicitly and rebuild the bootpart, then re-check:
+
+```sh
+cp /usr/sys/relocunix /stand/unix
+cd /stand; make            # (or: cd /usr/sys; make bootpart KERNEL=relocunix)
+sum -r /stand/unix         # must now match sum -r /usr/sys/relocunix
+```
+
+This is the same hazard the [D245 clean-gate](#the-fix-build-until-the-checksum-is-stable) guards
+against, one step later in the pipeline: there `sum -r` proves the *link* is clean; here it proves the
+image you're about to boot is the one you just built. ✅
+
 ### Verify which kernel actually booted 🟡
 
 Warm reboot (`shutdown -i6`) was intermittently a **no-op** in one bench session — the box stayed
@@ -488,3 +507,8 @@ partition) was reliable 🟡. Always identity-check *which* kernel actually boot
 - Bench caveat (2026-07-10): warm reboot (`shutdown -i6`) was intermittently a no-op (box stayed on
   the old kernel); cold boot reloads the boot partition reliably — always identity-check which kernel
   actually booted.
+- The **amix-kerntools** bench forensics @ `8a76775` — `cd /usr/sys; make install` prints "installed"
+  yet leaves `/stand/unix` holding the previous kernel (proven by `sum -r`: `relocunix` 44416 vs
+  `/stand/unix` 38553); copy `relocunix` to `/stand/unix` explicitly and rebuild the bootpart, then
+  re-check `sum -r /stand/unix`. Real A4000 + Z3660, 2026-07-12 ✅. Same brief also confirms SVR4
+  `grep` has no `\|` alternation (already noted above under build-script gotchas).

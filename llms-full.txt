@@ -638,6 +638,20 @@ Two hard memory facts follow from this layer ✅:
 
 The processor cutoff is set by this same MMU dependency: the kernel **predates the 68040 MMU**, so there is **no 68040/68060 support**, and an **A4000 cannot officially run Amix** ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md).
 
+### The kmem allocator — what a driver can assume ✅
+
+The layout of the kernel heap allocator was recovered by full disassembly of `kmem_alloc`/`kmem_free`/`kmem_allocbpool`/`sptalloc`/`segkmem_alloc`/`page_get` in the shipped kernel ✅. It is worth knowing for any driver-debugging, and one property of it is a load-bearing **DMA hazard**:
+
+| Request size | Served from | Alignment / physical layout |
+|---|---|---|
+| ≤ 256 B | small buddy pool (classes 16..256) | pools carved from 4096-aligned 8-page regions |
+| 257 .. 4096 B | big buddy pool (classes 512..4096) | same 4096-aligned 8-page regions |
+| > 4096 B | `sptalloc` whole pages (VA = pfn << 11) | **page-aligned, but physically SCATTERED** |
+
+- `kmem_alloc` returns **≥ 16-aligned** pointers. A "returned" pointer that is `0 mod 2048` but not `8 mod 16` relative to its wrapper cannot have come from the allocator — a handy alignment argument when a theory needs disproving. ✅
+- **`kmem_free` writes `[next][prev]` freelist links into a freed chunk's first 8 bytes**, so use-after-free / wild-free corruption characteristically shows **pointer-shaped values at a block's head**. ✅
+- **The DMA hazard (the important one):** a `> 4096`-byte allocation is virtually contiguous but **physically scattered** — `segkmem_alloc` pops arbitrary frames off `page_freelist` and maps them at consecutive virtual addresses with no physical adjacency. So `vtop()` on such a buffer is valid for **exactly one page** (`NBPP = 2048`), and any single DMA transfer that crosses a page boundary lands its tail in a **different, unrelated physical frame**. This is the mechanism behind the cdfs wild-write corruption; the driver-side rule (page-align every DMA target, guard `(va & (NBPP-1)) + nbyte > NBPP`) is on [the driver model → DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary). ✅
+
 ## SVR4 networking: STREAMS, TLI, sockets
 
 Networking is built on the standard SVR4 stack ✅:
@@ -676,6 +690,7 @@ One userland gotcha worth flagging at the kernel/system level: Amix's `/bin/sh` 
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — installer use of `amixpkg -i -m -d -r /mnt -y standard` and `shutdown -i6`.
 - Modern community driver repos confirming the 2.1 build/relink model and the `relocunix` image name: `github.com/asokero/va2000-amix`, `github.com/isoriano1968/hydra-amix`.
 - AT&T SVR4 *DDI/DKI Reference Manual* and *STREAMS Programmer's Guide* (the standard SVR4 substrate cited by the Ditto paper).
+- The kmem-allocator map (buddy pools / `sptalloc` whole-page scatter; `vtop()` valid for one page; freelist links in a freed chunk's first 8 bytes) — full disassembly of `kmem_alloc`/`kmem_free`/`kmem_allocbpool`/`sptalloc`/`segkmem_alloc`/`page_get` in the shipped kernel, and the DMA-scatter corruption reproduced on a real A4000 + Z3660, from the **amix-cdfs** port @ `31e8c3b` (`NBPP = 2048` per `sys/immu.h`). ✅ See [the driver model DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary).
 
 
 ================================================================================
@@ -1010,6 +1025,27 @@ mount -F nfs server:/export/home /mnt
 
 `share`/`shareall`/`dfstab` and `mount -F nfs` are the SVR4 distributed-filesystem (DFS) interfaces; Amix carries them as part of the SVR4 base ✅. For local disk and filesystem details (UFS vs s5) see [filesystems and disks](filesystems-and-disks.md).
 
+## STREAMS message-block exhaustion — the box wedges with memory to spare 🟡
+
+Under **sustained bench sessions** a box can **wedge while `freemem` is still healthy** 🟡. The console
+signature is `WARNING: ldterm: (ldtermsrv) out of blocks` and `console_get_buffer: out of blocks`; the
+kernel is still alive (it echoes those warnings on each keypress) but **TCP dies first and console echo
+second**. Crucially `freemem` was still ~2100 pages (≈4.3 MB) when it happened, so this is **not** page
+exhaustion — SVR4 STREAMS `mblk`s come from their **own preallocated arena**, which the entire network
+stack lives on, and that arena can starve while the page pool is fine ✅ (mechanism) / 🟡 (the leak).
+
+It tracked the number of **telnet/FTP sessions opened**, not the filesystem workload — pointing at a
+**per-connection / per-packet `mblk` leak on the network path** (the specific driver is not yet
+isolated, so this is carried **🟡**). Bench workarounds: power-cycle after heavy session churn, and run
+long scripts as a **single** session with output redirected to a file *on the box* rather than streamed
+over many short-lived connections.
+
+**Distinguishing it from a heap/page leak is easy once you know the shape:** sample `freemem` (via
+[live `adb` on `/dev/kmem`](../drivers/kernel-reverse-engineering.md#live-probing-a-running-kernel-with-adb-on-devkmem-the-load-bias-trap)) —
+if it barely moves while the box dies, the culprit is **STREAMS `mblk`s**, not the heap. (This is an
+**open** issue on the [`z3660eth`](../drivers/z3660-ethernet-driver.md) / TCP network path; cdfs was
+ruled out with these numbers.)
+
 ## Serial networking: SLIP is buggy, no PPP
 
 - **PPP is not available** on Amix ✅ — there is no PPP stack to dial out with.
@@ -1048,6 +1084,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 | NFS export / mount | `share` / `shareall`; `mount -F nfs host:/path /mnt` | ✅ |
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
 | PPP | not available | ✅ |
+| STREAMS `mblk` starvation | box wedges (`ldterm: out of blocks`) while `freemem` is fine; tracks session churn — power-cycle, single-session long jobs | 🟡 |
 
 ## See also
 
@@ -1074,6 +1111,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.
 - The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`zen0`, cdevsw 48) for the Z3660's onboard ethernet, **validated on a real A4000 + Z3660, 2026-06-21** ✅ (`ifconfig zen0`, `netstat -in` zero-error, laptop↔box `ping`/`ftp`); the firmware-mailbox protocol, the INT6 storm, and the polled-RX design are on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
+- The **amix-kerntools** bench forensics @ `8a76775` — STREAMS `mblk`-arena exhaustion wedges the box (`ldterm: (ldtermsrv) out of blocks`, `console_get_buffer: out of blocks`; TCP then console echo die) while `freemem` stays ~2100 pages, tracking telnet/FTP session count rather than filesystem load; suspected per-connection/per-packet leak on the network path, driver not yet isolated — real A4000 + Z3660, 2026-07-12, carried **🟡**.
 
 
 ================================================================================
@@ -1448,6 +1486,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 16 | **On an emulated 68k, "boots then hangs" may be the *emulator*, not your driver** — the Z3660's 68k emulator faulted demand-paging the driver's own pages, while the driver carried every transfer byte-perfectly. Triage with serial instrumentation + core-dump analysis before blaming the driver | ✅ | [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md), [Emulation Fidelity](emulation-fidelity.md) |
 | 17 | **An emulator that batches instructions between interrupt polls can hang the A3000-SCSI bootstrap** — that bootstrap is INT2-driven; too-coarse interrupt-service cadence starves it and Amix hangs *before the banner*. Keep INT2 latency low through boot (on the Z3660, `service_cadence ≤ 4`) | 🟡 | [Emulation Fidelity](emulation-fidelity.md) |
 | 18 | **`pkgrm` and `pkginfo -l` fail out of the box on the stock 2.1c image** — one malformed `contents` record (a filename containing a space) aborts every full parse of the package DB (`bad read of contents file … unknown ftype`). Delete that one line to fix both | ✅ | [Package management](package-management.md#the-space-in-a-pathname-defect) |
+| 19 | **`mount(2)` silently *stacks* a second mount on an already-mounted directory** — the second `mount` returns 0, `umount` then pops one layer and returns 0 while the media looks "still mounted": a perfect fake broken-umount. An in-kernel filesystem must refuse it itself. Smoking gun: duplicate fstype lines in `/etc/mnttab` | ✅ | [Driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract) |
+| 20 | **"Password expired" at login is the *future-`lastchg`* check, not max-age** — a dead RTC battery boots the box in 1978; if a previous session set the clock forward, `/etc/shadow`'s `lastchg` is now in the future and SVR4 `login` forces a password change every boot. **Never set the box RTC forward** | ✅ | [Time & Y2K](#20-password-expired-is-the-future-lastchg-check-never-set-the-rtc-forward) |
 
 The rest of this page expands each item.
 
@@ -1582,6 +1622,20 @@ the Amix-safe value is `service_cadence 4` (raise it only after boot). The knob 
 INT2-latency attribution and the exact boundary are an author hardware sweep 🟡. Full story on
 [Emulation Fidelity](emulation-fidelity.md#scsi-int2-interrupt-latency-a3000-mainboard-bootstrap).
 
+### 19. mount(2) silently stacks mounts (a fake broken-umount) ✅
+
+`mount(2)`'s **only** busy check is `v_vfsmountedhere` on the vnode `lookupname` returns — but for a
+directory that is *already* a mount point, `lookupname` **traverses into** the mounted filesystem,
+whose root has that flag clear ✅. So a second identical `mount` of the same media on the same
+directory **returns 0 and stacks a second layer**; a later `umount` pops exactly one layer and also
+returns 0, while the disc appears "still mounted." This imitates a **broken `umount`** so convincingly
+that it was chased as one (a direct `umount(2)` probe returned 0 with the filesystem apparently still
+there) — the real bug was silent stacking on repeated mounts ✅. Stock filesystems guard this in their
+*own* mount op (`prmount`/`fdmount` refuse when the covered vnode has `v_count > 1` or `VROOT`), and an
+in-kernel filesystem must do the same (return `EBUSY` on the second mount). **Diagnostic:** count the
+fstype's lines in `/etc/mnttab` — duplicates are the smoking gun. Full contract on
+[the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
+
 ## Time & Y2K quirks
 
 ### 7. Y2K: `setclk` and the kernel's 1999 date cap ✅/🟡
@@ -1592,6 +1646,24 @@ Amix has **two** millennium problems ✅/🟡:
 2. The **kernel caps the date at 1999** — even the finishing-touches install step (`amixadm`) only accepts a date **≤ 1999** ✅.
 
 These are **community-patched** ✅/🟡: applying the patch disk (which upgrades to **2.1p2a / kernel 2.1c**) ships Y2K fixes, after which you run the corrected `setclk` ✅. See the patch mechanism in [the patch ADF anatomy](../boot-disks/anatomy-patch-adf.md) and the version timeline in [versions](../reference/versions.md).
+
+### 20. Password expired is the future-lastchg check, never set the RTC forward ✅
+
+An SVR4 box whose RTC battery is dead boots believing it is **January 1978** (~day 2923 of the Unix
+epoch). If a previous session ever "fixed" the clock by **setting it forward**, that stamped
+`/etc/shadow`'s `lastchg` field far in the future (e.g. 8117 = 1992). On the next cold boot — back at
+1978 — `lastchg` is now **in the future relative to "today"**, and SVR4 `login` treats a future
+`lastchg` as **expired**, forcing a password change at every login ✅. This is the *future-dated*
+check, **not** the max-age rule, so it recurs on every 1978 boot and stalls `amixrun.py`-style
+automation at the password dialog. Root-caused on a real A4000 + Z3660 after it cost hours and a full
+lockout ✅.
+
+**Reliable fix at the prompt:** set the new password to the **same value** (SVR4 accepted a 4-char root
+password here); with the clock at 1978 the new `lastchg` (~2923) is not future-dated, so it does not
+recur. **Do NOT "fix" it by setting the RTC to now** — that re-arms the trap for the next cold boot ✅.
+The deep fix for a golden image is to set `lastchg` to a **pre-1978 value offline**. (This is a
+distinct problem from the [Y2K/`setclk`](#7-y2k-setclk-and-the-kernels-1999-date-cap) cap above —
+here the danger is setting the clock *forward*, not past 1999.)
 
 ## X11 & desktop quirks
 
@@ -1661,6 +1733,8 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - The amix-z3660scsi project @ `8ea1605` — the `z3660` piscsi block-driver bring-up on a real A4000 + Z3660, 2026-06-12/13 ✅: the 2.1 `bootinfo.autocon[]` miss and the multi-method detect that cleared the silent hang (quirk 15), and the firmware-emulator-vs-driver triage (quirk 16 — the apparent hang was the 68k emulator demand-paging the driver's own pages, not the driver; firmware-owned fix, cited not reproduced). See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 - Research brief §19 (emulation fidelity), from the Z3660 firmware project (branch `amix-main`, 2026-06) — quirk 17 (the A3000-SCSI bootstrap's INT2 sensitivity to interrupt-service cadence; the `service_cadence` knob ✅ / the 4-boots-8-hangs boundary 🟡) and the emulator-side mechanism behind quirk 16 (68030 bus-error-frame fidelity on the demand-paging path). See [Emulation Fidelity](emulation-fidelity.md).
 - Research brief §20 (stock SVR4 package system), from the amix-packagemanager project (firsthand on a clean Amix 2.1c image, 2026-07-01) — quirk 10's `amixpkg`-is-install-media-only correction ✅/🟡, and quirk 18 (the `/var/sadm/install/contents` space-in-pathname record that breaks `pkgrm`/`pkginfo -l` out of the box, ✅). See [Package management](package-management.md).
+- The **amix-cdfs** project @ `31e8c3b` — quirk 19 (`mount(2)` silently stacks on an already-mounted directory; `mount(2)`'s only busy check is `v_vfsmountedhere`, which `lookupname` clears by traversing into the mount; guard in the fs's own mount op like `prmount`/`fdmount`), from stock-kernel disassembly + reproduction on a real A4000 + Z3660, 2026-07-13 ✅ (`844c2ed`). See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
+- The **amix-kerntools** bench forensics @ `8a76775` — quirk 20 (SVR4 `login`'s future-`lastchg` "expired" trap on an RTC-1978 box after a clock was set forward; same-password workaround, never set the RTC forward), root-caused on a real A4000 + Z3660, 2026-07-11 ✅.
 
 
 ================================================================================
@@ -1727,6 +1801,21 @@ The **Amix-safe boundary**: cadence **2 and 4 boot** cleanly; cadence **8 hangs*
 
 > **Confidence.** The knob, its default, the clamp, and the batched-poll semantics are **code-grounded** ✅. The **INT2-latency attribution** and the exact **4-boots / 8-hangs** boundary rest on the author's hardware sweep (recorded in the firmware's own docs and shipped config, and consistent with the SCSI path being level-2 interrupt-driven), not on a root-caused defect or a committed test artifact — carried **🟡**. Note the knob's own introducing commit (`e0e17d5`) was initially *more* conservative ("any cadence > 1 hangs before MMU-enable; keep the Amix preset at the default"); the "4 is safe" result is the later, refined finding, and **no shipped preset actually bakes in a non-default cadence** — the `4` is a recommendation. 🟡
 
+## DMA cache coherence across the two emulator cores ✅
+
+Fidelity is not only about the CPU core. On the Z3660 the emulator runs on a **two-core (AMP) ARM** SoC: **core0** runs the firmware (SD-card I/O and the emulated piscsi mailbox), **core1** runs the 68k CPU emulator that *is* the guest's processor, and the two cores share DDR behind a PL310 L2 cache. Guest disk/CD reads are performed by core0 **DMAing SD-card data straight into the guest's RAM buffer** and then handing control back to core1. That producer/consumer handoff across two separate caches is a second class of emulator-fidelity bug — invisible to any single-core correctness test, and it cost **silent data corruption on real hardware** twice. ✅
+
+### Both DMA endpoints need cache maintenance, not just the core that owns the transfer
+
+**The requirement: on a DMA handoff split across two cores, *each* core must maintain the caches it can fill.** A fix on only one side looks correct and still corrupts.
+
+- **The producer (core0, which owns the DMA).** The SD controller DMAs to DRAM *below* the L2, so a **read** needs the range **invalidated before** the transfer and a **write** needs it **cleaned/flushed before** the transfer. The stock `XSdPs_ReadPolled` invalidated only *after* the transfer, so a dirty L2 line written back *during* the multi-millisecond transfer landed in DRAM on top of the freshly-DMAed bytes — observed as a UFS superblock read returning stale guest memory. The write path had **no** cache maintenance at all and deterministically wrote stale DRAM to disk, physically corrupting the SD image's UFS superblock (proven: a TFTP GET read the same garbage back off the card). Fixed with `Xil_DCacheInvalidateRange` before direct reads and `Xil_DCacheFlushRange` before direct writes — Z3660 `e37bb43`. ✅
+- **The consumer (core1, the guest CPU) — the subtle one.** A parked ARM core is still live: while core1 spun in `while(shared->write_scsi==1){NOP;}` waiting for core0 to finish, it **speculatively refilled its own L1D** with lines covering the DMA target, so after the transfer the guest read a mix of fresh DRAM and stale cache. Nothing invalidated core1's L1 *after* the DMA landed. With CD reads going direct-DMA into kernel heap buffers, the guest SVR4 kmem daemon panicked on a wild freelist pointer (a stale line on a kmem pool page — vector-2 bus error, fault addr `0x4AFC000C`), and a second run silently corrupted the root filesystem (`WARNING: ufs_readdir: bad dir, inumber = 35340`; files recovered into `/lost+found`) — **two failures out of two under load**. Fixed by having core1 stash the READ descriptor as the guest programs it (ADDR2 = byte length, ADDR3 = DMA target) and call `Xil_L1DCacheInvalidateRange(addr,len)` after the completion spin, for READ commands only — Z3660 `0a4c064`. ✅
+
+The two are the **same bug class seen from opposite ends**. The producer-side fix (`e37bb43`) passed code review — "the invalidate is unconditional and covers the full byte length, so reads are coherent" — and was *still* wrong, because the consumer core had its own L1 that the DMA-owning core's `Xil_*CacheRange` calls do not speak for. The reusable heuristic: **a cache-maintenance call on the DMA-owning core covers only that core's caches; every other core that can fill a line over the DMA target must maintain it itself.** 🟡 (This general rule is generalized from the two concrete fixes above, not independently re-derived on other hardware — carried 🟡.)
+
+After the consumer-side fix the same workloads produced **zero panics, zero corruption, and a full CD read suite byte-identical to the source ISO** (7/7 files `cmp`-verified host-side). ✅ This is the emulator-side counterpart of the driver-side [direct-vs-bounce gate contract](../drivers/z3660-scsi-driver.md#the-mandatory-bounce-buffer): both the firmware and the driver must agree on **who copies** and on **when the caches are coherent**, or data silently rots at the handoff.
+
 ## Where this was discovered
 
 These findings come from running Amix on the **Z3660**, a Zorro III **68030/68060-class accelerator** built around a Xilinx **Zynq-7000** SoC, whose firmware emulates the 68k with a **UAE-4.4.0-derived software CPU (with MMU)** running on the Zynq's ARM cores. So a real **A4000 + Z3660** executes Amix on that software 68030 emulator — which is exactly why the emulator-core fidelity above is load-bearing on *real hardware*, and was verified there: Amix 2.1 cold-boots to a **multiuser root login** (confirmed on the HDMI console and over telnet, `uname -a` → `UNIX_System_V … 2.1c … m68k`), reproduced on a real A4000 + Z3660 (2026-06). ✅
@@ -1754,6 +1843,7 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   - First-generation demand-paging frame fixes: `3069e22` ("mmu030: fix demand-paged ifetch resume — restore the prefetch-fault sentinel in frame `$B`", the `SIGILL`) and `0b42cb8` ("mmu030: port full WinUAE format-`$B` frame-storage (fix mid-instruction-restart `SIGSEGV`)"). These are the live successors of the now-deleted `amix-boot` commits once cited as `c8b9398` / `e3f9440`; `0b42cb8`'s body names `c8b9398` as its predecessor, and the dead hashes are absent from the current tree. ✅
   - Second-generation multi-fault-continuation fixes: `7ff5774` ("emu: fix 030 MMU multi-fault continuation corrupting the bus-error frame PC"; behavioural change in `src/uae/newcpu.cpp`) and `acdfe15` ("emu: fix 030 MMU in-RTE retry-access rebuilding a mis-attributed bus-error frame"; `src/uae/cpummu030.cpp` — `mmu030_insn_start_pc = pc; regs.opcode = regs.irc = mmu030_opcode;` after `m68k_setpci(pc)`). Corroborated by `CHANGES.md` and the host MMU harness (60/60 → 64/64 with a two-fault-continuation regression test). ✅
   - SCSI INT2 / poll-cadence: `f7bbdb0` (the run-loop consumer + runtime `SERV`/`PERF`; `check_uae_int_request()` throttled to every `service_cadence` instructions in `src/uae/newcpu.cpp`, `do_specialties()` kept per-instruction) and `e0e17d5` ("emu perf: service_cadence config option (z3660cfg + per-preset)"; `Z3660/src/config_file.{c,h}`, default sentinel → clamp `<1 → 1`). ✅ (knob mechanics) The 4-boots / 8-hangs boundary and the INT2-latency attribution are from the firmware's `docs/AMIX.md` and shipped `z3660cfg.txt`, an author hardware sweep — 🟡.
+  - Two-core DMA cache coherence (branch `amix-main`, source_commit `51038f3`): `e37bb43` (SD-controller producer-side `Xil_DCacheInvalidateRange`/`Xil_DCacheFlushRange` before direct read/write) ✅; `0a4c064` (consumer-side core1 `Xil_L1DCacheInvalidateRange` after the completion spin, READ-only — a parked Cortex-A9 still speculatively refills L1D over the DMA target) ✅. The "both endpoints must maintain their own caches" general rule generalizes those two fixes, carried 🟡. Baseline was **2/2 failures** on the unfixed firmware (kmem wild-pointer bus error at `0x4AFC000C`; then a silent root-FS `ufs_readdir` corruption); post-fix a full CD read suite came back **byte-identical, 7/7** `cmp`-verified host-side (T2.P3, real A4000 + Z3660, 2026-07-10 → 07-12). ✅
 - **Live result** (first-party, ✅): Amix 2.1 cold-boots to a multiuser root login from the piscsi disk on a real A4000 + Z3660 (2026-06) — HDMI console ("The system is ready") and telnet (`uname -a` → `UNIX_System_V … 2.1c … m68k`); a 27-reboot multi-hour soak under fork/exec load ran clean (Z3660 `docs/AMIX.md`). One rare bus-error-frame `SR`-flip under extreme sustained paging load remains tracked (did not recur across the soak) — 🟡.
 
 
@@ -3330,7 +3420,7 @@ status: draft
 
 In Amix, a device is just a file in `/dev` carrying two numbers — a **major** (which driver) and a **minor** (which sub-device). The kernel never looks at the name; it indexes a per-class **switch table** by the major number to find the driver's entry points. Everything else in this page is the elaboration of that one idea ✅. The authoritative source is Michael Ditto's *Writing Amix Device Drivers* (1990 European Amiga Developer's Conference), §5 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), and it is the conceptual core for the rest of the drivers pillar.
 
-This page is **uniformly ✅** (primary source: the Ditto paper) except where a tag says otherwise.
+This page is **uniformly ✅** except where a tag says otherwise. The core model's primary source is the Ditto paper; the later [HBA/DMA driver contract](#the-amix-hbadma-driver-contract-real-hardware) and [in-kernel filesystem](#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract) sections are first-party, real-hardware-verified findings (amix-z3660scsi / amix-cdfs) cited inline.
 
 ## The user-level view: /dev nodes, major + minor
 
@@ -3474,6 +3564,52 @@ The Ditto paper's `par.c` exercises the standard SVR4 DDI/DKI surface that an Am
 
 `autocon()` ties into the Amiga **AUTOCONFIG** mechanism that assigns Zorro II board addresses at reset; see [Zorro II autoconfig for drivers](zorro-autoconfig.md). Note Amix supports **Zorro II only** — there is no Zorro III mapping ✅.
 
+## The Amix HBA/DMA driver contract (real hardware)
+
+Everything above is the 1990 Ditto-paper model. This section adds the parts of the contract that the paper never spells out but that **bite hard on real hardware** — recovered by bringing up the native [Z3660 piscsi SCSI driver](z3660-scsi-driver.md) and the [cdfs](../how-it-works/filesystems-and-disks.md) in-kernel filesystem on a physical A4000 + Z3660, and by disassembling the stock Amix kernel. Each item below cost real silent corruption or a wild-jump panic. They are all **✅** (fix commit + real-hardware reproduction, or stock-kernel disassembly) and they **generalize to any HBA/DMA driver on this platform**, the a4091 included.
+
+### Completion runs in the caller's context, iteratively — never from a callout ✅
+
+The SVR4 block layer hands your queue routine a `struct sdcom` (command + buffer + the `cp->intr` completion callback). Two facts about its lifetime and context are non-negotiable:
+
+1. **The `sdcom` may live on the *caller's stack*.** ✅ Callers are allowed to allocate it as a local — the cdfs media backend does exactly this (`struct sdcom` inside a stack-local request struct). So a driver that **defers completion to a clock callout** (`timeout(done, cp)`) reads `cp->intr` from a *dead* stack frame once the caller returns, and jumps through reclaimed memory — kernel corruption and a wild-jump panic (seen the moment `mount -F cdfs` touched the CD). **Rule: complete the command before your queue routine returns**, or the caller must explicitly guarantee the `sdcom` outlives the completion — and nothing in the interface says it does. The a4091 driver was immune only because it already completes inline. ✅
+2. **…but a *bare* inline `(*cp->intr)(cp)` blows the kernel stack**, because disk completion **re-issues the next I/O** (`ihandle → startio → sdqueue → your queue routine`), so a naive recursive completion burns **one stack frame per chunk** and dies on the first big multi-chunk burst (~100 I/Os into boot on real hardware). ✅ The working shape is **synchronous but *iterative*: a driver-owned completion FIFO plus a `completing` guard**, so the first caller drains the queue in a loop and re-entrant completions are *enqueued*, not recursed. A silent, kmem-readable FIFO-overflow counter is cheap insurance and must stay 0. ✅
+
+*(This is exactly the correction the Z3660 piscsi driver landed after its first cut deferred completion to `timeout()`; see [that page](z3660-scsi-driver.md#the-per-io-sequence).)*
+
+### `sdcom.addr` is already a physical (bus) address ✅
+
+The buffer address in `sdcom.addr` is **physical by contract — the caller has already run it through `vtop()`** before handing it over (both `dd.c` and the cdfs media backend do). A driver that "helpfully" adds its own `vtop()` **double-translates** and corrupts the transfer. ✅ It is an attractive wrong turn because the field is named `addr` and the rest of the kernel is virtual-addressed. (Related: raw/`physio` I/O never hands a driver a *user* VA either — `dd.c → breakup() → amiga_dma_pageio()` stages through a 2 KB kernel buffer — so a raw readback is trustworthy for verifying a write.) ✅
+
+### The spl / callout-IPL contract: spl2 sections are sound; an unguarded mailbox is not ✅
+
+Amix **callouts dispatch at IPL4** (`SR 0x2400`), which at first suggests every `sdspl`-guarded (**spl2**) critical section in the SCSI path is unsound against a callout-driven completion. It is **not**: the *only* thing that triggers a callout is the **level-2 CIA-A clock**, so masking at spl2 genuinely blocks it, and the stock `sdspl` (spl2) sections are correct. ✅ The real exposure is a driver's **own hardware mailbox transaction** carrying *no* spl masking — bracket the whole transaction (the Z3660 driver uses **spl6**, with permanent silent nest counters that must read 0). Platform quirk from the same disassembly: **spl5/spl6/spl7 all emit the same `_spl4` (`SR 0x2400`)** on this kernel. ✅
+
+### The DMA-alignment contract: a `vtop()`'d buffer must NOT cross a page boundary ✅
+
+**On Amix, a DMA target handed through `vtop()` is valid for exactly ONE page** (`NBPP = 2048`, `sys/immu.h`) — because **large kmem allocations are virtually contiguous but physically *scattered*.** ✅ A `kmem_alloc` above 4096 bytes goes through `sptalloc → segkmem_alloc`, which pops **arbitrary frames** off `page_freelist` and maps them at consecutive *virtual* addresses with **no physical adjacency**. So `vtop()` translates only the first page; the moment a single DMA transfer crosses the page boundary, its tail bytes land in the **physically-next frame — owned by someone else.**
+
+This is a **wild-write** bug, and its two traps are what make it nearly invisible ✅:
+
+- **An allocator header silently destroys alignment.** A portable allocator wrapper that prepends an 8-byte length header (SVR4 `kmem_free` needs the original size) shifts every "page-sized" buffer **8 bytes off page alignment** — so cdfs's 2048-byte sector buffers sat 8 bytes into a page and every sector DMA spilled its last 8 bytes into the next frame. The spilled bytes were the CD sector's zero padding, so the signature was **"a short run of zeros at the start of an innocent page"**: it zeroed `/usr/sbin/umount`'s 16-byte ELF ident **on disk** (buffer-cache page → `fsflush`) and scribbled libc's resident pages. (It also rounds a 2056-byte request into the 4096 buddy class — a size no stock consumer uses.)
+- **Byte-correct *reads* prove nothing about wild *writes*.** Bulk file reads verified byte-identical against the source ISO throughout the hunt, because they happened to use a *different*, accidentally page-aligned buffer; only misaligned metadata/mount-time reads did the damage, and the bytes they lost were padding nobody compares. The reliable detector was a **canary soak**: `sum -r` a set of resident binaries (`libc.so.1`, `sh`, `init`, `mount`, `umount`, `ls`, `sum`, `df`) before and after N mount/umount cycles and diff. That one-liner caught in a single cycle what two theories missed (15/15 clean after the fix vs corruption by cycle 2–10 before). ✅
+
+**Fix pattern:** page-align every DMA target (sector == page ⇒ one buffer = exactly one frame), bounce unaligned targets, never DMA into a stack buffer, and add a **permanent kernel-side guard that refuses any request with `(va & (NBPP-1)) + nbyte > NBPP` via `cmn_err`** instead of corrupting memory. ✅ For the allocator internals behind this (why >4096 is scattered, the buddy pools, the freelist-link corruption signature) see [Kernel architecture → the kmem allocator](../how-it-works/kernel-architecture.md#the-kmem-allocator-what-a-driver-can-assume). *(This is the deeper root cause of the "in-kernel SCSI DMA corrupts multi-sector transfers" gotcha noted under [kernel-build](kernel-build.md#gotcha-in-kernel-scsi-dma-corrupts-transfers-larger-than-one-2048-byte-block): a transfer that stays inside one aligned page is one physical frame and is safe.)*
+
+## Writing an in-kernel filesystem: the SVR4 VFS_MOUNT contract ✅
+
+A new in-kernel filesystem (cdfs was the first non-stock one) must honor a `mount(2)` contract that hands it a `struct vfs` full of **recycled garbage**, with several "obvious" moves being wrong ✅ (all from disassembling `mount(2)`/`dounmount`/`vfs_add`/`s5mount`/`prmount`/`fdmount`/`getudev` and diffing cdfs against the stock filesystems):
+
+- **`mount(2)` does not zero the `vfs`, and it takes the lock *before* dispatching.** It `kmem_alloc`s the 48-byte `struct vfs` (not zeroed), inlines its own `VFS_INIT`, then calls `vfs_lock()` (setting `VFS_MLOCK` in `vfs_flag`) **before** dispatching your `VFS_MOUNT`. A filesystem that calls `VFS_INIT()` inside its own mount op therefore **wipes the kernel's own lock bit** — only ever **OR** into `vfs_flag`, never assign it. ✅
+- **`vfs_dev`, `vfs_fsid`, `vfs_bcount` arrive as heap garbage and must be set** (stock s5 sets all three). A garbage `vfs_dev` leaks to userland via `statvfs` and can falsely match in `vfs_devsearch()` (used by `umount(2)`, `bdevbsize`, NFS `getvfs`). ✅
+- **The device-less convention is *not* `vfs_dev = 0`.** `prinit`/`fdinit` latch a unique major from **`getudev()`** once at init and stamp `makedevice(udev, 0)` per mount. ✅
+- **`vfs_add` clears `VFS_RDONLY` unless the caller passed `MS_RDONLY`.** A read-only filesystem that merely sets the flag itself will be believed **writable** — gate the mount on `MS_RDONLY` (return `EROFS`) or the kernel's state lies. ✅
+
+And two userland-side halves of the same contract:
+
+- **`mount(2)` silently *stacks* mounts on an already-mounted directory** — its only busy check is `v_vfsmountedhere` on the vnode `lookupname` returns, but for a mounted-on dir `lookupname` *traverses into* the mounted filesystem whose root has that flag clear. So a second identical `mount` returns 0 and stacks, and `umount` then pops one layer and returns 0 while the media "is still there" — a perfect imitation of a broken umount. Guard it in your own mount op (`v_count > 1` or `VROOT` → `EBUSY`), exactly as `prmount`/`fdmount` do. ✅ This one is on the [quirks checklist](../how-it-works/quirks.md#19-mount2-silently-stacks-mounts-a-fake-broken-umount) too.
+- **`/etc/mnttab` is userland-maintained, and `umount(1M)` unmounts by the SPECIAL field.** The kernel never writes `mnttab`; the per-fstype helper `/usr/lib/fs/<fstype>/mount` does (and **without that binary the fstype cannot be mounted at all** — SVR4 `mount(1M)` execs it). Because `umount(1M)` locates the mount by the entry's **special** field, a device-less filesystem must record its **mount point** as the special (`/proc`/`/dev/fd` set the precedent, e.g. `/proc /proc proc rw …`); recording a `<card>,<unit>` spec instead makes `umount` silently fail while deleting the entry. Trade-off to document: `mnttab` then no longer records *which* unit is mounted. Append the line with a single `O_APPEND` write, and **never fail the mount because bookkeeping failed** (warn, exit 0). ✅
+
 ## Adding a driver: the table workflow
 
 The paper's end-to-end procedure ties the whole model together ✅. Full mechanics (file edits, relink, boot-partition write) are in [Building and installing a kernel](kernel-build.md); the conceptual steps are:
@@ -3499,6 +3635,25 @@ The paper's end-to-end procedure ties the whole model together ✅. Full mechani
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §5 (device-driver model), §4 (kernel architecture: monolithic, no loadable modules, `kernel.c` in source), §2 (SCSI ID hard-coding, Zorro II only).
 - `asokero/va2000-amix` repo (`io_init[]` / `cdevsw[]` slot 68 patches): <https://github.com/asokero/va2000-amix>
 - `isoriano1968/hydra-amix` repo (`hya` at `cdevsw` slot 47, `hydraopen`/`hydrawput`/`hydraintr`): <https://github.com/isoriano1968/hydra-amix>
+- **The HBA/DMA driver contract** (the "real hardware" section) — **amix-z3660scsi** @ `2a463b8`: `a5af58a`
+  (`sdcom` stack-lifetime → synchronous in-context *iterative* completion via a driver-owned FIFO +
+  `completing` guard; a callout deferral read a dead-stack `cp->intr`), `908f40a` (spl6 mailbox bracket
+  + nest counters), the `sdcom.addr`-is-physical / no-double-`vtop()` rule (source-verified across
+  `dd.c:240` and the cdfs media backend), and the callout-IPL verdict (callouts dispatch at IPL4 but
+  only the level-2 CIA-A clock triggers them, so spl2 sections are sound; `spl5/6/7` all emit `_spl4`)
+  from stock-kernel disassembly; repo `NOTES.md` §"two load-bearing contracts". Validated on a real
+  A4000 + Z3660 (T2.P3, 2026-07-10 → 07-12). ✅
+- **The DMA-alignment contract + the VFS_MOUNT / mnttab contract** — **amix-cdfs** @ `31e8c3b`:
+  `fa9db1a`+`31e8c3b` (page-align DMA targets + a permanent `(va & (NBPP-1)) + nbyte > NBPP` guard;
+  `NBPP = 2048` from `sys/immu.h`; >4096 kmem is physically scattered so `vtop()` is valid for one page
+  — the 8-byte allocator header shifted sector buffers off-page and wild-wrote the next frame),
+  `0fcf308` (VFS_MOUNT contract: don't `VFS_INIT` over the kernel's lock bit; set `vfs_dev`/`fsid`/`bcount`;
+  `getudev()` for device-less; `vfs_add` clears `VFS_RDONLY`), `844c2ed` (anti-stacking + `getudev`),
+  `6f727b1`+`d3beca7` (`platform/amix/mount.c` userland helper + `mnttab` special-field semantics);
+  `tests/unit/test_remount.c`. Stock-kernel disassembly (symbol-bearing relocatable kernel, period
+  m68k binutils). Live on a real A4000 + Z3660 (2026-07-12 → 07-13): canary soak 15/15 byte-identical
+  post-fix vs corruption by cycle 2–10 pre-fix (the `/usr/sbin/umount` ELF-ident zeroing incident);
+  mount-stacking reproduction; `mnttab` special-field A/B test. ✅
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>
 
 
@@ -3931,6 +4086,25 @@ raised.
 > The concrete in-kernel cdfs fixes for both gotchas above live in the **amix-cdfs** repo — the
 > byte-loop `memset` (`ad09035`) and the one-sector DMA cap (`a5c6915`).
 
+### `make install` does not update `/stand/unix` — copy it yourself ✅
+
+A successful `cd /usr/sys; make install` prints `installed. Old kernel kept as /stand/OLDunix` but
+was observed to leave **`/stand/unix` still holding the *previous* kernel** ✅ — confirmed by
+`sum -r`: `/usr/sys/relocunix` was the freshly-built image (checksum 44416) while `/stand/unix` was
+still the old one (38553). Because the Amiga bootstrap boots the **boot-partition image written from
+`/stand/unix`**, rebooting at that point silently re-boots the **old** kernel and any "verified on the
+new kernel" result is worthless. Do the copy explicitly and rebuild the bootpart, then re-check:
+
+```sh
+cp /usr/sys/relocunix /stand/unix
+cd /stand; make            # (or: cd /usr/sys; make bootpart KERNEL=relocunix)
+sum -r /stand/unix         # must now match sum -r /usr/sys/relocunix
+```
+
+This is the same hazard the [D245 clean-gate](#the-fix-build-until-the-checksum-is-stable) guards
+against, one step later in the pipeline: there `sum -r` proves the *link* is clean; here it proves the
+image you're about to boot is the one you just built. ✅
+
 ### Verify which kernel actually booted 🟡
 
 Warm reboot (`shutdown -i6`) was intermittently a **no-op** in one bench session — the box stayed
@@ -3996,6 +4170,11 @@ partition) was reliable 🟡. Always identity-check *which* kernel actually boot
 - Bench caveat (2026-07-10): warm reboot (`shutdown -i6`) was intermittently a no-op (box stayed on
   the old kernel); cold boot reloads the boot partition reliably — always identity-check which kernel
   actually booted.
+- The **amix-kerntools** bench forensics @ `8a76775` — `cd /usr/sys; make install` prints "installed"
+  yet leaves `/stand/unix` holding the previous kernel (proven by `sum -r`: `relocunix` 44416 vs
+  `/stand/unix` 38553); copy `relocunix` to `/stand/unix` explicitly and rebuild the bootpart, then
+  re-check `sum -r /stand/unix`. Real A4000 + Z3660, 2026-07-12 ✅. Same brief also confirms SVR4
+  `grep` has no `\|` alternation (already noted above under build-script gotchas).
 
 
 ================================================================================
@@ -4112,6 +4291,41 @@ with `text_size` / `data_size` read from `size /usr/sys/relocunix` (cross `size`
 
 Validated at the computed offsets: `scsicard[]` shows the `0xc0de0001` / `0xc0de0002` product codes and the global `block` shows the `UNIX_Root` `PART` record ✅.
 
+## Live-probing a running kernel with `adb` on `/dev/kmem` — the load-bias trap ✅
+
+The savestate route above reads a *frozen* kernel. When the box is **alive**, you can read **and write**
+live kernel memory in place with `adb` on `/dev/kmem`, turning an instrumented kernel into a re-armable
+probe with **no rebuild/reboot cycle** ✅:
+
+```sh
+echo '<runtime-VA>/D'      | adb - /dev/kmem      # read one long by runtime virtual address
+echo '<runtime-VA>/W 0'    | adb -w - /dev/kmem   # write it (adb -w enables writes)
+```
+
+This was proven by zeroing a driver's static log counter mid-session and watching it increment again on
+the next I/O ✅.
+
+**The trap — `adb`'s symbol addresses are FILE-relative, so you must add the kernel's load bias.** ✅
+The reason the earlier `adb -k /stand/unix /dev/kmem` invocation
+[reads garbage](#step-3-read-a-running-kernel-from-a-savestate) is the same one that bites here: given a
+**namelist** (`adb /stand/unix /dev/kmem`), `adb` resolves a symbol to the address recorded in the
+**kernel file**, which on this **relocated** kernel is only an *offset* — reading it directly returns
+garbage (`freemem` read back as `0xFFFFFFFF`). Drop the namelist and address by **runtime VA** instead:
+
+```
+runtime VA = (nm/adb symbol value) + kernel_load_base
+```
+
+On the real A4000 + **Z3660** box the kernel loads at **`0x08000000`**, verified by hand: `z3660_enter`
+at `nm` offset `54932` (`0xD694`) is live at `0x0800D694`, matching its instruction bytes ✅. (That base
+is **machine/config-specific** — it is wherever the bootstrap relocated the kernel; the Amiberry
+A3000-fastmem savestate above sees the kernel at `0x07800000` instead. Confirm your box's base with a
+known symbol before trusting any poke.)
+
+**For a `static`-scoped variable with no global symbol:** disassemble the function that touches it, read
+the operand address straight out of the **live instruction stream**, then poke *that* address — the same
+trick that recovers file-scoped statics from the `exp` objects, applied to the running image ✅.
+
 ## Worked example — how `mount(2)` and fstype registration actually work
 
 Disassembling the three `fs.exp` functions above yields the complete, source-accurate picture ✅:
@@ -4198,6 +4412,7 @@ When the console is dead but a savestate still works ([Step 3](#step-3-read-a-ru
 - Section-relative `nm` offset model for the linked kernel image `/usr/sys/relocunix` (bss offset = `text_size + data_size + nmval`, data offset = `text_size + nmval`; sizes from `size`), validated against the `scsicard[]` `0xc0de0001`/`0xc0de0002` product codes and the `block` global's `UNIX_Root` `PART` record in the A3K1 dump — firsthand ✅.
 - Same `objdump -dr` reloc-annotated method extended to the in-kernel SCSI path — `sdopen` and `getrdb` (RDB parser) traced by name out of their `exp` objects — firsthand ✅.
 - cdfs's `cdfs_diag` throwaway-global diagnostic (magic `0x0DF50001` written last; scan the `A3K1` chunk for the 4-aligned hit) — firsthand from the amix-cdfs port ✅.
+- Live `adb` on `/dev/kmem` (read with `adb - /dev/kmem`, write with `adb -w`; symbol addresses are file-relative so runtime VA = `nm` value + kernel load base, `0x08000000` on the real A4000 + Z3660, verified `z3660_enter` `nm` `0xD694` → live `0x0800D694`; poke a `static` by reading its operand address out of the live instruction stream) — the **amix-kerntools** bench forensics @ `8a76775`, real hardware 2026-07-12 ✅.
 
 
 ================================================================================
@@ -7446,6 +7661,19 @@ Zorro III bus cycle and finishes the whole transfer before the write returns —
 This is why the driver's interrupt handler is an empty stub and completion is just the next
 instruction.
 
+> **Correction — how the driver signals completion changed after `8ea1605`.** ✅ At the commit this
+> page pins, the driver still deferred the SVR4 completion callback to a **clock callout**
+> (`timeout(z3660done, cp)`). That later proved unsafe on real hardware: a caller is allowed to put
+> its `struct sdcom` on its **own stack** (the cdfs in-kernel filesystem does exactly this), and by
+> the time the callout fired from a *different* context that stack frame was dead, so `cp->intr` was
+> read out of reclaimed memory and jumped through — kernel corruption + a wild-jump panic the moment
+> `mount -F cdfs` touched the CD. The fix (amix-z3660scsi `a5af58a`) completes the command
+> **synchronously, in the caller's context**, before the queue routine returns; because disk
+> completion re-issues the next I/O, it does so *iteratively* (a driver-owned completion FIFO plus a
+> `completing` guard) rather than recursing a stack frame per chunk. The transaction is also now
+> bracketed at **spl6** (`908f40a`). This is the generalized **Amix HBA completion contract** — see
+> [the driver model](driver-model.md#the-amix-hbadma-driver-contract-real-hardware). ✅
+
 ### The mandatory bounce buffer ✅
 
 All Amix RAM lives **below `0x08000000`** (`BOUNCE_THRESH`), so the transfer path **always bounces**
@@ -7456,6 +7684,21 @@ through a firmware-visible buffer at `board_base + 0x80000` (`BOUNCE_OFFSET`):
   window back into the caller's buffer.
 
 Transfers are chunked to `MAXXFER = 65536` (≤ 64 KB per command) ✅.
+
+> **The direct-vs-bounce gate is a two-party contract — both sides must key on the same threshold.** ✅
+> The bounce protocol here (all RAM below `BOUNCE_THRESH = 0x08000000` ⇒ always copy through the
+> firmware window) is only half of the deal; the *firmware* has a matching gate deciding whether it
+> DMAs straight into the guest buffer or bounces. When the firmware's DDR map moved (AMIX RAM
+> relocated to `0x08000000`) the firmware still gated direct DMA on an old `cpu_ram` flag
+> (force-disabled for AMIX) while both the Amix and AmigaOS drivers already expected the ARM to DMA
+> *directly* into any buffer at/above `BOUNCE_THRESH` and did **not** copy — so the two sides
+> disagreed about who moves the data and transfers silently went nowhere. The firmware fix keys the
+> gate on `cpu_ram || amix_mode` (Z3660 `d1da9f8`). Lesson for any mailbox/DMA driver paired with
+> emulator firmware: **if either side changes its address map, both gates must move together**, or
+> reads/writes silently no-op. ✅ (Firmware-side commit; owned by the Z3660 firmware repo, cited not
+> reproduced.) The *coherence* half of the same handoff — a parked ARM core speculating stale cache
+> over a fresh DMA — is on
+> [Emulation Fidelity → DMA cache coherence](../how-it-works/emulation-fidelity.md#dma-cache-coherence-across-the-two-emulator-cores). ✅
 
 ### Geometry and synthesized commands ✅
 
@@ -7685,6 +7928,14 @@ lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS
   live successors of the dead `amix-boot` hashes `c8b9398` / `e3f9440`, plus the later
   multi-fault-continuation pair `7ff5774` / `acdfe15`. **Owned by the Z3660 firmware repo, cited not
   reproduced**; see [Emulation Fidelity](../how-it-works/emulation-fidelity.md) for the full mechanism.
+- **Later-commit corrections** (post-`8ea1605`): the firmware **direct-vs-bounce gate** two-party
+  contract — Z3660 firmware repo (branch `amix-main`) `d1da9f8` (gate on `cpu_ram || amix_mode` after
+  the AMIX-RAM move to `0x08000000`), owned by that repo, cited not reproduced ✅; the **completion
+  lifetime** rework — **amix-z3660scsi** @ `2a463b8`, `a5af58a` (synchronous in-context iterative
+  completion, replacing the `timeout(z3660done)` callout deferral that read a dead-stack `sdcom`) and
+  `908f40a` (spl6 mailbox bracket) ✅, validated on a real A4000 + Z3660 (T2.P3, 2026-07-10 → 07-12:
+  `mount -F cdfs 0,2 /cdrom` rc=0, CD read suite 7/7 byte-identical, `z3660_nest_hits`/`z3660_cq_overflow`
+  reading 0). The generalized contract is on [the driver model](driver-model.md#the-amix-hbadma-driver-contract-real-hardware).
 - **Magic numbers** (✅): AutoConfig product id `0x144B0001`; fixed combo base `0x10000000`; piscsi
   page offset `0x2000`; bounce offset `0x80000`; bounce threshold `0x08000000`; `MAXXFER 65536`; root
   disk `/dev/rdsk/c6d0s1` (SCSI target 6, block major 18 / char major 40).
@@ -9687,9 +9938,17 @@ note and a confidence tag. Where a command is nuanced enough to need its own pag
 links to the deep dive.
 
 **Read this first:** Amix is **AT&T System V Release 4 (SVR4)** on the 68030 ✅, so most SVR4
-admin conventions apply. But two SVR4-isms bite hard: the **`/bin/sh` is pre-POSIX** ✅ (no
-`$(...)` command substitution, no `grep -q` — use backticks and `grep … >/dev/null`), and the
-default shell is **ksh** ✅. Commands below assume you are `root` unless noted.
+admin conventions apply. But a few SVR4-isms bite hard:
+
+- the **`/bin/sh` is pre-POSIX** ✅ — no `$(...)` command substitution, no `grep -q` (use backticks
+  and `grep … >/dev/null`); the default *interactive* shell is **ksh** ✅.
+- **`grep` is classic SVR4: no `\|` alternation and no `grep -w`** ✅. A multi-pattern
+  `grep 'a\|b'` matches **nothing** and exits 1 — so it reads as "the symbol is absent," which is
+  exactly the wrong conclusion when you are, say, checking whether a de-instrumented kernel still
+  carries a diagnostic. Use **one simple pattern per `grep`, or `egrep`**. (Root-caused on a real
+  A4000 + Z3660 where `nm /stand/unix | grep 'a\|b'` returned empty for two symbols that both exist.)
+
+Commands below assume you are `root` unless noted.
 
 For terminology (major/minor numbers, STREAMS, `cdevsw`, RDB, etc.) see the
 [glossary](../how-it-works/glossary.md). For every device node and its major/minor, see the
@@ -9868,6 +10127,21 @@ Deep dive: [networking](../how-it-works/networking.md). For the interface device
 
 ---
 
+## Mounting filesystems
+
+Amix uses the SVR4 `mount(1M)`/`umount(1M)` front-ends. `mount -F <fstype> <special> <dir>` execs the
+per-fstype helper **`/usr/lib/fs/<fstype>/mount`** — **without that helper binary the fstype cannot be
+mounted at all** ✅. Two gotchas worth knowing:
+
+| Fact | Detail | Tag |
+|---|---|---|
+| `/etc/mnttab` is **userland-maintained** | The kernel never writes it; the per-fstype `mount` helper appends the line (a single `O_APPEND` write), the way `/proc`/`/dev/fd` do | ✅ |
+| `umount(1M)` matches by the **special** field | It locates the mount by the entry's *special* (first) field — so a **device-less** filesystem must record its **mount point** there (like `/proc /proc proc …`), or `umount` silently fails while still deleting the mnttab line | ✅ |
+| Repeated `mount` **stacks** silently | A second `mount` of the same media on the same dir returns 0 and stacks; the fs must reject it. Duplicate fstype lines in `/etc/mnttab` are the tell — see [quirks #19](../how-it-works/quirks.md#19-mount2-silently-stacks-mounts-a-fake-broken-umount) | ✅ |
+
+The kernel-side half of this contract (writing an in-kernel filesystem) is on
+[the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
+
 ## Time and the clock
 
 | Command | What it does | Tag |
@@ -9962,6 +10236,8 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 - `asokero/va2000-amix` repo — `rm -f amiga/config/unix.o master.d/exp unix`, `cp relocunix /stand`,
   `make bootpart KERNEL=relocunix`, `mknod /dev/va2000 c 68 0`, pre-POSIX `/bin/sh` note.
 - `isoriano1968/hydra-amix` repo — `slink addaen /dev/hya0 hya0`, native `make` / `make force`, `mknod /dev/hya0 c 47 0`, STREAMS `cdevsw` slot 47.
+- The **amix-kerntools** bench forensics @ `8a76775` — SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660, 2026-07-12 ✅.
+- The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
 
 

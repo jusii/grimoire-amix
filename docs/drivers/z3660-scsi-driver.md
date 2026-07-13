@@ -93,6 +93,19 @@ Zorro III bus cycle and finishes the whole transfer before the write returns —
 This is why the driver's interrupt handler is an empty stub and completion is just the next
 instruction.
 
+> **Correction — how the driver signals completion changed after `8ea1605`.** ✅ At the commit this
+> page pins, the driver still deferred the SVR4 completion callback to a **clock callout**
+> (`timeout(z3660done, cp)`). That later proved unsafe on real hardware: a caller is allowed to put
+> its `struct sdcom` on its **own stack** (the cdfs in-kernel filesystem does exactly this), and by
+> the time the callout fired from a *different* context that stack frame was dead, so `cp->intr` was
+> read out of reclaimed memory and jumped through — kernel corruption + a wild-jump panic the moment
+> `mount -F cdfs` touched the CD. The fix (amix-z3660scsi `a5af58a`) completes the command
+> **synchronously, in the caller's context**, before the queue routine returns; because disk
+> completion re-issues the next I/O, it does so *iteratively* (a driver-owned completion FIFO plus a
+> `completing` guard) rather than recursing a stack frame per chunk. The transaction is also now
+> bracketed at **spl6** (`908f40a`). This is the generalized **Amix HBA completion contract** — see
+> [the driver model](driver-model.md#the-amix-hbadma-driver-contract-real-hardware). ✅
+
 ### The mandatory bounce buffer ✅
 
 All Amix RAM lives **below `0x08000000`** (`BOUNCE_THRESH`), so the transfer path **always bounces**
@@ -103,6 +116,21 @@ through a firmware-visible buffer at `board_base + 0x80000` (`BOUNCE_OFFSET`):
   window back into the caller's buffer.
 
 Transfers are chunked to `MAXXFER = 65536` (≤ 64 KB per command) ✅.
+
+> **The direct-vs-bounce gate is a two-party contract — both sides must key on the same threshold.** ✅
+> The bounce protocol here (all RAM below `BOUNCE_THRESH = 0x08000000` ⇒ always copy through the
+> firmware window) is only half of the deal; the *firmware* has a matching gate deciding whether it
+> DMAs straight into the guest buffer or bounces. When the firmware's DDR map moved (AMIX RAM
+> relocated to `0x08000000`) the firmware still gated direct DMA on an old `cpu_ram` flag
+> (force-disabled for AMIX) while both the Amix and AmigaOS drivers already expected the ARM to DMA
+> *directly* into any buffer at/above `BOUNCE_THRESH` and did **not** copy — so the two sides
+> disagreed about who moves the data and transfers silently went nowhere. The firmware fix keys the
+> gate on `cpu_ram || amix_mode` (Z3660 `d1da9f8`). Lesson for any mailbox/DMA driver paired with
+> emulator firmware: **if either side changes its address map, both gates must move together**, or
+> reads/writes silently no-op. ✅ (Firmware-side commit; owned by the Z3660 firmware repo, cited not
+> reproduced.) The *coherence* half of the same handoff — a parked ARM core speculating stale cache
+> over a fresh DMA — is on
+> [Emulation Fidelity → DMA cache coherence](../how-it-works/emulation-fidelity.md#dma-cache-coherence-across-the-two-emulator-cores). ✅
 
 ### Geometry and synthesized commands ✅
 
@@ -332,6 +360,14 @@ lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS
   live successors of the dead `amix-boot` hashes `c8b9398` / `e3f9440`, plus the later
   multi-fault-continuation pair `7ff5774` / `acdfe15`. **Owned by the Z3660 firmware repo, cited not
   reproduced**; see [Emulation Fidelity](../how-it-works/emulation-fidelity.md) for the full mechanism.
+- **Later-commit corrections** (post-`8ea1605`): the firmware **direct-vs-bounce gate** two-party
+  contract — Z3660 firmware repo (branch `amix-main`) `d1da9f8` (gate on `cpu_ram || amix_mode` after
+  the AMIX-RAM move to `0x08000000`), owned by that repo, cited not reproduced ✅; the **completion
+  lifetime** rework — **amix-z3660scsi** @ `2a463b8`, `a5af58a` (synchronous in-context iterative
+  completion, replacing the `timeout(z3660done)` callout deferral that read a dead-stack `sdcom`) and
+  `908f40a` (spl6 mailbox bracket) ✅, validated on a real A4000 + Z3660 (T2.P3, 2026-07-10 → 07-12:
+  `mount -F cdfs 0,2 /cdrom` rc=0, CD read suite 7/7 byte-identical, `z3660_nest_hits`/`z3660_cq_overflow`
+  reading 0). The generalized contract is on [the driver model](driver-model.md#the-amix-hbadma-driver-contract-real-hardware).
 - **Magic numbers** (✅): AutoConfig product id `0x144B0001`; fixed combo base `0x10000000`; piscsi
   page offset `0x2000`; bounce offset `0x80000`; bounce threshold `0x08000000`; `MAXXFER 65536`; root
   disk `/dev/rdsk/c6d0s1` (SCSI target 6, block major 18 / char major 40).

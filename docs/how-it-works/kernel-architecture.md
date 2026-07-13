@@ -69,6 +69,20 @@ Two hard memory facts follow from this layer ✅:
 
 The processor cutoff is set by this same MMU dependency: the kernel **predates the 68040 MMU**, so there is **no 68040/68060 support**, and an **A4000 cannot officially run Amix** ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md).
 
+### The kmem allocator — what a driver can assume ✅
+
+The layout of the kernel heap allocator was recovered by full disassembly of `kmem_alloc`/`kmem_free`/`kmem_allocbpool`/`sptalloc`/`segkmem_alloc`/`page_get` in the shipped kernel ✅. It is worth knowing for any driver-debugging, and one property of it is a load-bearing **DMA hazard**:
+
+| Request size | Served from | Alignment / physical layout |
+|---|---|---|
+| ≤ 256 B | small buddy pool (classes 16..256) | pools carved from 4096-aligned 8-page regions |
+| 257 .. 4096 B | big buddy pool (classes 512..4096) | same 4096-aligned 8-page regions |
+| > 4096 B | `sptalloc` whole pages (VA = pfn << 11) | **page-aligned, but physically SCATTERED** |
+
+- `kmem_alloc` returns **≥ 16-aligned** pointers. A "returned" pointer that is `0 mod 2048` but not `8 mod 16` relative to its wrapper cannot have come from the allocator — a handy alignment argument when a theory needs disproving. ✅
+- **`kmem_free` writes `[next][prev]` freelist links into a freed chunk's first 8 bytes**, so use-after-free / wild-free corruption characteristically shows **pointer-shaped values at a block's head**. ✅
+- **The DMA hazard (the important one):** a `> 4096`-byte allocation is virtually contiguous but **physically scattered** — `segkmem_alloc` pops arbitrary frames off `page_freelist` and maps them at consecutive virtual addresses with no physical adjacency. So `vtop()` on such a buffer is valid for **exactly one page** (`NBPP = 2048`), and any single DMA transfer that crosses a page boundary lands its tail in a **different, unrelated physical frame**. This is the mechanism behind the cdfs wild-write corruption; the driver-side rule (page-align every DMA target, guard `(va & (NBPP-1)) + nbyte > NBPP`) is on [the driver model → DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary). ✅
+
 ## SVR4 networking: STREAMS, TLI, sockets
 
 Networking is built on the standard SVR4 stack ✅:
@@ -107,3 +121,4 @@ One userland gotcha worth flagging at the kernel/system level: Amix's `/bin/sh` 
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — installer use of `amixpkg -i -m -d -r /mnt -y standard` and `shutdown -i6`.
 - Modern community driver repos confirming the 2.1 build/relink model and the `relocunix` image name: `github.com/asokero/va2000-amix`, `github.com/isoriano1968/hydra-amix`.
 - AT&T SVR4 *DDI/DKI Reference Manual* and *STREAMS Programmer's Guide* (the standard SVR4 substrate cited by the Ditto paper).
+- The kmem-allocator map (buddy pools / `sptalloc` whole-page scatter; `vtop()` valid for one page; freelist links in a freed chunk's first 8 bytes) — full disassembly of `kmem_alloc`/`kmem_free`/`kmem_allocbpool`/`sptalloc`/`segkmem_alloc`/`page_get` in the shipped kernel, and the DMA-scatter corruption reproduced on a real A4000 + Z3660, from the **amix-cdfs** port @ `31e8c3b` (`NBPP = 2048` per `sys/immu.h`). ✅ See [the driver model DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary).
