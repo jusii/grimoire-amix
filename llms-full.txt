@@ -397,7 +397,7 @@ The installer's **default partition layout** is four partitions ✅:
 
 | Partition | Purpose | Notes |
 |---|---|---|
-| `/` (root) | Root filesystem | s5 or UFS; UFS recommended, installer defaults `ANS="ufs"` ✅ |
+| `/` (root) | Root filesystem | s5 or UFS; installer **defaults to s5** (prompt `[s5]`, empty input → s5) ✅, UFS recommended 🟡 but must be typed |
 | swap | Paging/swap | Larger when the disk is bigger than `BREAKPT=120` MB ✅ |
 | **boot** | Holds the bootable kernel image | **2 MB**, fixed by `BOOTSIZE` (see below) ✅ |
 | data | Remaining user space | Keep partitions ≲1 GB 🟡 |
@@ -553,7 +553,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 
 - Research brief §3 (Boot process & disk layout) and §10 (boot.adf anatomy), `sources/research-brief.md`.
 - `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../boot-disks/anatomy-boot-adf.md): `DOS\0` OFS bootblock, failed `xdftool list` (`Invalid Root Block @880`), kernel decompression/checksum strings, NFS/RPC string table, `hat_vtokp_prot` HAT panic string, no clean ELF.
-- `amix_21_root.adf` install scripts (via `tools/inspect-adf.sh`): `BOOTSIZE=2`, `BOOTLEN=BOOTSIZE*2048`, `BREAKPT=120`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`, default `ANS="ufs"`.
+- `amix_21_root.adf` install scripts (via `tools/inspect-adf.sh`): `BOOTSIZE=2`, `BOOTLEN=BOOTSIZE*2048`, `BREAKPT=120`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`. The root-filesystem prompt is `[s5]` and empty input selects s5; `ANS="ufs"` appears only as a case branch reached when the user types `ufs` (corrected 2026-07-19 — previously recorded here as the default).
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (the `rdbunix` kernel image name; statically linked monolithic kernel; `make` in `/usr/sys`).
 - Modern driver repos for the `relocunix` / `make bootpart KERNEL=relocunix` flow: <https://github.com/asokero/va2000-amix>, <https://github.com/isoriano1968/hydra-amix>.
 - amigaunix.com (Superkickstart dual-boot via right mouse button, hardware requirements): <https://www.amigaunix.com/>.
@@ -751,10 +751,22 @@ You pick the filesystem type during installation ✅. Two choices ship:
 
 | Type | What it is | Status at install | Use it? | Tag |
 |---|---|---|---|---|
-| **UFS** | Berkeley Fast File System (FFS) | Not the menu default, but the **scripts default `ANS="ufs"`** | **Recommended** | ✅ |
-| **s5** | System V filesystem | The historical/menu **default** | **Discouraged** | ✅ |
+| **UFS** | Berkeley Fast File System (FFS) | **Not** the default — must be typed explicitly | **Recommended** 🟡 | ✅ |
+| **s5** | System V filesystem | The default, in the prompt **and** in the scripts | Required on some ROMs | ✅ |
 
-The recommendation is unambiguous in practice: the install scripts on the root floppy set the answer variable `ANS="ufs"` as their effective default ✅, and community consensus is that everyone uses UFS.
+**CORRECTION (2026-07-19).** This page previously stated ✅ that the install scripts "default `ANS="ufs"`". That is **wrong**, and the error mattered: [the walkthrough](../getting-started/install-walkthrough.md) told readers to *accept the default* in order to get UFS, which would have produced an **s5** root instead. Measured directly from `sources/floppy/amix_21_root.adf` ✅:
+
+```sh
+readask "What file system type is the root partition? [s5] "
+case $ask in
+""|"s5")  ANS="s5" ;;                          # empty input -> s5
+"ufs")    ANS="ufs"; ROOT_OPT="$UFS_OPT" ;;    # only when typed explicitly
+esac
+```
+
+`ANS="ufs"` does appear in the script, but as a **case branch reached only when the user types `ufs`** — not as a default. The image contains **0 occurrences of `[ufs]` and 2 of `[s5]`** ✅. There is also a sibling branch `ROOT_FSYS="s5"  # Johann ROM can only boot s5 filesystem`, so on some ROM/controller combinations s5 is not just the default but the only bootable root 🟡.
+
+The UFS *recommendation* still stands on community consensus 🟡 — but it requires typing `ufs`, and it may not be available for the root filesystem on every machine.
 
 Why does **s5** linger as a nominal default at all? 🟡 The most plausible explanation is **lineage**: Amix was a direct port of AT&T's **3B2 (WE32x00) SVR4 codebase** 🟡 (community-reported — amigaunix.com hedges "it appears that"), where the System V filesystem was the native default, and that default carried over even though UFS is the better choice on this hardware. The 3B2-lineage rationale is **community-reported, not primary-verified** 🟡 — see the [quirks page](quirks.md).
 
@@ -2008,9 +2020,11 @@ display. On Amix this is the [va2000](../drivers/case-studies/va2000.md) char fr
 
 ## s5
 
-The System V (s5) filesystem — the **default but not recommended** choice offered by the Amix
-installer ✅; the recommendation (and the script default `ANS="ufs"`) is [UFS](#ufs) ✅. The s5
-default is likely a [3B2](#3b2)-lineage artifact 🟡. See [filesystems and disks](filesystems-and-disks.md).
+The System V (s5) filesystem — the **default** choice offered by the Amix installer, in both the
+prompt (`[s5]`) and the script's empty-input branch ✅. [UFS](#ufs) is the community
+recommendation 🟡 but must be typed explicitly; it is **not** the script default (a claim corrected
+2026-07-19). The s5 default is likely a [3B2](#3b2)-lineage artifact 🟡, and on some ROMs s5 is the
+only bootable root (`ROOT_FSYS="s5"  # Johann ROM can only boot s5 filesystem`) 🟡. See [filesystems and disks](filesystems-and-disks.md).
 
 ## spl / splN
 
@@ -2040,8 +2054,10 @@ networking, TLI plus BSD sockets, POSIX.1, `init`/`/etc/inittab`/run levels, and
 
 ## UFS
 
-The Berkeley Fast File System (UFS), the **recommended** Amix filesystem; the installer scripts
-default to it (`ANS="ufs"`) ✅. The install [miniroot](#miniroot) itself is a UFS filesystem ✅.
+The Berkeley Fast File System (UFS), the **community-recommended** Amix filesystem 🟡. The installer
+scripts do **not** default to it — the prompt is `[s5]` and empty input selects s5; `ufs` must be
+typed explicitly ✅ (corrected 2026-07-19; this page previously claimed the opposite).
+The install [miniroot](#miniroot) itself is a UFS filesystem ✅.
 Contrast [s5](#s5). See [filesystems and disks](filesystems-and-disks.md).
 
 ## viper_kludge
@@ -2901,9 +2917,22 @@ rdb," and either computes "obvious" partition choices or asks you ✅. The defau
 | boot/bootstrap | Holds the bootable kernel | `BOOTSIZE=2` MB → `BOOTLEN = BOOTSIZE * 2048` blocks |
 | data | Additional storage | User choice |
 
-Filesystem type is asked per filesystem. The choices are **`s5`** (System V — the *default*, likely a
-3B2-lineage holdover, **not** recommended 🟡) and **`ufs`** (Berkeley FFS — **recommended**). The
-root.adf scripts default the answer to UFS (`ANS="ufs"`) ✅, so accept the default: choose **`ufs`**.
+Filesystem type is asked per filesystem. The choices are **`s5`** (System V — likely a 3B2-lineage
+holdover) and **`ufs`** (Berkeley FFS — **recommended** 🟡, on community consensus). **The scripts
+default to `s5`, not `ufs` ✅ — so do NOT just press RETURN if you want UFS; you must type `ufs`
+explicitly.** The root partition prompt is:
+
+```sh
+readask "What file system type is the root partition? [s5] "
+case $ask in
+""|"s5")  ANS="s5" ;;                          # empty input -> s5
+"ufs")    ANS="ufs"; ROOT_OPT="$UFS_OPT" ;;    # only when typed explicitly
+esac
+```
+
+There is **no `[ufs]` prompt anywhere in `amix_21_root.adf`** (0 occurrences of `[ufs]`, 2 of `[s5]`)
+✅. Note also the sibling branch `ROOT_FSYS="s5"  # Johann ROM can only boot s5 filesystem`, so on
+some ROM/controller combinations s5 is not merely the default but the only bootable choice 🟡.
 
 > **Why these numbers matter:** `BOOTSIZE=2` and the ID-6/ID-4 wiring are not cosmetic — `make bootpart`
 > in [Stage 5](#stage-5-build-the-kernel-and-write-the-boot-partition) writes the kernel into exactly

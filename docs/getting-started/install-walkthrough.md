@@ -104,9 +104,22 @@ rdb," and either computes "obvious" partition choices or asks you ✅. The defau
 | boot/bootstrap | Holds the bootable kernel | `BOOTSIZE=2` MB → `BOOTLEN = BOOTSIZE * 2048` blocks |
 | data | Additional storage | User choice |
 
-Filesystem type is asked per filesystem. The choices are **`s5`** (System V — the *default*, likely a
-3B2-lineage holdover, **not** recommended 🟡) and **`ufs`** (Berkeley FFS — **recommended**). The
-root.adf scripts default the answer to UFS (`ANS="ufs"`) ✅, so accept the default: choose **`ufs`**.
+Filesystem type is asked per filesystem. The choices are **`s5`** (System V — likely a 3B2-lineage
+holdover) and **`ufs`** (Berkeley FFS — **recommended** 🟡, on community consensus). **The scripts
+default to `s5`, not `ufs` ✅ — so do NOT just press RETURN if you want UFS; you must type `ufs`
+explicitly.** The root partition prompt is:
+
+```sh
+readask "What file system type is the root partition? [s5] "
+case $ask in
+""|"s5")  ANS="s5" ;;                          # empty input -> s5
+"ufs")    ANS="ufs"; ROOT_OPT="$UFS_OPT" ;;    # only when typed explicitly
+esac
+```
+
+There is **no `[ufs]` prompt anywhere in `amix_21_root.adf`** (0 occurrences of `[ufs]`, 2 of `[s5]`)
+✅. Note also the sibling branch `ROOT_FSYS="s5"  # Johann ROM can only boot s5 filesystem`, so on
+some ROM/controller combinations s5 is not merely the default but the only bootable choice 🟡.
 
 > **Why these numbers matter:** `BOOTSIZE=2` and the ID-6/ID-4 wiring are not cosmetic — `make bootpart`
 > in [Stage 5](#stage-5-build-the-kernel-and-write-the-boot-partition) writes the kernel into exactly

@@ -155,9 +155,11 @@ display. On Amix this is the [va2000](../drivers/case-studies/va2000.md) char fr
 
 ## s5
 
-The System V (s5) filesystem — the **default but not recommended** choice offered by the Amix
-installer ✅; the recommendation (and the script default `ANS="ufs"`) is [UFS](#ufs) ✅. The s5
-default is likely a [3B2](#3b2)-lineage artifact 🟡. See [filesystems and disks](filesystems-and-disks.md).
+The System V (s5) filesystem — the **default** choice offered by the Amix installer, in both the
+prompt (`[s5]`) and the script's empty-input branch ✅. [UFS](#ufs) is the community
+recommendation 🟡 but must be typed explicitly; it is **not** the script default (a claim corrected
+2026-07-19). The s5 default is likely a [3B2](#3b2)-lineage artifact 🟡, and on some ROMs s5 is the
+only bootable root (`ROOT_FSYS="s5"  # Johann ROM can only boot s5 filesystem`) 🟡. See [filesystems and disks](filesystems-and-disks.md).
 
 ## spl / splN
 
@@ -187,8 +189,10 @@ networking, TLI plus BSD sockets, POSIX.1, `init`/`/etc/inittab`/run levels, and
 
 ## UFS
 
-The Berkeley Fast File System (UFS), the **recommended** Amix filesystem; the installer scripts
-default to it (`ANS="ufs"`) ✅. The install [miniroot](#miniroot) itself is a UFS filesystem ✅.
+The Berkeley Fast File System (UFS), the **community-recommended** Amix filesystem 🟡. The installer
+scripts do **not** default to it — the prompt is `[s5]` and empty input selects s5; `ufs` must be
+typed explicitly ✅ (corrected 2026-07-19; this page previously claimed the opposite).
+The install [miniroot](#miniroot) itself is a UFS filesystem ✅.
 Contrast [s5](#s5). See [filesystems and disks](filesystems-and-disks.md).
 
 ## viper_kludge

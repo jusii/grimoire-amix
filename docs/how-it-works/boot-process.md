@@ -65,7 +65,7 @@ The installer's **default partition layout** is four partitions ✅:
 
 | Partition | Purpose | Notes |
 |---|---|---|
-| `/` (root) | Root filesystem | s5 or UFS; UFS recommended, installer defaults `ANS="ufs"` ✅ |
+| `/` (root) | Root filesystem | s5 or UFS; installer **defaults to s5** (prompt `[s5]`, empty input → s5) ✅, UFS recommended 🟡 but must be typed |
 | swap | Paging/swap | Larger when the disk is bigger than `BREAKPT=120` MB ✅ |
 | **boot** | Holds the bootable kernel image | **2 MB**, fixed by `BOOTSIZE` (see below) ✅ |
 | data | Remaining user space | Keep partitions ≲1 GB 🟡 |
@@ -221,7 +221,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 
 - Research brief §3 (Boot process & disk layout) and §10 (boot.adf anatomy), `sources/research-brief.md`.
 - `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../boot-disks/anatomy-boot-adf.md): `DOS\0` OFS bootblock, failed `xdftool list` (`Invalid Root Block @880`), kernel decompression/checksum strings, NFS/RPC string table, `hat_vtokp_prot` HAT panic string, no clean ELF.
-- `amix_21_root.adf` install scripts (via `tools/inspect-adf.sh`): `BOOTSIZE=2`, `BOOTLEN=BOOTSIZE*2048`, `BREAKPT=120`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`, default `ANS="ufs"`.
+- `amix_21_root.adf` install scripts (via `tools/inspect-adf.sh`): `BOOTSIZE=2`, `BOOTLEN=BOOTSIZE*2048`, `BREAKPT=120`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`. The root-filesystem prompt is `[s5]` and empty input selects s5; `ANS="ufs"` appears only as a case branch reached when the user types `ufs` (corrected 2026-07-19 — previously recorded here as the default).
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (the `rdbunix` kernel image name; statically linked monolithic kernel; `make` in `/usr/sys`).
 - Modern driver repos for the `relocunix` / `make bootpart KERNEL=relocunix` flow: <https://github.com/asokero/va2000-amix>, <https://github.com/isoriano1968/hydra-amix>.
 - amigaunix.com (Superkickstart dual-boot via right mouse button, hardware requirements): <https://www.amigaunix.com/>.

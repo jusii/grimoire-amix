@@ -52,10 +52,22 @@ You pick the filesystem type during installation ✅. Two choices ship:
 
 | Type | What it is | Status at install | Use it? | Tag |
 |---|---|---|---|---|
-| **UFS** | Berkeley Fast File System (FFS) | Not the menu default, but the **scripts default `ANS="ufs"`** | **Recommended** | ✅ |
-| **s5** | System V filesystem | The historical/menu **default** | **Discouraged** | ✅ |
+| **UFS** | Berkeley Fast File System (FFS) | **Not** the default — must be typed explicitly | **Recommended** 🟡 | ✅ |
+| **s5** | System V filesystem | The default, in the prompt **and** in the scripts | Required on some ROMs | ✅ |
 
-The recommendation is unambiguous in practice: the install scripts on the root floppy set the answer variable `ANS="ufs"` as their effective default ✅, and community consensus is that everyone uses UFS.
+**CORRECTION (2026-07-19).** This page previously stated ✅ that the install scripts "default `ANS="ufs"`". That is **wrong**, and the error mattered: [the walkthrough](../getting-started/install-walkthrough.md) told readers to *accept the default* in order to get UFS, which would have produced an **s5** root instead. Measured directly from `sources/floppy/amix_21_root.adf` ✅:
+
+```sh
+readask "What file system type is the root partition? [s5] "
+case $ask in
+""|"s5")  ANS="s5" ;;                          # empty input -> s5
+"ufs")    ANS="ufs"; ROOT_OPT="$UFS_OPT" ;;    # only when typed explicitly
+esac
+```
+
+`ANS="ufs"` does appear in the script, but as a **case branch reached only when the user types `ufs`** — not as a default. The image contains **0 occurrences of `[ufs]` and 2 of `[s5]`** ✅. There is also a sibling branch `ROOT_FSYS="s5"  # Johann ROM can only boot s5 filesystem`, so on some ROM/controller combinations s5 is not just the default but the only bootable root 🟡.
+
+The UFS *recommendation* still stands on community consensus 🟡 — but it requires typing `ufs`, and it may not be available for the root filesystem on every machine.
 
 Why does **s5** linger as a nominal default at all? 🟡 The most plausible explanation is **lineage**: Amix was a direct port of AT&T's **3B2 (WE32x00) SVR4 codebase** 🟡 (community-reported — amigaunix.com hedges "it appears that"), where the System V filesystem was the native default, and that default carried over even though UFS is the better choice on this hardware. The 3B2-lineage rationale is **community-reported, not primary-verified** 🟡 — see the [quirks page](quirks.md).
 
