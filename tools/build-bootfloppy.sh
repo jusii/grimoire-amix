@@ -81,7 +81,12 @@ python3 - "$out" "$donor" "$zoff" "$zlen" "$ksz" "$SIZE" <<'PY'
 import sys,struct
 out,donor,zoff,zlen,ksz,SIZE=sys.argv[1],sys.argv[2],int(sys.argv[3]),int(sys.argv[4]),int(sys.argv[5]),int(sys.argv[6])
 def fold(buf):
-    s=sum(buf)
+    # The C original (usr/sys/amiga/boot/chksum.c) accumulates into an `unsigned long`,
+    # which WRAPS at 2**32. Python's sum() is arbitrary precision, so the mask below is
+    # LOAD-BEARING: without it a byte total past 2**32 folds a different number of times
+    # and diverges from the real algorithm. Unreachable at floppy sizes (~700 KB), but
+    # kept exact so this stays conformant with amix-kerntools/contracts/bootchain-v1.json.
+    s=sum(buf)&0xFFFFFFFF
     while s>>16: s=(s>>16)+(s&0xffff)
     return s&0xffff
 db=open(donor,'rb').read()
@@ -124,7 +129,9 @@ python3 - "$out" "$kern" "$tmpz.out" "$zoff" "$SIZE" <<'PY'
 import sys,struct
 out,kern,decoded,zoff,SIZE=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4]),int(sys.argv[5])
 def fold(b):
-    s=sum(b)
+    # See the note on the identical fold() in the patch phase above: the &0xFFFFFFFF
+    # reproduces the C accumulator's 32-bit wrap and is load-bearing for large buffers.
+    s=sum(b)&0xFFFFFFFF
     while s>>16: s=(s>>16)+(s&0xffff)
     return s&0xffff
 b=open(out,'rb').read(); k=open(kern,'rb').read(); d=open(decoded,'rb').read()
