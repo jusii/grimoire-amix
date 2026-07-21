@@ -303,7 +303,49 @@ Two complementary detectors exist:
 | Detector | What it checks | Trade-off |
 |---|---|---|
 | [`tools/checkunix.c`](https://github.com/Jusii/grimoire-amix/blob/master/tools/checkunix.c) | native big-endian `.symtab` integrity (flags out-of-range `st_shndx`) | **fast**, runs on the box, but **symtab-only** — misses `.rela`/`.text` shifts ✅ |
-| [`tools/relsim.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/relsim.py) | host-side reimplementation of the boot relocator `rel()` | **full offline `D245` oracle** — checks `.symtab` **and** relocation records ✅ |
+| [`tools/relsim.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/relsim.py) | host-side reimplementation of the boot relocator `rel()` | checks `.symtab` **and** relocation records — a **kernel-record** oracle ✅ |
+
+**Scope correction (2026-07-16) ✅:** `relsim.py` (and the native `reltest`) validate the boot
+relocator's *source semantics against the kernel's records* — they are **kernel-record oracles,
+NOT will-this-disk-boot oracles**. The on-disk `boot2` loader is a free variable outside their
+scope: a relsim-green kernel still D245s under a name-based boot2 (see [the two boot2
+lineages](../how-it-works/boot-process.md#the-two-boot2-lineages-and-the-d245rela-trap)).
+Disk-level assurance needs a **boot-chain check**: the build pipeline laminates the proven
+flags-based boot2 into `/stand/boot2.boot` before the bootpart rebuild and fail-closes on
+`bootchain-verify.py` (RDB walk → `UNI\0` slice → `boot1@+0x000`, `IBLK@+0x400`,
+`boot2@+0x600` sha check, `IBLK@+0x2600`, kernel ELF@`+0x2800`; `ib_chksum` = folded 16-bit
+SVR4 sum). The first golden gated this way validated 5/5 on the real A4000+Z3660 (2026-07-15) ✅.
+
+**Measured rate (2026-07-20) ✅:** a fixed-N measurement on a RAW (non-VHD) disk image put the
+emulated relink-corruption rate at **85% (17/20 rounds)** — confirming the historical ~70%
+figure and refuting the hypothesis that dynamic-VHD block-remapping explained it. Every
+linked-but-corrupt round kept `nm -h -u` **empty**: the ~8 KB block-shift never perturbs the
+symbol table, so **sum-recurrence is the load-bearing arm** of the gate for SCSI/combined
+kernels (the nm-empty arm covers the larger cdfs kernel's distinct silent-symbol-drop mode).
+One round in 20 was the separate intermittent `ld` "Unresolved Symbol" nolink mode, which the
+gate's retry already handles ✅.
+
+### Who is exposed to a cross-toolchain bug — the build-model boundary ✅
+
+When the cross toolchain's **tdivs divide-with-remainder mis-assembly** was found (see
+[toolchain](toolchain.md#the-assembler-fixup-family-swbeg-fcmp--and-the-tdivs-divide-with-remainder-bug)),
+the blast radius was bounded by the build model, and the boundary is worth recording ✅:
+
+- The **kernel objects and all native drivers never carried the bug** — the harness is a
+  source-push + compile-on-box model; the box's own SGS `as` assembles them.
+- Only **host cross-built artifacts** were exposed: the SVR4 pkg engine, the cross `libgcc.a`
+  that a cdfs-carrying kernel links for its 64-bit soft-arithmetic
+  (`__udivdi3`/`__umoddi3`/`__lshrdi3`), and the cdfs kernel `exp` relocatable.
+- A plain SCSI / SCSI+net kernel links **zero** cross artifacts and was end-to-end clean.
+
+The practical consequence closed a long-open metal mystery: the kernel's `__udivdi3` returning
+an internal normalization intermediate on real hardware (garbage `st_blocks` from cdfs) was the
+mis-assembled 64-bit-dividend form inside the old cross `libgcc.a`. After the toolchain fix and
+a libgcc/exp rebuild + kernel relink, the same machine + same disc read every value correctly,
+and a userland exerciser statically carrying the rebuilt `__udivdi3` passed on metal with the
+exact dividends that used to fail (2026-07-21) ✅. Standing style rule stays: prefer shifts to
+64-bit division in Amix kernel code — now as a speed/robustness preference, not a correctness
+workaround ✅.
 
 Build `checkunix` natively (`cc -O -o checkunix checkunix.c`) and run it on the box; run `relsim.py`
 on the host against a **pulled** kernel ELF:
@@ -462,6 +504,7 @@ partition) was reliable 🟡. Always identity-check *which* kernel actually boot
 
 ## Sources
 
+- amix-kerntools briefs `boot2-d245-trap` (2026-07-16), `e2-relink-corruption-measured` + `tdivs-cross-assembler-miscompile` (2026-07-21): relsim scope correction, bootchain-verify gate, measured 85% relink corruption, tdivs blast-radius map, __udivdi3 metal closure (kernel 10842→00961, validate-metal ALL GREEN 2026-07-21).
 - Ditto, *Writing Amix Device Drivers*, **1990 European Amiga Developer's Conference** (project PDF;
   see [bibliography](../reference/bibliography.md)) — `/usr/sys` object libraries, `kernel.c`
   switch tables, the "Adding a device driver" procedure, `rdbunix` image name, keep-old-`/unix`

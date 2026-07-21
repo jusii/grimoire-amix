@@ -131,6 +131,27 @@ This is a strong candidate for the historical **"`amixpkg`/package tools are bro
 
 > **Fixing it.** Back up `/var/sadm/install/contents`, then delete the single malformed line (identify it with `grep -n 'TrueType Fonts' /var/sadm/install/contents`). After that, `pkgrm` and `pkginfo -l` behave normally. ✅
 
+## ⚠ The `pkgadd -R` altroot crash — a toolchain bug, not a pkgtools bug ✅
+
+A modern port of the heirloom SVR4 pkgtools to Amix hit a **silent, 100%-reproducible SIGSEGV in
+`pkgadd -R <altroot>`** (alternate-root installs — the core code path of any from-media
+installer). Two findings generalize beyond that port ✅:
+
+- **The "silent, no core" was an illusion**: the 1 MB core lands **inside the `-R` root** at
+  `<root>/var/sadm/install/core` — where nobody looks. On-box `adb` on that core named the real
+  crash site (`nhash.c`'s name-cache `HASH()` returning garbage → a negative bucket index → a
+  wild store in `add_cache`).
+- **The root cause was the cross-assembler**, not the SVR4 code: the tdivs divide-with-remainder
+  mis-encoding (see [the toolchain fixup family](../drivers/toolchain.md#the-assembler-fixup-family-swbeg-fcmp--and-the-tdivs-divide-with-remainder-bug))
+  made `hv % hsz` — a perfectly valid C expression — return garbage at every optimization
+  level. Forcing suspect files to `-O0` never could have helped, and didn't. With the toolchain
+  fixed and the engine rebuilt, plain empty-root `pkgadd -R` runs clean (4/4, zero cores) on
+  the same box that cored 4/4 before ✅.
+
+The lesson for anyone porting period software with a period cross-toolchain: when a crash
+reproduces on the box but not under host sanitizers, **suspect the toolchain's generated code
+before the source** — and check inside the altroot for the core.
+
 ## `amixpkg`: the install-media front-end {#amixpkg-the-install-media-front-end}
 
 `amixpkg` is **not present on the installed system** (`/usr/sbin`, `/usr/bin`, `/sbin` — absent) ✅, yet the `contents` database names it as its **original writer** (`# Last modified by amixpkg for X11r5src package`) ✅. The reconciliation: `amixpkg` is the **install-media (root.adf) front-end** that populates `/var/sadm` during installation, via the *same* database machinery as `pkgadd` — it is the installer's package driver, not a general-purpose installed command. The [install walkthrough](../getting-started/install-walkthrough.md) drives the whole distribution install through it (`amixpkg -i -m -d … -r /mnt -y standard`).
@@ -148,6 +169,7 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 
 ## Sources
 
+- amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): the pkgadd -R altroot SIGSEGV root cause (adb on the in-altroot core; nhash HASH), engine rebuilt + re-verified 4/4 on the bench box 2026-07-20/21.
 - **Firsthand, reproduced live** (✅): a clean **Amix 2.1c** image (`UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, 2026-07-01 (the **amix-packagemanager** project; command transcripts retained there). Specifically: `ls -l /usr/{bin,sbin}/pkg*` + the `No such file or directory` for `pkgask`/`removef`/`amixpkg` (F1); `ls -laR /var/sadm`, `/var/sadm/install/admin/default`, `pkginfo -x`, `/var/sadm/pkg/*/pkginfo` (F2); `head`/`grep` of `/var/sadm/install/contents` (F3); an on-box throwaway package built with `pkgmk`/`pkgtrans` and its `pkgmap` + `.pkg` header dissected with `od -c` (F4); a before/after `diff` of `contents` across a controlled `pkgadd` (F5); `find /var/sadm/pkg -type f` showing only `pkginfo` + `*.mi` (F6); the `pkgrm`/`pkginfo -l` abort, the offending `contents` record, and its removal-and-retry (F7); the `# Last modified by amixpkg …` marker with `amixpkg` absent from the filesystem (F8).
 - **`sources/research-brief.md` §20** (the stock SVR4 pkg-system internals, media formats, DB mutation, and the F7 `contents` corruption) — the grounding for this page, carrying the tags above.
 - **Community distribution practice** (🟡): [amigaunix.com `more_software`](https://www.amigaunix.com/doku.php/more_software) (`.pkg` / cpio / `tar.zoo` distribution) and Michael Parson's **AmixBP** ([amixbp.sourceforge.net](https://amixbp.sourceforge.net), SourceForge group 263433) — the datastream-`.pkg` distribution channel.

@@ -115,6 +115,35 @@ Treat this as a **historical rename** and verify per version — `rdbunix` for t
 
 **Note:** Always keep the old working `/unix` (or boot partition image) as a fallback before writing a freshly built kernel — a broken boot partition means a machine that won't come up ✅.
 
+## The two boot2 lineages and the D245/RELA trap
+
+The 2 MB boot partition's secondary loader (`boot2`, an 8192-byte blob at slice offset `+0x600`
+inside the `boot1|IBLK|boot2|IBLK|unix` chain) exists in **two incompatible lineages**, and only
+one of them can boot modern rebuilt kernels ✅:
+
+- The **name-based** boot2 (sha256 `5ab360b1…`; embedded strings `.uvblock .kvsysseg .kvsegmap
+  .kvsegu`, `"Text and data not contiguous!"`) resolves kernel sections **by segment name**. It is
+  what the **Amix 2.1 SVR4 installer lays down on every from-scratch install**, and it cannot
+  relocate standard flags-based ET_REL kernels (sections classified by
+  `SHF_EXECINSTR/WRITE/ALLOC`) — it fires `Alert('RELA'|AT_DeadEnd)` = the **D245 4C41 guru**
+  before the kernel ever runs ✅.
+- The **flags-based** boot2 (sha256 `f287ff3a…`; string `"No .text, .rodata, or .data!"`), built
+  from the sysroot sources, relocates flags-classified kernels cleanly ✅.
+
+The D245/RELA gurus seen on hard-disk-deployed rebuilt kernels were caused by the **foreign
+on-disk loader, not by the kernel's relocation records**: a single-variable splice — replacing
+ONLY the 8192-byte boot2 (plus its recomputed IBLK checksum) in a byte-identical copy of a
+D245-failing disk — made the same kernel relocate and execute, reproduced in under 30 s on the
+bench and then validated 5/5 on the real A4000+Z3660 ✅.
+
+Scope nuance: the hard-disk bootpart frames the **raw ET_REL kernel** (`makeiblk`; no
+`elf2brel`) — the brel/`e_type 0xff00` conversion is the **boot-floppy** path only. A raw
+cross-linked ET_REL does not inherently D245 on the hard-disk path; under a name-based boot2 it
+always does ✅. Because `core-2.1.pkg` ships the name-based loader inside the stock file set,
+any freshly installed system inherits this trap — the modern build pipeline laminates the
+flags-based boot2 into `/stand/boot2.boot` and gates the whole chain with `bootchain-verify.py`
+(see [kernel build and install](../drivers/kernel-build.md)) ✅.
+
 ## Booting Amix with root on an A4091 (and the rootdev dispatch trap)
 
 Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../drivers/a4091-53c710-driver.md) — a Zorro III board Amix shipped with **no driver** for — turned out to hinge not on the driver but on **how the kernel turns the compiled-in root device number into a SCSI card**. This section documents that dispatch path and the panic it produced. All findings here were reproduced locally in Amiberry on the real Amix 2.1c distribution unless tagged otherwise.
@@ -219,6 +248,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 
 ## Sources
 
+- amix-kerntools brief `boot2-d245-trap` (2026-07-16): single-variable boot2 splice, loader forensics (sha `5ab360b1…` vs `f287ff3a…`), bench + 5/5 metal validation 2026-07-15.
 - Research brief §3 (Boot process & disk layout) and §10 (boot.adf anatomy), `sources/research-brief.md`.
 - `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../boot-disks/anatomy-boot-adf.md): `DOS\0` OFS bootblock, failed `xdftool list` (`Invalid Root Block @880`), kernel decompression/checksum strings, NFS/RPC string table, `hat_vtokp_prot` HAT panic string, no clean ELF.
 - `amix_21_root.adf` install scripts (via `tools/inspect-adf.sh`): `BOOTSIZE=2`, `BOOTLEN=BOOTSIZE*2048`, `BREAKPT=120`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`. The root-filesystem prompt is `[s5]` and empty input selects s5; `ANS="ufs"` appears only as a case branch reached when the user types `ufs` (corrected 2026-07-19 — previously recorded here as the default).

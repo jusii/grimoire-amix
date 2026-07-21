@@ -132,6 +132,31 @@ make test-random AMIX_ROOT=/path/to/usr-amix CPUFLAGS=-m68030
 
 The wrapper compiles via `-S` → an `.lcomm` assembly fix-up → `as -m68020`, working around quirks of the old GCC's output ✅. So you can now develop a driver (e.g. the [A4091](a4091-53c710-driver.md) or a new NIC) on a modern host and do only the final relink on Amix — though the native on-box build (above) remains the simplest path for a single driver. This was open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), now closed.
 
+### The assembler-fixup family: .swbeg, fcmp — and the tdivs divide-with-remainder bug ✅
+
+The wrapper's `fix_asm` pass exists because GCC 2.7.2.3 emits **SGS-dialect** assembly that GNU
+`as` 2.8.1 either drops or, worse, silently mis-encodes. Three members of the family are now
+known, and the third was the most consequential ✅:
+
+1. **`.swbeg &N`** — GNU as parses it but emits zero bytes, while gcc's switch dispatch assumes
+   the SGS assembler's 4-byte word before each jump table — every switch case entered 4 bytes
+   late. Rewritten to an explicit 4-byte filler ✅.
+2. **`fcmp`** — FPU compare spelling differences, rewritten ✅.
+3. **`tdivs.l`/`tdivu.l <ea>,Dr:Dq`** (discovered 2026-07-20) — gcc's SGS spellings for the
+   68020 **32-bit-dividend divide-with-remainder** (`divsl.l`/`divul.l`). GNU as 2.8.1 assembled
+   them with the ext-word SIZE bit (0x0400) **set**, producing the *64-bit-dividend* form: the
+   remainder register was consumed as the high dividend word. Consequence: **every
+   variable-divisor `%` in cross-built code returned garbage at ANY optimization level**, and
+   variable `/` was wrong at -O0 (on-box measurements: `351 % 151` → −2147408448;
+   `351 / 151` → 351, the 68030 leaving operands unchanged on quotient overflow). Constant and
+   power-of-two divisors were never affected (gcc lowers them without tdivs). The fix rewrites
+   the spellings to `divsl.l`/`divul.l` (SIZE=0), with a `test-divmod` regression target proven
+   FAIL-before/PASS-after ✅. The DImode `libgcc.a` helpers (`__udivdi3` and friends) were all
+   affected — every divide in them is compiler-generated — and were rebuilt; the fix was
+   **confirmed on the real A4000+Z3660** with a userland exerciser (2026-07-21) ✅. See
+   [kernel build](kernel-build.md) for the blast-radius map and
+   [package management](../how-it-works/package-management.md) for the crash this solved.
+
 ## SVR4 packaging
 
 Amix uses the standard **SVR4 `pkgadd` packaging family** to bundle and install software ✅. The full lifecycle is: describe the payload with `pkgproto`, build a package with `pkgmk`, optionally bundle it into a single transferable datastream with `pkgtrans`, and install with `pkgadd` ✅.
@@ -196,6 +221,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 
 ## Sources
 
+- amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): gcc-cross-amix `984192a` fix_asm rewrite + test-divmod; on-box measurements; metal confirmation 2026-07-21.
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra **native** build, GCC 2.7.2.3 from amigaunix.com), §11 (userland shells), and §13 (open gaps #1, #3).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (kernel build flow; `rdbunix` historical name).
 - `isoriano1968/hydra-amix` repo (the **native** `make` / `make force` build, `CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"`, `elf2brel` in `boot/`, native GCC 2.7.2.3 from amigaunix.com): <https://github.com/isoriano1968/hydra-amix>

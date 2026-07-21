@@ -174,6 +174,12 @@ What you get and what to watch:
   `amix-kerntools/tools/elf2brel.py`, mirroring `amiga/boot/elf2brel.c`). `build-bootfloppy.sh` does
   **not** run `elf2brel` — it only ever worked because it re-framed the already-brel *donor* kernel. ✅
   (Proven 2026-07-05: a raw-ET_REL floppy `D245`'d; re-framing the brel booted and ran a full install.)
+  **Scope note (2026-07-16) ✅:** this brel requirement is the **boot-floppy** path only. The
+  hard-disk bootpart frames the **raw ET_REL** kernel (`makeiblk`, no `elf2brel`), and a raw
+  cross-linked ET_REL does *not* inherently D245 there — the hard-disk D245s were a **foreign
+  name-based `boot2` loader**, a separate trap documented under
+  [the two boot2 lineages](../how-it-works/boot-process.md#the-two-boot2-lineages-and-the-d245rela-trap).
+  Don't generalize this bullet across the two media.
 - ✅ **Verified in an emulator (Amiberry):** a rebuilt floppy boots and reaches the original's
   `Insert floppy disk 2 (root file system)` prompt. Still worth verifying your own builds in
   [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md).
@@ -247,6 +253,8 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
 - [VA2000 case study](../drivers/case-studies/va2000.md) · [Hydra case study](../drivers/case-studies/hydra.md).
 
 ## Sources
+
+- amix-kerntools brief `boot2-d245-trap` (2026-07-16): hard-disk vs floppy framing scope (makeiblk raw ET_REL vs elf2brel brel).
 - **Driver-modified-kernel full install + the `elf2brel`/brel requirement** (2026-07-05, live under WinUAE):
   a host-cross-linked universal kernel (a4091 + z3660scsi), `elf2brel`'d to brel (`e_type=0xff00`) and framed
   with `build-bootfloppy.sh`, boots and drives the Amiga UNIX installer through a full install (partition →

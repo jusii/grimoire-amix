@@ -73,6 +73,24 @@ The two are the **same bug class seen from opposite ends**. The producer-side fi
 
 After the consumer-side fix the same workloads produced **zero panics, zero corruption, and a full CD read suite byte-identical to the source ISO** (7/7 files `cmp`-verified host-side). ✅ This is the emulator-side counterpart of the driver-side [direct-vs-bounce gate contract](../drivers/z3660-scsi-driver.md#the-mandatory-bounce-buffer): both the firmware and the driver must agree on **who copies** and on **when the caches are coherent**, or data silently rots at the handoff.
 
+## Desktop-emulator infidelity: the kernel-relink write-path corruption, measured ✅
+
+The fidelity concerns above are about emulators *on the real hardware path*. The desktop bench
+emulator (Amiberry) has its own long-known infidelity: **relinking the Amix kernel under
+emulation corrupts the output most of the time** — an ~8 KB block of the linked kernel shifted
+by 8 bytes, randomly placed. This was finally **measured** (2026-07-20) with a fixed-N harness
+on a RAW (non-VHD) disk image: **85% of relink rounds corrupt (17/20)**, confirming the
+historical ~70% working figure and **refuting** the hypothesis that dynamic-VHD block-remapping
+of host-side reads explained it — the corruption is intrinsic to the emulated relink,
+independent of the backing-image format ✅. Two properties matter for anyone building kernels
+on a bench:
+
+- Every linked-but-corrupt round kept the symbol table **clean** (`nm -h -u` empty) — the
+  corruption is invisible to symbol-level checks; only a **recurring-checksum** gate catches it
+  (a clean `ld` output is byte-deterministic; corruption is random and unique) ✅.
+- **D245-class corruption is emulation-only**: the real A4000+Z3660 links deterministically —
+  every metal-proven kernel was linked on the box or on real hardware without a gate ✅.
+
 ## Where this was discovered
 
 These findings come from running Amix on the **Z3660**, a Zorro III **68030/68060-class accelerator** built around a Xilinx **Zynq-7000** SoC, whose firmware emulates the 68k with a **UAE-4.4.0-derived software CPU (with MMU)** running on the Zynq's ARM cores. So a real **A4000 + Z3660** executes Amix on that software 68030 emulator — which is exactly why the emulator-core fidelity above is load-bearing on *real hardware*, and was verified there: Amix 2.1 cold-boots to a **multiuser root login** (confirmed on the HDMI console and over telnet, `uname -a` → `UNIX_System_V … 2.1c … m68k`), reproduced on a real A4000 + Z3660 (2026-06). ✅
@@ -95,6 +113,7 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
 
 ## Sources
 
+- amix-kerntools brief `e2-relink-corruption-measured` (2026-07-21): measure-relink.sh N=20 run on the raw golden-work image, 2026-07-20.
 - `sources/research-brief.md` §19 (Emulation fidelity — the 68030 bus-error-frame requirement and the SCSI INT2 / `service_cadence` finding) and §18 (the Z3660 piscsi driver, whose emulator-core triage first surfaced the frame bugs).
 - **Z3660 firmware repository**, branch `amix-main` @ `703c0dc` — first-party, **cited not reproduced** (the emulator source and its fixes are owned by that repo):
   - First-generation demand-paging frame fixes: `3069e22` ("mmu030: fix demand-paged ifetch resume — restore the prefetch-fault sentinel in frame `$B`", the `SIGILL`) and `0b42cb8` ("mmu030: port full WinUAE format-`$B` frame-storage (fix mid-instruction-restart `SIGSEGV`)"). These are the live successors of the now-deleted `amix-boot` commits once cited as `c8b9398` / `e3f9440`; `0b42cb8`'s body names `c8b9398` as its predecessor, and the dead hashes are absent from the current tree. ✅

@@ -447,6 +447,35 @@ Treat this as a **historical rename** and verify per version — `rdbunix` for t
 
 **Note:** Always keep the old working `/unix` (or boot partition image) as a fallback before writing a freshly built kernel — a broken boot partition means a machine that won't come up ✅.
 
+## The two boot2 lineages and the D245/RELA trap
+
+The 2 MB boot partition's secondary loader (`boot2`, an 8192-byte blob at slice offset `+0x600`
+inside the `boot1|IBLK|boot2|IBLK|unix` chain) exists in **two incompatible lineages**, and only
+one of them can boot modern rebuilt kernels ✅:
+
+- The **name-based** boot2 (sha256 `5ab360b1…`; embedded strings `.uvblock .kvsysseg .kvsegmap
+  .kvsegu`, `"Text and data not contiguous!"`) resolves kernel sections **by segment name**. It is
+  what the **Amix 2.1 SVR4 installer lays down on every from-scratch install**, and it cannot
+  relocate standard flags-based ET_REL kernels (sections classified by
+  `SHF_EXECINSTR/WRITE/ALLOC`) — it fires `Alert('RELA'|AT_DeadEnd)` = the **D245 4C41 guru**
+  before the kernel ever runs ✅.
+- The **flags-based** boot2 (sha256 `f287ff3a…`; string `"No .text, .rodata, or .data!"`), built
+  from the sysroot sources, relocates flags-classified kernels cleanly ✅.
+
+The D245/RELA gurus seen on hard-disk-deployed rebuilt kernels were caused by the **foreign
+on-disk loader, not by the kernel's relocation records**: a single-variable splice — replacing
+ONLY the 8192-byte boot2 (plus its recomputed IBLK checksum) in a byte-identical copy of a
+D245-failing disk — made the same kernel relocate and execute, reproduced in under 30 s on the
+bench and then validated 5/5 on the real A4000+Z3660 ✅.
+
+Scope nuance: the hard-disk bootpart frames the **raw ET_REL kernel** (`makeiblk`; no
+`elf2brel`) — the brel/`e_type 0xff00` conversion is the **boot-floppy** path only. A raw
+cross-linked ET_REL does not inherently D245 on the hard-disk path; under a name-based boot2 it
+always does ✅. Because `core-2.1.pkg` ships the name-based loader inside the stock file set,
+any freshly installed system inherits this trap — the modern build pipeline laminates the
+flags-based boot2 into `/stand/boot2.boot` and gates the whole chain with `bootchain-verify.py`
+(see [kernel build and install](../drivers/kernel-build.md)) ✅.
+
 ## Booting Amix with root on an A4091 (and the rootdev dispatch trap)
 
 Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../drivers/a4091-53c710-driver.md) — a Zorro III board Amix shipped with **no driver** for — turned out to hinge not on the driver but on **how the kernel turns the compiled-in root device number into a SCSI card**. This section documents that dispatch path and the panic it produced. All findings here were reproduced locally in Amiberry on the real Amix 2.1c distribution unless tagged otherwise.
@@ -551,6 +580,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 
 ## Sources
 
+- amix-kerntools brief `boot2-d245-trap` (2026-07-16): single-variable boot2 splice, loader forensics (sha `5ab360b1…` vs `f287ff3a…`), bench + 5/5 metal validation 2026-07-15.
 - Research brief §3 (Boot process & disk layout) and §10 (boot.adf anatomy), `sources/research-brief.md`.
 - `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../boot-disks/anatomy-boot-adf.md): `DOS\0` OFS bootblock, failed `xdftool list` (`Invalid Root Block @880`), kernel decompression/checksum strings, NFS/RPC string table, `hat_vtokp_prot` HAT panic string, no clean ELF.
 - `amix_21_root.adf` install scripts (via `tools/inspect-adf.sh`): `BOOTSIZE=2`, `BOOTLEN=BOOTSIZE*2048`, `BREAKPT=120`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`. The root-filesystem prompt is `[s5]` and empty input selects s5; `ANS="ufs"` appears only as a case branch reached when the user types `ufs` (corrected 2026-07-19 — previously recorded here as the default).
@@ -1437,6 +1467,27 @@ This is a strong candidate for the historical **"`amixpkg`/package tools are bro
 
 > **Fixing it.** Back up `/var/sadm/install/contents`, then delete the single malformed line (identify it with `grep -n 'TrueType Fonts' /var/sadm/install/contents`). After that, `pkgrm` and `pkginfo -l` behave normally. ✅
 
+## ⚠ The `pkgadd -R` altroot crash — a toolchain bug, not a pkgtools bug ✅
+
+A modern port of the heirloom SVR4 pkgtools to Amix hit a **silent, 100%-reproducible SIGSEGV in
+`pkgadd -R <altroot>`** (alternate-root installs — the core code path of any from-media
+installer). Two findings generalize beyond that port ✅:
+
+- **The "silent, no core" was an illusion**: the 1 MB core lands **inside the `-R` root** at
+  `<root>/var/sadm/install/core` — where nobody looks. On-box `adb` on that core named the real
+  crash site (`nhash.c`'s name-cache `HASH()` returning garbage → a negative bucket index → a
+  wild store in `add_cache`).
+- **The root cause was the cross-assembler**, not the SVR4 code: the tdivs divide-with-remainder
+  mis-encoding (see [the toolchain fixup family](../drivers/toolchain.md#the-assembler-fixup-family-swbeg-fcmp--and-the-tdivs-divide-with-remainder-bug))
+  made `hv % hsz` — a perfectly valid C expression — return garbage at every optimization
+  level. Forcing suspect files to `-O0` never could have helped, and didn't. With the toolchain
+  fixed and the engine rebuilt, plain empty-root `pkgadd -R` runs clean (4/4, zero cores) on
+  the same box that cored 4/4 before ✅.
+
+The lesson for anyone porting period software with a period cross-toolchain: when a crash
+reproduces on the box but not under host sanitizers, **suspect the toolchain's generated code
+before the source** — and check inside the altroot for the core.
+
 ## `amixpkg`: the install-media front-end {#amixpkg-the-install-media-front-end}
 
 `amixpkg` is **not present on the installed system** (`/usr/sbin`, `/usr/bin`, `/sbin` — absent) ✅, yet the `contents` database names it as its **original writer** (`# Last modified by amixpkg for X11r5src package`) ✅. The reconciliation: `amixpkg` is the **install-media (root.adf) front-end** that populates `/var/sadm` during installation, via the *same* database machinery as `pkgadd` — it is the installer's package driver, not a general-purpose installed command. The [install walkthrough](../getting-started/install-walkthrough.md) drives the whole distribution install through it (`amixpkg -i -m -d … -r /mnt -y standard`).
@@ -1454,6 +1505,7 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 
 ## Sources
 
+- amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): the pkgadd -R altroot SIGSEGV root cause (adb on the in-altroot core; nhash HASH), engine rebuilt + re-verified 4/4 on the bench box 2026-07-20/21.
 - **Firsthand, reproduced live** (✅): a clean **Amix 2.1c** image (`UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, 2026-07-01 (the **amix-packagemanager** project; command transcripts retained there). Specifically: `ls -l /usr/{bin,sbin}/pkg*` + the `No such file or directory` for `pkgask`/`removef`/`amixpkg` (F1); `ls -laR /var/sadm`, `/var/sadm/install/admin/default`, `pkginfo -x`, `/var/sadm/pkg/*/pkginfo` (F2); `head`/`grep` of `/var/sadm/install/contents` (F3); an on-box throwaway package built with `pkgmk`/`pkgtrans` and its `pkgmap` + `.pkg` header dissected with `od -c` (F4); a before/after `diff` of `contents` across a controlled `pkgadd` (F5); `find /var/sadm/pkg -type f` showing only `pkginfo` + `*.mi` (F6); the `pkgrm`/`pkginfo -l` abort, the offending `contents` record, and its removal-and-retry (F7); the `# Last modified by amixpkg …` marker with `amixpkg` absent from the filesystem (F8).
 - **`sources/research-brief.md` §20** (the stock SVR4 pkg-system internals, media formats, DB mutation, and the F7 `contents` corruption) — the grounding for this page, carrying the tags above.
 - **Community distribution practice** (🟡): [amigaunix.com `more_software`](https://www.amigaunix.com/doku.php/more_software) (`.pkg` / cpio / `tar.zoo` distribution) and Michael Parson's **AmixBP** ([amixbp.sourceforge.net](https://amixbp.sourceforge.net), SourceForge group 263433) — the datastream-`.pkg` distribution channel.
@@ -1828,6 +1880,24 @@ The two are the **same bug class seen from opposite ends**. The producer-side fi
 
 After the consumer-side fix the same workloads produced **zero panics, zero corruption, and a full CD read suite byte-identical to the source ISO** (7/7 files `cmp`-verified host-side). ✅ This is the emulator-side counterpart of the driver-side [direct-vs-bounce gate contract](../drivers/z3660-scsi-driver.md#the-mandatory-bounce-buffer): both the firmware and the driver must agree on **who copies** and on **when the caches are coherent**, or data silently rots at the handoff.
 
+## Desktop-emulator infidelity: the kernel-relink write-path corruption, measured ✅
+
+The fidelity concerns above are about emulators *on the real hardware path*. The desktop bench
+emulator (Amiberry) has its own long-known infidelity: **relinking the Amix kernel under
+emulation corrupts the output most of the time** — an ~8 KB block of the linked kernel shifted
+by 8 bytes, randomly placed. This was finally **measured** (2026-07-20) with a fixed-N harness
+on a RAW (non-VHD) disk image: **85% of relink rounds corrupt (17/20)**, confirming the
+historical ~70% working figure and **refuting** the hypothesis that dynamic-VHD block-remapping
+of host-side reads explained it — the corruption is intrinsic to the emulated relink,
+independent of the backing-image format ✅. Two properties matter for anyone building kernels
+on a bench:
+
+- Every linked-but-corrupt round kept the symbol table **clean** (`nm -h -u` empty) — the
+  corruption is invisible to symbol-level checks; only a **recurring-checksum** gate catches it
+  (a clean `ld` output is byte-deterministic; corruption is random and unique) ✅.
+- **D245-class corruption is emulation-only**: the real A4000+Z3660 links deterministically —
+  every metal-proven kernel was linked on the box or on real hardware without a gate ✅.
+
 ## Where this was discovered
 
 These findings come from running Amix on the **Z3660**, a Zorro III **68030/68060-class accelerator** built around a Xilinx **Zynq-7000** SoC, whose firmware emulates the 68k with a **UAE-4.4.0-derived software CPU (with MMU)** running on the Zynq's ARM cores. So a real **A4000 + Z3660** executes Amix on that software 68030 emulator — which is exactly why the emulator-core fidelity above is load-bearing on *real hardware*, and was verified there: Amix 2.1 cold-boots to a **multiuser root login** (confirmed on the HDMI console and over telnet, `uname -a` → `UNIX_System_V … 2.1c … m68k`), reproduced on a real A4000 + Z3660 (2026-06). ✅
@@ -1850,6 +1920,7 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
 
 ## Sources
 
+- amix-kerntools brief `e2-relink-corruption-measured` (2026-07-21): measure-relink.sh N=20 run on the raw golden-work image, 2026-07-20.
 - `sources/research-brief.md` §19 (Emulation fidelity — the 68030 bus-error-frame requirement and the SCSI INT2 / `service_cadence` finding) and §18 (the Z3660 piscsi driver, whose emulator-core triage first surfaced the frame bugs).
 - **Z3660 firmware repository**, branch `amix-main` @ `703c0dc` — first-party, **cited not reproduced** (the emulator source and its fixes are owned by that repo):
   - First-generation demand-paging frame fixes: `3069e22` ("mmu030: fix demand-paged ifetch resume — restore the prefetch-fault sentinel in frame `$B`", the `SIGILL`) and `0b42cb8` ("mmu030: port full WinUAE format-`$B` frame-storage (fix mid-instruction-restart `SIGSEGV`)"). These are the live successors of the now-deleted `amix-boot` commits once cited as `c8b9398` / `e3f9440`; `0b42cb8`'s body names `c8b9398` as its predecessor, and the dead hashes are absent from the current tree. ✅
@@ -3995,7 +4066,49 @@ Two complementary detectors exist:
 | Detector | What it checks | Trade-off |
 |---|---|---|
 | [`tools/checkunix.c`](https://github.com/Jusii/grimoire-amix/blob/master/tools/checkunix.c) | native big-endian `.symtab` integrity (flags out-of-range `st_shndx`) | **fast**, runs on the box, but **symtab-only** — misses `.rela`/`.text` shifts ✅ |
-| [`tools/relsim.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/relsim.py) | host-side reimplementation of the boot relocator `rel()` | **full offline `D245` oracle** — checks `.symtab` **and** relocation records ✅ |
+| [`tools/relsim.py`](https://github.com/Jusii/grimoire-amix/blob/master/tools/relsim.py) | host-side reimplementation of the boot relocator `rel()` | checks `.symtab` **and** relocation records — a **kernel-record** oracle ✅ |
+
+**Scope correction (2026-07-16) ✅:** `relsim.py` (and the native `reltest`) validate the boot
+relocator's *source semantics against the kernel's records* — they are **kernel-record oracles,
+NOT will-this-disk-boot oracles**. The on-disk `boot2` loader is a free variable outside their
+scope: a relsim-green kernel still D245s under a name-based boot2 (see [the two boot2
+lineages](../how-it-works/boot-process.md#the-two-boot2-lineages-and-the-d245rela-trap)).
+Disk-level assurance needs a **boot-chain check**: the build pipeline laminates the proven
+flags-based boot2 into `/stand/boot2.boot` before the bootpart rebuild and fail-closes on
+`bootchain-verify.py` (RDB walk → `UNI\0` slice → `boot1@+0x000`, `IBLK@+0x400`,
+`boot2@+0x600` sha check, `IBLK@+0x2600`, kernel ELF@`+0x2800`; `ib_chksum` = folded 16-bit
+SVR4 sum). The first golden gated this way validated 5/5 on the real A4000+Z3660 (2026-07-15) ✅.
+
+**Measured rate (2026-07-20) ✅:** a fixed-N measurement on a RAW (non-VHD) disk image put the
+emulated relink-corruption rate at **85% (17/20 rounds)** — confirming the historical ~70%
+figure and refuting the hypothesis that dynamic-VHD block-remapping explained it. Every
+linked-but-corrupt round kept `nm -h -u` **empty**: the ~8 KB block-shift never perturbs the
+symbol table, so **sum-recurrence is the load-bearing arm** of the gate for SCSI/combined
+kernels (the nm-empty arm covers the larger cdfs kernel's distinct silent-symbol-drop mode).
+One round in 20 was the separate intermittent `ld` "Unresolved Symbol" nolink mode, which the
+gate's retry already handles ✅.
+
+### Who is exposed to a cross-toolchain bug — the build-model boundary ✅
+
+When the cross toolchain's **tdivs divide-with-remainder mis-assembly** was found (see
+[toolchain](toolchain.md#the-assembler-fixup-family-swbeg-fcmp--and-the-tdivs-divide-with-remainder-bug)),
+the blast radius was bounded by the build model, and the boundary is worth recording ✅:
+
+- The **kernel objects and all native drivers never carried the bug** — the harness is a
+  source-push + compile-on-box model; the box's own SGS `as` assembles them.
+- Only **host cross-built artifacts** were exposed: the SVR4 pkg engine, the cross `libgcc.a`
+  that a cdfs-carrying kernel links for its 64-bit soft-arithmetic
+  (`__udivdi3`/`__umoddi3`/`__lshrdi3`), and the cdfs kernel `exp` relocatable.
+- A plain SCSI / SCSI+net kernel links **zero** cross artifacts and was end-to-end clean.
+
+The practical consequence closed a long-open metal mystery: the kernel's `__udivdi3` returning
+an internal normalization intermediate on real hardware (garbage `st_blocks` from cdfs) was the
+mis-assembled 64-bit-dividend form inside the old cross `libgcc.a`. After the toolchain fix and
+a libgcc/exp rebuild + kernel relink, the same machine + same disc read every value correctly,
+and a userland exerciser statically carrying the rebuilt `__udivdi3` passed on metal with the
+exact dividends that used to fail (2026-07-21) ✅. Standing style rule stays: prefer shifts to
+64-bit division in Amix kernel code — now as a speed/robustness preference, not a correctness
+workaround ✅.
 
 Build `checkunix` natively (`cc -O -o checkunix checkunix.c`) and run it on the box; run `relsim.py`
 on the host against a **pulled** kernel ELF:
@@ -4154,6 +4267,7 @@ partition) was reliable 🟡. Always identity-check *which* kernel actually boot
 
 ## Sources
 
+- amix-kerntools briefs `boot2-d245-trap` (2026-07-16), `e2-relink-corruption-measured` + `tdivs-cross-assembler-miscompile` (2026-07-21): relsim scope correction, bootchain-verify gate, measured 85% relink corruption, tdivs blast-radius map, __udivdi3 metal closure (kernel 10842→00961, validate-metal ALL GREEN 2026-07-21).
 - Ditto, *Writing Amix Device Drivers*, **1990 European Amiga Developer's Conference** (project PDF;
   see [bibliography](../reference/bibliography.md)) — `/usr/sys` object libraries, `kernel.c`
   switch tables, the "Adding a device driver" procedure, `rdbunix` image name, keep-old-`/unix`
@@ -5673,6 +5787,31 @@ make test-random AMIX_ROOT=/path/to/usr-amix CPUFLAGS=-m68030
 
 The wrapper compiles via `-S` → an `.lcomm` assembly fix-up → `as -m68020`, working around quirks of the old GCC's output ✅. So you can now develop a driver (e.g. the [A4091](a4091-53c710-driver.md) or a new NIC) on a modern host and do only the final relink on Amix — though the native on-box build (above) remains the simplest path for a single driver. This was open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), now closed.
 
+### The assembler-fixup family: .swbeg, fcmp — and the tdivs divide-with-remainder bug ✅
+
+The wrapper's `fix_asm` pass exists because GCC 2.7.2.3 emits **SGS-dialect** assembly that GNU
+`as` 2.8.1 either drops or, worse, silently mis-encodes. Three members of the family are now
+known, and the third was the most consequential ✅:
+
+1. **`.swbeg &N`** — GNU as parses it but emits zero bytes, while gcc's switch dispatch assumes
+   the SGS assembler's 4-byte word before each jump table — every switch case entered 4 bytes
+   late. Rewritten to an explicit 4-byte filler ✅.
+2. **`fcmp`** — FPU compare spelling differences, rewritten ✅.
+3. **`tdivs.l`/`tdivu.l <ea>,Dr:Dq`** (discovered 2026-07-20) — gcc's SGS spellings for the
+   68020 **32-bit-dividend divide-with-remainder** (`divsl.l`/`divul.l`). GNU as 2.8.1 assembled
+   them with the ext-word SIZE bit (0x0400) **set**, producing the *64-bit-dividend* form: the
+   remainder register was consumed as the high dividend word. Consequence: **every
+   variable-divisor `%` in cross-built code returned garbage at ANY optimization level**, and
+   variable `/` was wrong at -O0 (on-box measurements: `351 % 151` → −2147408448;
+   `351 / 151` → 351, the 68030 leaving operands unchanged on quotient overflow). Constant and
+   power-of-two divisors were never affected (gcc lowers them without tdivs). The fix rewrites
+   the spellings to `divsl.l`/`divul.l` (SIZE=0), with a `test-divmod` regression target proven
+   FAIL-before/PASS-after ✅. The DImode `libgcc.a` helpers (`__udivdi3` and friends) were all
+   affected — every divide in them is compiler-generated — and were rebuilt; the fix was
+   **confirmed on the real A4000+Z3660** with a userland exerciser (2026-07-21) ✅. See
+   [kernel build](kernel-build.md) for the blast-radius map and
+   [package management](../how-it-works/package-management.md) for the crash this solved.
+
 ## SVR4 packaging
 
 Amix uses the standard **SVR4 `pkgadd` packaging family** to bundle and install software ✅. The full lifecycle is: describe the payload with `pkgproto`, build a package with `pkgmk`, optionally bundle it into a single transferable datastream with `pkgtrans`, and install with `pkgadd` ✅.
@@ -5737,6 +5876,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 
 ## Sources
 
+- amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): gcc-cross-amix `984192a` fix_asm rewrite + test-divmod; on-box measurements; metal confirmation 2026-07-21.
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra **native** build, GCC 2.7.2.3 from amigaunix.com), §11 (userland shells), and §13 (open gaps #1, #3).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (kernel build flow; `rdbunix` historical name).
 - `isoriano1968/hydra-amix` repo (the **native** `make` / `make force` build, `CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"`, `elf2brel` in `boot/`, native GCC 2.7.2.3 from amigaunix.com): <https://github.com/isoriano1968/hydra-amix>
@@ -9124,6 +9264,12 @@ What you get and what to watch:
   `amix-kerntools/tools/elf2brel.py`, mirroring `amiga/boot/elf2brel.c`). `build-bootfloppy.sh` does
   **not** run `elf2brel` — it only ever worked because it re-framed the already-brel *donor* kernel. ✅
   (Proven 2026-07-05: a raw-ET_REL floppy `D245`'d; re-framing the brel booted and ran a full install.)
+  **Scope note (2026-07-16) ✅:** this brel requirement is the **boot-floppy** path only. The
+  hard-disk bootpart frames the **raw ET_REL** kernel (`makeiblk`, no `elf2brel`), and a raw
+  cross-linked ET_REL does *not* inherently D245 there — the hard-disk D245s were a **foreign
+  name-based `boot2` loader**, a separate trap documented under
+  [the two boot2 lineages](../how-it-works/boot-process.md#the-two-boot2-lineages-and-the-d245rela-trap).
+  Don't generalize this bullet across the two media.
 - ✅ **Verified in an emulator (Amiberry):** a rebuilt floppy boots and reaches the original's
   `Insert floppy disk 2 (root file system)` prompt. Still worth verifying your own builds in
   [WinUAE](../getting-started/emulation-winuae.md) / [FS-UAE](../getting-started/emulation-fs-uae.md).
@@ -9197,6 +9343,8 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
 - [VA2000 case study](../drivers/case-studies/va2000.md) · [Hydra case study](../drivers/case-studies/hydra.md).
 
 ## Sources
+
+- amix-kerntools brief `boot2-d245-trap` (2026-07-16): hard-disk vs floppy framing scope (makeiblk raw ET_REL vs elf2brel brel).
 - **Driver-modified-kernel full install + the `elf2brel`/brel requirement** (2026-07-05, live under WinUAE):
   a host-cross-linked universal kernel (a4091 + z3660scsi), `elf2brel`'d to brel (`e_type=0xff00`) and framed
   with `build-bootfloppy.sh`, boots and drives the Amiga UNIX installer through a full install (partition →
