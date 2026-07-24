@@ -72,6 +72,7 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 ### Driver & software development
 [Driver model](drivers/driver-model.md) ·
 [Kernel build](drivers/kernel-build.md) ·
+[Multi-driver kernels](drivers/kernel-composition.md) ·
 [Reverse-engineering the kernel](drivers/kernel-reverse-engineering.md) ·
 [Char driver](drivers/writing-a-char-driver.md) ·
 [STREAMS driver](drivers/writing-a-streams-driver.md) ·

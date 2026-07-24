@@ -36,6 +36,30 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 > check your own `cdevsw[]` in `master.d/kernel.c` and renumber (driver + `mknod`) as needed — the
 > zz9000 INSTALL.md itself tells you to verify 49 is free first ✅.
 
+### Major-number registry (cross-tree coordination)
+
+Because there is no authority that allocates majors, this section consolidates **every known claim
+across the community trees** so anyone [composing a multi-driver kernel](../drivers/kernel-composition.md)
+can pick a genuinely free slot. The *claims* are facts ✅ (from the driver repos above); the
+*reservations* are this project's proposed convention, offered for coordination — not something any
+stock or community kernel enforces.
+
+| Char major | This family tree | isoriano1968 tree | asokero tree | Coordination note |
+|---|---|---|---|---|
+| **47** | *(kept free)* | hydra `hya` | — | treat as **reserved for hydra** |
+| **48** | `z3660eth` / `zen0` | `random` | — | ⚠ **collision** — see below |
+| **49** | *(kept free)* | zz9000 | — | treat as **reserved for zz9000** |
+| **50** | *(kept free)* | `sad` | — | treat as claimed |
+| **68** | *(kept free)* | — | va2000 | treat as **reserved for va2000** |
+
+Proposed convention: new drivers from this family pick majors **≥ 51** (skipping 68), leaving the
+community claims above intact. The **48 collision** (`z3660eth` vs the zz9000-author's `random`
+device) only bites when drivers from both trees are linked into *one* kernel — at merge time one
+side must renumber (driver constant + `mknod`); `z3660eth`'s 48 is the one already burned into
+real-hardware-proven kernels and shipped `/dev/zen0` nodes on this family's images, so the
+practical resolution is renumbering the experimental `random` device. Stock majors (console 0,
+`/dev/scsi` 11, floppy block 16, SCSI disk block 18 / char 40, par 21) are never reusable.
+
 ### Minor-number encoding for the SCSI disk (major 18)
 
 For the SCSI hard-disk driver, the minor number is **not** a simple index — it packs three fields. The Ditto paper describes them as **SCSI address**, **LUN**, and **partition** ✅; reading the actual `amiga/alien/sd.h` macros (reproduced locally on Amix 2.1c ✅) the three fields are precisely **SCSI target**, **card index**, and **slice/partition**. The paper's example node `/dev/dsk/c0d0s1` is **block major 18, minor 1** = SCSI target 0, card 0, slice 1 ✅.
@@ -200,6 +224,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 ## See also
 
 - [The Amix device-driver model](../drivers/driver-model.md) — what major/minor numbers mean and how `cdevsw[]`/`bdevsw[]` work.
+- [Composing multi-driver kernels](../drivers/kernel-composition.md) — the SDCARDS/rootdev constraints behind the two-card limit, and the admission checklist that requires a registry entry.
 - [Supported hardware & requirements](../how-it-works/hardware.md) — the CPU/RAM/SCSI/Zorro rules behind the card list.
 - [Building and installing a kernel](../drivers/kernel-build.md) — how a driver claims a major slot in `master.d/kernel.c`.
 - [Quirks](../how-it-works/quirks.md) — the SCSI ID rules (tape hard-coded at ID 4, disk ID 6 by convention) and the 16 MB / Zorro III limits.

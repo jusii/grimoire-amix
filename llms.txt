@@ -34,6 +34,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 ## Driver & software development
 - [The Amix Device-Driver Model](docs/drivers/driver-model.md): major/minor, cdevsw/bdevsw switch tables.
 - [Building & Installing a Kernel](docs/drivers/kernel-build.md): /usr/sys, kernel.c, make, make bootpart.
+- [Composing Multi-Driver Kernels](docs/drivers/kernel-composition.md): why one kernel per root-storage family beats a universal all-drivers image — SDCARDS=2, the card-0 address sort vs the compiled-in rootdev, probe safety, the driver admission checklist, and the whole-kernel-package delivery path.
 - [Reverse-engineering the prebuilt kernel](docs/drivers/kernel-reverse-engineering.md): disassembling the source-free /usr/sys/*/exp objects + reading globals from a savestate; worked on the mount(2)/vfssw fstype path (an errno-22 from `mount -F <fs>` = fstype not live in the booted kernel).
 - [Writing a Character Driver](docs/drivers/writing-a-char-driver.md): the Ditto par.c walkthrough.
 - [Writing a STREAMS/DLPI Driver](docs/drivers/writing-a-streams-driver.md): network drivers via hydra.
