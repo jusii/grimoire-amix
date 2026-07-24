@@ -157,6 +157,10 @@ known, and the third was the most consequential ✅:
    [kernel build](kernel-build.md) for the blast-radius map and
    [package management](../how-it-works/package-management.md) for the crash this solved.
 
+### The stock shared-libc `getpwnam()` first-call SIGSEGV — and the static-link sidestep ✅
+
+A separate porting hazard lives in the stock **shared `libc.so.1`**, not in the toolchain: the **first `getpwnam()` call** of a process crashes inside libc's passwd-record handling (a record expand routed through the `_libc_malloc` allocator-redirect pointers), while the symmetric group path (`getgrnam`) survives — the asymmetry is entirely inside libc and not debuggable off-box. Interposition was ruled out (libc calls its internal helpers via non-preemptible `bsrl`). The **working sidestep**, used in every binary of the ported pkg toolchain: link them **statically** and let the executable *define* `getpwnam`/`getpwuid`/`getgrnam`/`getgrgid` as small direct `/etc/passwd`/`/etc/group` parsers — an executable's own global symbols win over shared-library exports at static link time, so every internal caller is preempted uniformly. Two consequences worth knowing: this only protects code you can relink (it cannot reach the stock **dynamically-linked** daemons — which were never the victims of this particular defect anyway; a daemon crashing at boot is far more likely the [colon-less-`TZ` bug](../how-it-works/quirks.md)), and it is one more reason the install-media engine ships static.
+
 ## SVR4 packaging
 
 Amix uses the standard **SVR4 `pkgadd` packaging family** to bundle and install software ✅. The full lifecycle is: describe the payload with `pkgproto`, build a package with `pkgmk`, optionally bundle it into a single transferable datastream with `pkgtrans`, and install with `pkgadd` ✅.
@@ -230,3 +234,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (install uses `amixpkg`/`cpio`/`dd` from tape).
 - amigaunix.com — *downloads* page (AmixBP, Michael Parson) and *more_software* / *tips-tricks*: <https://www.amigaunix.com/doku.php/home>
 - SVR4 packaging tools (`pkgproto`, `pkgmk`, `pkgtrans`, `pkgadd`) — standard AT&T System V Release 4 documentation.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).

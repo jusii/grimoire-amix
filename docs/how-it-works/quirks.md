@@ -257,6 +257,24 @@ Amix's **`/bin/sh` predates POSIX** ✅. The two bites that catch driver authors
 
 This was discovered the hard way porting the [VA2000 driver](../drivers/case-studies/va2000.md): install scripts written with modern shell syntax silently misbehave ✅. The default *interactive* shell is **ksh** (with `sh`/`csh`/`tcsh` also present), but build and install scripts that run under `/sbin/sh` or `/bin/sh` must stay pre-POSIX ✅. See [the driver model](../drivers/driver-model.md) and [writing a char driver](../drivers/writing-a-char-driver.md) for the driver-build implications, including the companion rule to `rm -f` stale objects before relinking the kernel.
 
+Five more that specifically bite installer/automation scripts, each bench-proven on Amix 2.1c ✅:
+
+- **`while read … done < FILE` runs in a SUBSHELL** — a counter incremented inside the loop reverts to its pre-loop value at `done`. Write per-iteration state to a temp file and read it back *after* the loop.
+- **An empty `set -- \`cmd\`` is a no-op on `$@`** — if the command prints nothing, `$#` keeps its *previous* value instead of going to 0. Guard with `[ -s file ]` before counting.
+- **`mkdir -p` is not idempotent** — it exits rc=2 "File exists" on an already-present leaf directory, not 0. Guard with `[ -d dir ] || mkdir -p dir`.
+- **`wc -c` LEFT-PADS its count** with spaces, so a raw `wc -c` in a numeric test fails; strip the padding (e.g. via `read`) first.
+- **The console tty truncates canonical input at ~256 characters** — long one-liners are silently cut. Push a script file and run it rather than typing a long command.
+
+And the toolbox is thin: an install **miniroot ships no `basename`/`sed`/`touch`/`date`/`wc`**. The portable substitutes are `expr` (for `basename`-style path/field work), `: > file` (for `touch`), and `set …/*; echo $#` (to count matches).
+
+### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
+
+A `/etc/TIMEZONE` that sets `TZ=US/Eastern` **without a leading colon** makes every SVR4 program that calls `localtime()`/`tzset()` die with `User BUS ERROR at 474D5400` ✅ — and `0x474D5400` is ASCII `"GMT\0"`, the GMT-fallback timezone abbreviation being dereferenced *as a pointer* after the POSIX-rule parser chokes on the `/` in the zone name. The fix is the **colon** form, `TZ=:US/Eastern`, which tells SVR4 to load `/usr/lib/locale/TZ/US/Eastern` as a tzfile path instead of parsing it as a rule (a valid POSIX rule string such as `EST5EDT` or `GMT0` also works — the stock golden uses `TZ=:EET`, always the colon form). The crash set is exactly the localtime callers — `date`, `who -r`, `cron`, `sac`, `ls -l` — while console `login` survives (it needs `getpwnam`, not localtime), which is the tell that distinguishes this from the passwd-side defect. Second-order symptom: a crashed `who -r` empties the positional parameters in the `/etc/rc2.d/S*` scripts that begin `set \`who -r\``, so those degenerate into `test: unknown operator S` at boot. Note this is a **constant** fault address at cold boot — do not confuse it with the emulator's variable-address MMU-frame bus errors ([emulation fidelity](emulation-fidelity.md)).
+
+### 22. Reused writable test media accumulates state that masks bugs ✅
+
+A defect can hide for entire test campaigns because a *reused* piece of writable media carries residue from earlier runs. The concrete case: a from-scratch install died on the real hardware with `pkgadd: ERROR: unable to open mount table (/etc/mnttab)` — a freshly built miniroot ships no `/etc/mnttab` and its bare `mount(2)` writes none. Two prior emulator acceptance passes had gone green only because the **reused** root floppy still held an `/etc/mnttab` that a `cdfs` mount had written in an *earlier, unrelated* run. The rule: **acceptance runs must start from fresh media**, because reused writable media silently accumulates state that can satisfy a broken assumption and mask a whole class of defect until the day the media is clean. (The mnttab consumer requirement itself is quirk-adjacent — see [package management](package-management.md).)
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -281,3 +299,4 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - Research brief §20 (stock SVR4 package system), from the amix-packagemanager project (firsthand on a clean Amix 2.1c image, 2026-07-01) — quirk 10's `amixpkg`-is-install-media-only correction ✅/🟡, and quirk 18 (the `/var/sadm/install/contents` space-in-pathname record that breaks `pkgrm`/`pkginfo -l` out of the box, ✅). See [Package management](package-management.md).
 - The **amix-cdfs** project @ `31e8c3b` — quirk 19 (`mount(2)` silently stacks on an already-mounted directory; `mount(2)`'s only busy check is `v_vfsmountedhere`, which `lookupname` clears by traversing into the mount; guard in the fs's own mount op like `prmount`/`fdmount`), from stock-kernel disassembly + reproduction on a real A4000 + Z3660, 2026-07-13 ✅ (`844c2ed`). See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - The **amix-kerntools** bench forensics @ `8a76775` — quirk 20 (SVR4 `login`'s future-`lastchg` "expired" trap on an RTC-1978 box after a clock was set forward; same-password workaround, never set the RTC forward), root-caused on a real A4000 + Z3660, 2026-07-11 ✅.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).

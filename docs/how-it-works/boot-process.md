@@ -144,6 +144,26 @@ any freshly installed system inherits this trap — the modern build pipeline la
 flags-based boot2 into `/stand/boot2.boot` and gates the whole chain with `bootchain-verify.py`
 (see [kernel build and install](../drivers/kernel-build.md)) ✅.
 
+### Reframing the boot partition on a live system (upgrading the kernel) ✅
+
+The machine boots the kernel out of the raw **`UNI\0`** boot slice, **never `/stand/unix`** — the `/stand` files are only the *framing sources*. So swapping in a new kernel means two steps: land the new `/stand/unix` (and, if it changed, `/stand/boot2.boot`), then **reframe the boot slice** — a `pkgadd` of a kernel package alone changes nothing bootable. The full live cycle was proven end-to-end (upgrade → reframe → cold-boot the new kernel) ✅, and the operational details are not obvious:
+
+- **`/stand/CONFIG` is absent on an installed box**, so stock `make bootpart` cannot run — drive the pipeline directly with the slice device supplied explicitly:
+  ```sh
+  cd /stand
+  ( cat boot1.boot; ./makeiblk boot2.boot; cat boot2.boot; ./makeiblk unix; cat unix ) \
+      | dd of=/dev/dsk/cNd0s3      # N = the root disk's controller (from /etc/vfstab); boot = slice 3
+  ```
+- `makeiblk` must be invoked as **`./makeiblk`** (it is not on `PATH`), and the stock `/stand/makeiblk` is byte-for-byte conformant with the boot-chain contract — no re-implementation needed. The bootpart consumes an **ELF ET_REL kernel uncompressed** (`ib_fullsize=0`); `elf2brel`/compression is the floppy path only.
+- The **flags-based `boot2.boot` has a fixed `sum -r` fingerprint of `14193`** — verify it before writing, because the name-based loader D245s (previous section).
+- After the `dd`, `sync` and read the slice back to confirm the write landed.
+
+**Telling which kernel is actually running** (there is no `uname` field for it): the SVR4 banner reads **`2.1c`** for a cdfs-carrying kernel vs `2.1` for one without, and `mount -F cdfs` returns **errno 5** when cdfs is in the kernel vs **errno 22** (the `GETFSIND` lookup fails) when it is not — a quick, non-destructive probe of the booted image's driver set.
+
+### First boot: the whole stock setup dialog hangs on one exec bit ✅
+
+The stock first-boot node-name/timezone dialog is gated by a single mode bit. `/etc/inittab` runs `/etc/sysinit` at sysinit, which runs `/usr/amiga/bin/system.setup` **iff that file is executable**; `system.setup` ends by `chmod -x`-ing *itself* — that exec bit is the stock once-only mechanism. So an unattended/automated install disarms the interactive dialog simply by `chmod -x /usr/amiga/bin/system.setup` (mode only — the package content, and therefore the package database, is untouched) and drops its own additive `/etc/rc2.d/S??` hook to bake identity. Proven across two cold boots: no dialog, identity applied exactly once ✅.
+
 ## Booting Amix with root on an A4091 (and the rootdev dispatch trap)
 
 Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../drivers/a4091-53c710-driver.md) — a Zorro III board Amix shipped with **no driver** for — turned out to hinge not on the driver but on **how the kernel turns the compiled-in root device number into a SCSI card**. This section documents that dispatch path and the panic it produced. All findings here were reproduced locally in Amiberry on the real Amix 2.1c distribution unless tagged otherwise.
@@ -259,3 +279,4 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - `amiga/config/unix.c` (`rootdev = ROOTDEV`, `-DROOTDEV`) and `amiga/config/c6s1unix.c` (`C6D0S1 = makedevice(18,22)`, swap `c6d0s2`); `amiga/alien/sd.h` (`SDCARDS`, `sdunit`/`sdcard`/`sdpart` macros).
 - `src/kernel-patches/support.c` — the `autocon()` phantom-A3000 fix replaced by the chipset-gated WD33C93 probe; `src/kernel-patches/sd.c` — the `0x02020054,&a4091queue` registry row; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).

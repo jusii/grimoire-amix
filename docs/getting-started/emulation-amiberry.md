@@ -92,6 +92,15 @@ uaehf0=hdf,rw,DH0:/path/to/Amix-a4091.hdf,32,1,2,512,0,,scsi6_a4091
 > an A3000 SCSI and an A4091 are present, the A4091 sorts to card 1 and its disk shows up as
 > `c8d0s0`-class).
 
+> **Gotcha — don't put the install CD on a _sole_-A4091 rig.** 🟡 With the A4091 as the **only** SCSI
+> controller (card 0), mounting a `cdfs` CD at `0,3` reliably **hangs the kernel in an uninterruptible
+> SCSI wait** under Amiberry — neither Ctrl-C nor re-inserting the CD recovers it (it looks like a
+> boot-time unit-attention that the `cdfs` raw-SCSI path never clears). An **A3000-SCSI-plus-A4091**
+> profile, with the CD reached at `1,3`, never hits it. 🟡 because the fault isn't yet attributed
+> (Amiberry's A4091 CD emulation vs the a4091 driver's unit-attention handling) and it is untested on
+> real hardware — but the operational rule is solid: on a two-controller rig keep the disk on the A3000
+> SCSI and the CD on the A4091; on a single-A4091 rig, avoid `cdfs` CD media.
+
 > **Licensing.** The Amix HDFs **and** the A4091 ROM (`amiga-boot-a4091.rom`) are **not committed** to
 > this repo — supply your own. Get the A4091 autoboot ROM from the
 > [`a4091-software`](https://github.com/A4091/a4091-software) project (it ships the ROM image and the
@@ -191,3 +200,4 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
 - [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) project repository.
 - The A4091-on-Amix project — `NOTES.md` §9 (A4091-in-Amiberry config + the A3000(ECS)/A4000(AGA) Kickstart matrix) and §10 (the `amishot` IPC-socket screenshot tool), reproduced locally ✅. Config files `amix-a4091-boot.uae`, `amix-a4091-boot-aga.uae`, `amix-dbg.uae`; A4091 product id `0x02020054` verified in `src/a4091-blk.c`. Screenshot wrapper: [`tools/amishot.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amishot.sh).
 - [A4091/a4091-software](https://github.com/A4091/a4091-software) — the A4091 autoboot ROM (`amiga-boot-a4091.rom`) and the `ncr53cxxx` SCRIPTS assembler.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).

@@ -120,6 +120,8 @@ The following cards are known to work. Entries are ✅ unless tagged 🟡 (commu
 | GVP Series II | 🟡 | Needs a kernel rebuild + an RDB `dummy_handler` |
 | **A4091** | 🟡 | Zorro III SCSI-2 (NCR/Symbios **53C710**, AutoConfig product id `0x02020054`); driven by the modern [A4091 / 53C710 driver](../drivers/a4091-53c710-driver.md) — **boots Amix with root on the A4091** (emulation-proven; real-hardware pending) |
 
+**On a multi-controller machine, the `cXd0` disk namespace binds to the _primary_ controller only** ✅. With two HBAs present (e.g. A3000 on-board SCSI plus an A4091), a disk at ID 6 on the A3000 reads as `c6d0` while the *same* disk moved to ID 6 on the A4091 is unreachable as `c6d0` (`dd` I/O error, `fsck` "Can't open"). So an install target — and anything else you address as `cXdN` — must sit on the primary controller. Secondary HBAs are still usable, but through a different addressing path: `cdfs` reaches a CD on a second controller by **`<card>,<unit>`** (HBA-enumeration order — e.g. an A3000-plus-A4091 box mounts the A4091's CD at `1,3`), not through the `cXd0` disk names.
+
 ### Graphics
 
 | Card | Status | Notes |
@@ -178,3 +180,4 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 - The A4091-on-Amix project — `NOTES.md` §1, §7, §9 (reproduced locally in Amiberry on real Amix 2.1c ✅; real-hardware pending 🟡). A4091 product id `0x02020054`, the NCR/Symbios 53C710, and the chipset-gated (VPOSR `0xDFF004`) A3000-SCSI detection verified against `src/kernel-patches/sd.c` (the `scsicard[]` row), `src/kernel-patches/support.c` (the AGA/ECS chipset gate), and `src/a4091-wr.c` (the 53C710 driver).
 - a4091.device open-source project: [github.com/A4091/a4091-software](https://github.com/A4091/a4091-software) (A4091 autoboot ROM + the `ncr53cxxx` SCRIPTS assembler).
 - The **amix-packagemanager** bench-RAM investigation, 2026-07-22 (Amiberry, fixed kernel sum-r 42265): 16 MB-exactly proven clean (SCSI read/write-readback/double-read + byte-exact base-set digest, recomputed via `tools/repo/altroot_attest.py`) and the 8 MB memory-exhaustion livelock signature (pegged host CPU, no panic, all I/O dead) reproduced ✅.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).

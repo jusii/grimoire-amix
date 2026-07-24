@@ -272,6 +272,8 @@ The following cards are known to work. Entries are ✅ unless tagged 🟡 (commu
 | GVP Series II | 🟡 | Needs a kernel rebuild + an RDB `dummy_handler` |
 | **A4091** | 🟡 | Zorro III SCSI-2 (NCR/Symbios **53C710**, AutoConfig product id `0x02020054`); driven by the modern [A4091 / 53C710 driver](../drivers/a4091-53c710-driver.md) — **boots Amix with root on the A4091** (emulation-proven; real-hardware pending) |
 
+**On a multi-controller machine, the `cXd0` disk namespace binds to the _primary_ controller only** ✅. With two HBAs present (e.g. A3000 on-board SCSI plus an A4091), a disk at ID 6 on the A3000 reads as `c6d0` while the *same* disk moved to ID 6 on the A4091 is unreachable as `c6d0` (`dd` I/O error, `fsck` "Can't open"). So an install target — and anything else you address as `cXdN` — must sit on the primary controller. Secondary HBAs are still usable, but through a different addressing path: `cdfs` reaches a CD on a second controller by **`<card>,<unit>`** (HBA-enumeration order — e.g. an A3000-plus-A4091 box mounts the A4091's CD at `1,3`), not through the `cXd0` disk names.
+
 ### Graphics
 
 | Card | Status | Notes |
@@ -330,6 +332,7 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 - The A4091-on-Amix project — `NOTES.md` §1, §7, §9 (reproduced locally in Amiberry on real Amix 2.1c ✅; real-hardware pending 🟡). A4091 product id `0x02020054`, the NCR/Symbios 53C710, and the chipset-gated (VPOSR `0xDFF004`) A3000-SCSI detection verified against `src/kernel-patches/sd.c` (the `scsicard[]` row), `src/kernel-patches/support.c` (the AGA/ECS chipset gate), and `src/a4091-wr.c` (the 53C710 driver).
 - a4091.device open-source project: [github.com/A4091/a4091-software](https://github.com/A4091/a4091-software) (A4091 autoboot ROM + the `ncr53cxxx` SCRIPTS assembler).
 - The **amix-packagemanager** bench-RAM investigation, 2026-07-22 (Amiberry, fixed kernel sum-r 42265): 16 MB-exactly proven clean (SCSI read/write-readback/double-read + byte-exact base-set digest, recomputed via `tools/repo/altroot_attest.py`) and the 8 MB memory-exhaustion livelock signature (pegged host CPU, no panic, all I/O dead) reproduced ✅.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
 ================================================================================
@@ -482,6 +485,26 @@ any freshly installed system inherits this trap — the modern build pipeline la
 flags-based boot2 into `/stand/boot2.boot` and gates the whole chain with `bootchain-verify.py`
 (see [kernel build and install](../drivers/kernel-build.md)) ✅.
 
+### Reframing the boot partition on a live system (upgrading the kernel) ✅
+
+The machine boots the kernel out of the raw **`UNI\0`** boot slice, **never `/stand/unix`** — the `/stand` files are only the *framing sources*. So swapping in a new kernel means two steps: land the new `/stand/unix` (and, if it changed, `/stand/boot2.boot`), then **reframe the boot slice** — a `pkgadd` of a kernel package alone changes nothing bootable. The full live cycle was proven end-to-end (upgrade → reframe → cold-boot the new kernel) ✅, and the operational details are not obvious:
+
+- **`/stand/CONFIG` is absent on an installed box**, so stock `make bootpart` cannot run — drive the pipeline directly with the slice device supplied explicitly:
+  ```sh
+  cd /stand
+  ( cat boot1.boot; ./makeiblk boot2.boot; cat boot2.boot; ./makeiblk unix; cat unix ) \
+      | dd of=/dev/dsk/cNd0s3      # N = the root disk's controller (from /etc/vfstab); boot = slice 3
+  ```
+- `makeiblk` must be invoked as **`./makeiblk`** (it is not on `PATH`), and the stock `/stand/makeiblk` is byte-for-byte conformant with the boot-chain contract — no re-implementation needed. The bootpart consumes an **ELF ET_REL kernel uncompressed** (`ib_fullsize=0`); `elf2brel`/compression is the floppy path only.
+- The **flags-based `boot2.boot` has a fixed `sum -r` fingerprint of `14193`** — verify it before writing, because the name-based loader D245s (previous section).
+- After the `dd`, `sync` and read the slice back to confirm the write landed.
+
+**Telling which kernel is actually running** (there is no `uname` field for it): the SVR4 banner reads **`2.1c`** for a cdfs-carrying kernel vs `2.1` for one without, and `mount -F cdfs` returns **errno 5** when cdfs is in the kernel vs **errno 22** (the `GETFSIND` lookup fails) when it is not — a quick, non-destructive probe of the booted image's driver set.
+
+### First boot: the whole stock setup dialog hangs on one exec bit ✅
+
+The stock first-boot node-name/timezone dialog is gated by a single mode bit. `/etc/inittab` runs `/etc/sysinit` at sysinit, which runs `/usr/amiga/bin/system.setup` **iff that file is executable**; `system.setup` ends by `chmod -x`-ing *itself* — that exec bit is the stock once-only mechanism. So an unattended/automated install disarms the interactive dialog simply by `chmod -x /usr/amiga/bin/system.setup` (mode only — the package content, and therefore the package database, is untouched) and drops its own additive `/etc/rc2.d/S??` hook to bake identity. Proven across two cold boots: no dialog, identity applied exactly once ✅.
+
 ## Booting Amix with root on an A4091 (and the rootdev dispatch trap)
 
 Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../drivers/a4091-53c710-driver.md) — a Zorro III board Amix shipped with **no driver** for — turned out to hinge not on the driver but on **how the kernel turns the compiled-in root device number into a SCSI card**. This section documents that dispatch path and the panic it produced. All findings here were reproduced locally in Amiberry on the real Amix 2.1c distribution unless tagged otherwise.
@@ -597,6 +620,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - `amiga/config/unix.c` (`rootdev = ROOTDEV`, `-DROOTDEV`) and `amiga/config/c6s1unix.c` (`C6D0S1 = makedevice(18,22)`, swap `c6d0s2`); `amiga/alien/sd.h` (`SDCARDS`, `sdunit`/`sdcard`/`sdpart` macros).
 - `src/kernel-patches/support.c` — the `autocon()` phantom-A3000 fix replaced by the chipset-gated WD33C93 probe; `src/kernel-patches/sd.c` — the `0x02020054,&a4091queue` registry row; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
 ================================================================================
@@ -813,6 +837,8 @@ Why does **s5** linger as a nominal default at all? 🟡 The most plausible expl
 - UFS gives you the Berkeley FFS semantics SVR4 administrators expect (`fsck`, `mount`, the usual block/fragment layout) ✅.
 - The standard SVR4 toolset is present: `fsck`, `dd`, and `cpio` all appear as m68k ELF binaries inside the root miniroot ✅, used during install and available afterward.
 - s5 is the older System V filesystem with smaller block sizes and weaker crash recovery than FFS; it is functional but offers no advantage here.
+- **s5 truncates filenames at 14 characters (`DIRSIZ=14`), silently** ✅ — no error, the name just shortens (e.g. a file written as `bootslice.manifest` reads back as `bootslice.mani`, and two long names can collide into one). This bites any s5-hosted tooling/payload tree — for example a custom install-payload slice — so keep every filename on an s5 volume ≤ 14 chars. UFS is unaffected.
+- **Host-side surgery on an installed disk image: the on-disk root is UFS, and it loop-mounts on Linux** ✅. An installed Amix root partition is SVR4 **big-endian** UFS, so a modern Linux host can read it directly, read-only, with `mount -t ufs -o ro,loop,offset=<partition-start-bytes>,ufstype=sun <image> <mnt>` (the `ufstype=sun` variant is the one that matches). This is how you extract or verify files from a captured `.hdf` without booting it — note the s5 reader used for *miniroot/floppy* media does **not** apply to an installed root.
 
 ## Mounting a CD: the read-only `cdfs` optical filesystem
 
@@ -905,6 +931,7 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
 - amigaunix.com (installation / requirements pages) — UFS-recommended consensus, ~1 GB partition guidance, SCSI ID 6 disk / ID 4 tape.
 - amix-cdfs in-kernel mount verification — firsthand Amiberry-A4091 bench, Amix 2.1c (2026-07-10): `mount -F cdfs 1,3 /cdrom` reads a Rock Ridge test CD byte-for-byte (`ls -la` of all 7 RR entries with correct names/sizes/dates; `cat` correct; on-box SysV `sum` == host `sum -s`, `SHORT.TXT 538 1`, `twentychars.dat 1060 1`); per-fstype ELF helper `/usr/lib/fs/cdfs/mount` (missing → "operation not applicable to FSType cdfs", not errno 22); card/unit spec `"1,3"` (a4091 card 1 unit 3; A3000 onboard = card 0), not a `/dev` path; `sysfs(GETFSIND,"cdfs")` liveness (12 live / -1 absent); a4091 `a3091.c` super-DMAC boot patch required (else `s5mountroot VOP_OPEN error 6`); GSIO `scsi.c.patch` needed only by the userspace `/dev/scsi` path, not the in-kernel `sdqueue` path ✅.
 - `cdfs` = a port of the AmigaOS `ODFileSystem` (`reinauer/ODFileSystem`), read-only ISO9660 / Rock Ridge / Joliet / UDF; the fstype registration mechanism (`vfssw[]` row + `cdfsinit` via `vfsinit`, `vfs_getvfssw`, and the `EINVAL(22)` dispatch) is cross-documented on `docs/drivers/kernel-reverse-engineering.md`.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
 ================================================================================
@@ -1494,6 +1521,10 @@ The lesson for anyone porting period software with a period cross-toolchain: whe
 reproduces on the box but not under host sanitizers, **suspect the toolchain's generated code
 before the source** — and check inside the altroot for the core.
 
+## ⚠ `pkgadd -R` needs a `/` line in `/etc/mnttab` — or it mis-identifies the root ✅
+
+SVR4 `libinst`'s `get_mntinfo()` sorts the mount table by mount-point-name length and **asserts the shortest entry is exactly `/`**. On a normally-booted system `/` is always listed, so this never fires — but it bites hard in a **minimal installer environment**. A from-media installer miniroot whose `mount(2)` wrapper writes no `/etc/mnttab` entry (and whose boot never registers `/`) can end up with a mnttab that lists only the source medium — e.g. just the `cdfs` `/cdrom` line. Then `get_mntinfo()` picks `/cdrom` as "root", and `pkgadd -R` aborts with **`identified </cdrom> as root file system instead of </>`**, installing nothing. A `/mnt` line does *not* satisfy the check — only a genuine `/` entry does. The fix is either engine-side (synthesize the `/` row when the table lacks it — safe because a real system always has it) or one line before the install: `echo "/dev/root / s5 rw 0" >> /etc/mnttab`. This is the **consumer** counterpart to the mnttab contract on the [driver-model page](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract) (which is userland-maintained and helper-written): `mnttab` being *sparse* is what breaks the pkg tools.
+
 ## `amixpkg`: the install-media front-end {#amixpkg-the-install-media-front-end}
 
 `amixpkg` is **not present on the installed system** (`/usr/sbin`, `/usr/bin`, `/sbin` — absent) ✅, yet the `contents` database names it as its **original writer** (`# Last modified by amixpkg for X11r5src package`) ✅. The reconciliation: `amixpkg` is the **install-media (root.adf) front-end** that populates `/var/sadm` during installation, via the *same* database machinery as `pkgadd` — it is the installer's package driver, not a general-purpose installed command. The [install walkthrough](../getting-started/install-walkthrough.md) drives the whole distribution install through it (`amixpkg -i -m -d … -r /mnt -y standard`).
@@ -1516,6 +1547,7 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 - **`sources/research-brief.md` §20** (the stock SVR4 pkg-system internals, media formats, DB mutation, and the F7 `contents` corruption) — the grounding for this page, carrying the tags above.
 - **Community distribution practice** (🟡): [amigaunix.com `more_software`](https://www.amigaunix.com/doku.php/more_software) (`.pkg` / cpio / `tar.zoo` distribution) and Michael Parson's **AmixBP** ([amixbp.sourceforge.net](https://amixbp.sourceforge.net), SourceForge group 263433) — the datastream-`.pkg` distribution channel.
 - **Licensing:** no proprietary `pkg*` source or media reproduced; this page documents runtime behaviour and on-disk **data-record** layout observed live. The single malformed `contents` record in the F7 section is cited as **factual defect data** (interoperability / bug documentation), not vendored source (per [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
 ================================================================================
@@ -1781,6 +1813,24 @@ Amix's **`/bin/sh` predates POSIX** ✅. The two bites that catch driver authors
 
 This was discovered the hard way porting the [VA2000 driver](../drivers/case-studies/va2000.md): install scripts written with modern shell syntax silently misbehave ✅. The default *interactive* shell is **ksh** (with `sh`/`csh`/`tcsh` also present), but build and install scripts that run under `/sbin/sh` or `/bin/sh` must stay pre-POSIX ✅. See [the driver model](../drivers/driver-model.md) and [writing a char driver](../drivers/writing-a-char-driver.md) for the driver-build implications, including the companion rule to `rm -f` stale objects before relinking the kernel.
 
+Five more that specifically bite installer/automation scripts, each bench-proven on Amix 2.1c ✅:
+
+- **`while read … done < FILE` runs in a SUBSHELL** — a counter incremented inside the loop reverts to its pre-loop value at `done`. Write per-iteration state to a temp file and read it back *after* the loop.
+- **An empty `set -- \`cmd\`` is a no-op on `$@`** — if the command prints nothing, `$#` keeps its *previous* value instead of going to 0. Guard with `[ -s file ]` before counting.
+- **`mkdir -p` is not idempotent** — it exits rc=2 "File exists" on an already-present leaf directory, not 0. Guard with `[ -d dir ] || mkdir -p dir`.
+- **`wc -c` LEFT-PADS its count** with spaces, so a raw `wc -c` in a numeric test fails; strip the padding (e.g. via `read`) first.
+- **The console tty truncates canonical input at ~256 characters** — long one-liners are silently cut. Push a script file and run it rather than typing a long command.
+
+And the toolbox is thin: an install **miniroot ships no `basename`/`sed`/`touch`/`date`/`wc`**. The portable substitutes are `expr` (for `basename`-style path/field work), `: > file` (for `touch`), and `set …/*; echo $#` (to count matches).
+
+### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
+
+A `/etc/TIMEZONE` that sets `TZ=US/Eastern` **without a leading colon** makes every SVR4 program that calls `localtime()`/`tzset()` die with `User BUS ERROR at 474D5400` ✅ — and `0x474D5400` is ASCII `"GMT\0"`, the GMT-fallback timezone abbreviation being dereferenced *as a pointer* after the POSIX-rule parser chokes on the `/` in the zone name. The fix is the **colon** form, `TZ=:US/Eastern`, which tells SVR4 to load `/usr/lib/locale/TZ/US/Eastern` as a tzfile path instead of parsing it as a rule (a valid POSIX rule string such as `EST5EDT` or `GMT0` also works — the stock golden uses `TZ=:EET`, always the colon form). The crash set is exactly the localtime callers — `date`, `who -r`, `cron`, `sac`, `ls -l` — while console `login` survives (it needs `getpwnam`, not localtime), which is the tell that distinguishes this from the passwd-side defect. Second-order symptom: a crashed `who -r` empties the positional parameters in the `/etc/rc2.d/S*` scripts that begin `set \`who -r\``, so those degenerate into `test: unknown operator S` at boot. Note this is a **constant** fault address at cold boot — do not confuse it with the emulator's variable-address MMU-frame bus errors ([emulation fidelity](emulation-fidelity.md)).
+
+### 22. Reused writable test media accumulates state that masks bugs ✅
+
+A defect can hide for entire test campaigns because a *reused* piece of writable media carries residue from earlier runs. The concrete case: a from-scratch install died on the real hardware with `pkgadd: ERROR: unable to open mount table (/etc/mnttab)` — a freshly built miniroot ships no `/etc/mnttab` and its bare `mount(2)` writes none. Two prior emulator acceptance passes had gone green only because the **reused** root floppy still held an `/etc/mnttab` that a `cdfs` mount had written in an *earlier, unrelated* run. The rule: **acceptance runs must start from fresh media**, because reused writable media silently accumulates state that can satisfy a broken assumption and mask a whole class of defect until the day the media is clean. (The mnttab consumer requirement itself is quirk-adjacent — see [package management](package-management.md).)
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -1805,6 +1855,7 @@ This was discovered the hard way porting the [VA2000 driver](../drivers/case-stu
 - Research brief §20 (stock SVR4 package system), from the amix-packagemanager project (firsthand on a clean Amix 2.1c image, 2026-07-01) — quirk 10's `amixpkg`-is-install-media-only correction ✅/🟡, and quirk 18 (the `/var/sadm/install/contents` space-in-pathname record that breaks `pkgrm`/`pkginfo -l` out of the box, ✅). See [Package management](package-management.md).
 - The **amix-cdfs** project @ `31e8c3b` — quirk 19 (`mount(2)` silently stacks on an already-mounted directory; `mount(2)`'s only busy check is `v_vfsmountedhere`, which `lookupname` clears by traversing into the mount; guard in the fs's own mount op like `prmount`/`fdmount`), from stock-kernel disassembly + reproduction on a real A4000 + Z3660, 2026-07-13 ✅ (`844c2ed`). See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - The **amix-kerntools** bench forensics @ `8a76775` — quirk 20 (SVR4 `login`'s future-`lastchg` "expired" trap on an RTC-1978 box after a clock was set forward; same-password workaround, never set the RTC forward), root-caused on a real A4000 + Z3660, 2026-07-11 ✅.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
 ================================================================================
@@ -2476,6 +2527,15 @@ uaehf0=hdf,rw,DH0:/path/to/Amix-a4091.hdf,32,1,2,512,0,,scsi6_a4091
 > an A3000 SCSI and an A4091 are present, the A4091 sorts to card 1 and its disk shows up as
 > `c8d0s0`-class).
 
+> **Gotcha — don't put the install CD on a _sole_-A4091 rig.** 🟡 With the A4091 as the **only** SCSI
+> controller (card 0), mounting a `cdfs` CD at `0,3` reliably **hangs the kernel in an uninterruptible
+> SCSI wait** under Amiberry — neither Ctrl-C nor re-inserting the CD recovers it (it looks like a
+> boot-time unit-attention that the `cdfs` raw-SCSI path never clears). An **A3000-SCSI-plus-A4091**
+> profile, with the CD reached at `1,3`, never hits it. 🟡 because the fault isn't yet attributed
+> (Amiberry's A4091 CD emulation vs the a4091 driver's unit-attention handling) and it is untested on
+> real hardware — but the operational rule is solid: on a two-controller rig keep the disk on the A3000
+> SCSI and the CD on the A4091; on a single-A4091 rig, avoid `cdfs` CD media.
+
 > **Licensing.** The Amix HDFs **and** the A4091 ROM (`amiga-boot-a4091.rom`) are **not committed** to
 > this repo — supply your own. Get the A4091 autoboot ROM from the
 > [`a4091-software`](https://github.com/A4091/a4091-software) project (it ships the ROM image and the
@@ -2575,6 +2635,7 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
 - [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) project repository.
 - The A4091-on-Amix project — `NOTES.md` §9 (A4091-in-Amiberry config + the A3000(ECS)/A4000(AGA) Kickstart matrix) and §10 (the `amishot` IPC-socket screenshot tool), reproduced locally ✅. Config files `amix-a4091-boot.uae`, `amix-a4091-boot-aga.uae`, `amix-dbg.uae`; A4091 product id `0x02020054` verified in `src/a4091-blk.c`. Screenshot wrapper: [`tools/amishot.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amishot.sh).
 - [A4091/a4091-software](https://github.com/A4091/a4091-software) — the A4091 autoboot ROM (`amiga-boot-a4091.rom`) and the `ncr53cxxx` SCRIPTS assembler.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
 ================================================================================
@@ -3248,6 +3309,8 @@ For the full hardware story — supported SCSI/graphics/network/serial cards, th
 
 **On the Z3660 accelerator, the 16 MB contract is enforced in firmware, not left to you.** ✅ When the Z3660's Amix-interop mode is enabled, its emulator hard-wires a single 16 MB memory window (compile-time fixed — there is no config knob to raise it) and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
 
+**The Z3660's effective config is two layers — the preset overlay wins.** ✅ `z3660cfg.txt` declares the `hdfN` disk-image files, but the active `presets/presetN.txt` (chosen by `presets/preset.txt`) **overrides every key it sets** — boot mode, `amix_mode`, the Kickstart choice, and the `scsiN <hdf-index>` assignments — and the env parser handles only the `scsiN` indices, never `hdfN` declarations. The practical trap: editing `z3660cfg.txt` alone to re-map which image sits on which SCSI ID is **silently inert** when a preset carries `scsiN` lines. Change both layers (declare the image in the base, remap the SCSI ID in the active preset), and always confirm from the firmware's own boot print — it logs the effective join as `[CFG]`/`[ENV] SCSIn assigned to …`.
+
 ### Why SCSI ID 6 and ID 4 matter so much
 
 The install scripts on the root floppy stream the distribution from the tape at the literal `/dev/rmt/4h` / `/dev/rmt/4hn`, and reference the disk through a `$SCSI` variable (`/dev/dsk/c${SCSI}d0s${BOOTPART}`). ✅ The **tape must be at ID 4** — the installer looks nowhere else for the distribution media. The **disk is ID 6 by convention**: the installer prompts for the disk target, so another ID would work, but pick 6 — the chosen ID is baked into the device names (`/etc/vfstab`) once installed, so changing it later means editing that file 🟡. **Set the tape to SCSI ID 4 and the disk to SCSI ID 6 before you start.** Getting the *tape* ID wrong is the single most common reason a real-hardware install can't find its distribution media. ✅/🟡
@@ -3291,6 +3354,16 @@ The tape-free approach replaces `if=/dev/rmt/4hn` with a regular file (or a raw 
 3. Point the extract step at that file/device instead of the tape: `dd if=<file-or-device> bs=256k | cpio -imdcu`. 🟡
 
 > **Note:** The exact device/partition you stage the image on, and how you wire that into the installer's package flow (`amixpkg -i -r /mnt`), are **not primary-verified here** — the precise recipe is community lore and varies by setup. The *fact* that tape-free installs are possible and were done is 🟡-documented on comp.unix.amiga; the *byte-level how-to* is left to that source. See [the installation walkthrough](install-walkthrough.md) for the package-install flow this plugs into.
+
+### A verified from-scratch metal install (Z3660, no tape, no CD) ✅
+
+Beyond the community tape-free lore above, a **complete from-scratch install has been proven end-to-end on a real A4000+Z3660** ✅, using a self-booting **RAW source disk** — a single `.hdf` deployed to the accelerator's SD card and mapped at SCSI id 0, carrying its own installer miniroot, boot chain, driver payload, and a raw package-image slice. Load-bearing facts that generalize:
+
+- **A purpose-built miniroot kernel boots straight from SCSI id 0** (the source disk), while the blank target sits at its own id — no floppy, no CD, no tape in the loop. The 16 MB memory contract holds exactly, with no D245.
+- **Boot-priority does the post-install hand-off for free.** Give the source disk's bootable partition a *lower* RDB boot priority than the freshly-written target's; the Kickstart scan cleanly skips the target's *empty* bootable slice before install, then — once the installer has written the target's real boot chain — the target wins the next scan with no media swap or config edit.
+- **The device-name minor number is `(slice << 4) | id`** on the Z3660 SCSI stack, the same encoding as everywhere else — useful when hand-deriving `/dev` nodes on the metal box.
+- **The outcome is byte-identical to an emulator-built install**: the installed tree's attestation digest matched the bench reference exactly. Emulation-built install media produces a bit-for-bit identical result on real hardware.
+- Ops note: some large packages hold the console silently for many minutes during extraction — that is normal, not a hang; the metal Amix console is HDMI-only (the accelerator's serial log ends at the firmware→Amix handoff).
 
 ### Non-standard tape drives: `viper_kludge` 🟡
 
@@ -3342,6 +3415,7 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 - Research brief §8 (Emulation: WinUAE reference target; Amiberry 8.x adds A3000 SCSI + tape support — BlitterStudio/amiberry issue #1376, implemented). First-hand confirmation on Amiberry 8.1.6.
 - ZuluSCSI/flash-SCSI substitution, old hub / media-converter need, and the byte-level tape-free recipe: **community-reported (🟡)**, retro-Amiga community practice and comp.unix.amiga; not primary-verified in any Amix source.
 - The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window (`AMIX_A3000MEM_MB`), the dummy bank preventing coalescing past the ceiling, the `amix_mode`-forces-CPU-RAM-off contract, and the "not in section 1" panics coming only from >16 MB / split windows: read from `Z3660_emu/src/uae/uae_emulator.cpp`, `Z3660/src/config_file.c`, `AMIX_SCSI_design.md`, `docs/AMIX.md` ✅.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
 ================================================================================
@@ -5821,6 +5895,10 @@ known, and the third was the most consequential ✅:
    [kernel build](kernel-build.md) for the blast-radius map and
    [package management](../how-it-works/package-management.md) for the crash this solved.
 
+### The stock shared-libc `getpwnam()` first-call SIGSEGV — and the static-link sidestep ✅
+
+A separate porting hazard lives in the stock **shared `libc.so.1`**, not in the toolchain: the **first `getpwnam()` call** of a process crashes inside libc's passwd-record handling (a record expand routed through the `_libc_malloc` allocator-redirect pointers), while the symmetric group path (`getgrnam`) survives — the asymmetry is entirely inside libc and not debuggable off-box. Interposition was ruled out (libc calls its internal helpers via non-preemptible `bsrl`). The **working sidestep**, used in every binary of the ported pkg toolchain: link them **statically** and let the executable *define* `getpwnam`/`getpwuid`/`getgrnam`/`getgrgid` as small direct `/etc/passwd`/`/etc/group` parsers — an executable's own global symbols win over shared-library exports at static link time, so every internal caller is preempted uniformly. Two consequences worth knowing: this only protects code you can relink (it cannot reach the stock **dynamically-linked** daemons — which were never the victims of this particular defect anyway; a daemon crashing at boot is far more likely the [colon-less-`TZ` bug](../how-it-works/quirks.md)), and it is one more reason the install-media engine ships static.
+
 ## SVR4 packaging
 
 Amix uses the standard **SVR4 `pkgadd` packaging family** to bundle and install software ✅. The full lifecycle is: describe the payload with `pkgproto`, build a package with `pkgmk`, optionally bundle it into a single transferable datastream with `pkgtrans`, and install with `pkgadd` ✅.
@@ -5894,6 +5972,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (install uses `amixpkg`/`cpio`/`dd` from tape).
 - amigaunix.com — *downloads* page (AmixBP, Michael Parson) and *more_software* / *tips-tricks*: <https://www.amigaunix.com/doku.php/home>
 - SVR4 packaging tools (`pkgproto`, `pkgmk`, `pkgtrans`, `pkgadd`) — standard AT&T System V Release 4 documentation.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
 ================================================================================

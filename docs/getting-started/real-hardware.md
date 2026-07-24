@@ -57,6 +57,8 @@ For the full hardware story — supported SCSI/graphics/network/serial cards, th
 
 **On the Z3660 accelerator, the 16 MB contract is enforced in firmware, not left to you.** ✅ When the Z3660's Amix-interop mode is enabled, its emulator hard-wires a single 16 MB memory window (compile-time fixed — there is no config knob to raise it) and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
 
+**The Z3660's effective config is two layers — the preset overlay wins.** ✅ `z3660cfg.txt` declares the `hdfN` disk-image files, but the active `presets/presetN.txt` (chosen by `presets/preset.txt`) **overrides every key it sets** — boot mode, `amix_mode`, the Kickstart choice, and the `scsiN <hdf-index>` assignments — and the env parser handles only the `scsiN` indices, never `hdfN` declarations. The practical trap: editing `z3660cfg.txt` alone to re-map which image sits on which SCSI ID is **silently inert** when a preset carries `scsiN` lines. Change both layers (declare the image in the base, remap the SCSI ID in the active preset), and always confirm from the firmware's own boot print — it logs the effective join as `[CFG]`/`[ENV] SCSIn assigned to …`.
+
 ### Why SCSI ID 6 and ID 4 matter so much
 
 The install scripts on the root floppy stream the distribution from the tape at the literal `/dev/rmt/4h` / `/dev/rmt/4hn`, and reference the disk through a `$SCSI` variable (`/dev/dsk/c${SCSI}d0s${BOOTPART}`). ✅ The **tape must be at ID 4** — the installer looks nowhere else for the distribution media. The **disk is ID 6 by convention**: the installer prompts for the disk target, so another ID would work, but pick 6 — the chosen ID is baked into the device names (`/etc/vfstab`) once installed, so changing it later means editing that file 🟡. **Set the tape to SCSI ID 4 and the disk to SCSI ID 6 before you start.** Getting the *tape* ID wrong is the single most common reason a real-hardware install can't find its distribution media. ✅/🟡
@@ -100,6 +102,16 @@ The tape-free approach replaces `if=/dev/rmt/4hn` with a regular file (or a raw 
 3. Point the extract step at that file/device instead of the tape: `dd if=<file-or-device> bs=256k | cpio -imdcu`. 🟡
 
 > **Note:** The exact device/partition you stage the image on, and how you wire that into the installer's package flow (`amixpkg -i -r /mnt`), are **not primary-verified here** — the precise recipe is community lore and varies by setup. The *fact* that tape-free installs are possible and were done is 🟡-documented on comp.unix.amiga; the *byte-level how-to* is left to that source. See [the installation walkthrough](install-walkthrough.md) for the package-install flow this plugs into.
+
+### A verified from-scratch metal install (Z3660, no tape, no CD) ✅
+
+Beyond the community tape-free lore above, a **complete from-scratch install has been proven end-to-end on a real A4000+Z3660** ✅, using a self-booting **RAW source disk** — a single `.hdf` deployed to the accelerator's SD card and mapped at SCSI id 0, carrying its own installer miniroot, boot chain, driver payload, and a raw package-image slice. Load-bearing facts that generalize:
+
+- **A purpose-built miniroot kernel boots straight from SCSI id 0** (the source disk), while the blank target sits at its own id — no floppy, no CD, no tape in the loop. The 16 MB memory contract holds exactly, with no D245.
+- **Boot-priority does the post-install hand-off for free.** Give the source disk's bootable partition a *lower* RDB boot priority than the freshly-written target's; the Kickstart scan cleanly skips the target's *empty* bootable slice before install, then — once the installer has written the target's real boot chain — the target wins the next scan with no media swap or config edit.
+- **The device-name minor number is `(slice << 4) | id`** on the Z3660 SCSI stack, the same encoding as everywhere else — useful when hand-deriving `/dev` nodes on the metal box.
+- **The outcome is byte-identical to an emulator-built install**: the installed tree's attestation digest matched the bench reference exactly. Emulation-built install media produces a bit-for-bit identical result on real hardware.
+- Ops note: some large packages hold the console silently for many minutes during extraction — that is normal, not a hang; the metal Amix console is HDMI-only (the accelerator's serial log ends at the firmware→Amix handoff).
 
 ### Non-standard tape drives: `viper_kludge` 🟡
 
@@ -151,3 +163,4 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 - Research brief §8 (Emulation: WinUAE reference target; Amiberry 8.x adds A3000 SCSI + tape support — BlitterStudio/amiberry issue #1376, implemented). First-hand confirmation on Amiberry 8.1.6.
 - ZuluSCSI/flash-SCSI substitution, old hub / media-converter need, and the byte-level tape-free recipe: **community-reported (🟡)**, retro-Amiga community practice and comp.unix.amiga; not primary-verified in any Amix source.
 - The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window (`AMIX_A3000MEM_MB`), the dummy bank preventing coalescing past the ceiling, the `amix_mode`-forces-CPU-RAM-off contract, and the "not in section 1" panics coming only from >16 MB / split windows: read from `Z3660_emu/src/uae/uae_emulator.cpp`, `Z3660/src/config_file.c`, `AMIX_SCSI_design.md`, `docs/AMIX.md` ✅.
+- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
