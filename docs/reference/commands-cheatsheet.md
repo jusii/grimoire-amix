@@ -103,6 +103,14 @@ media (see below). There are no `pkg*` man pages on the box (the man tree is Ami
 [amigaunix.com/downloads](https://www.amigaunix.com/doku.php/downloads). An alternative
 distribution form seen in the wild is a `zoo`-compressed `cpio` archive 🟡.
 
+**HTTP package-repo layout gotcha ✅.** When serving packages over HTTP for a network client, the
+payloads sit one directory *below* the catalog: a catalog `filename` field of `stock/foo.pkg` is
+relative to a `pkgs/` segment, so the real URL is `<repo>/pkgs/stock/foo.pkg`, not
+`<repo>/stock/foo.pkg`. A hand-rolled probe that drops the `pkgs/` segment gets a 404 and
+mis-reads it as "the payloads were never published" — the client itself builds the correct URL, so
+only manual host-side checks fall into this. Verify against the client's own catalog, not a guessed
+path.
+
 ---
 
 ## Kernel and driver builds
@@ -314,3 +322,4 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 - The **amix-kerntools** bench forensics @ `8a76775` — SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660, 2026-07-12 ✅.
 - The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
+- The **amix-packagemanager** repo tooling (`tools/repo/publish.sh`, `gen-catalog.py`) — the HTTP package-repo `pkgs/`-segment URL layout, verified live 2026-07-22 ✅.

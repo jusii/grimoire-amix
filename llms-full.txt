@@ -212,8 +212,13 @@ These are not recommendations — they are enforced by the kernel and the instal
 - **Minimum:** 4 MB Fast RAM. ✅
 - **Maximum:** 16 MB Fast RAM — and this is a **hard kernel ceiling**, not a guideline. ✅
 - **Exceeding 16 MB mis-maps the SCSI drive.** ✅ The kernel's memory-mapping layer hard-codes the ceiling; install more than 16 MB of Fast RAM and the SCSI disk lands at the wrong address, so the system cannot reach its own disk.
+- **Running at _exactly_ 16 MB is proven safe — the failure mode is _exceeding_ the ceiling, not sitting at it.** ✅ At `a3000mem_size=16, mbresmem_size=0`, SCSI read + write/readback + double-read consistency are all clean, and a full base-set install reproduces its canonical tree digest byte-for-byte. So 16 MB is the correct working configuration, not a value to stay under.
 
-In emulation this translates directly to "set Fast RAM ≤ 16 MB." See [the WinUAE config table](../getting-started/emulation-winuae.md).
+**The 8 MB memory-exhaustion livelock — and its diagnosis trap.** ✅ A memory-hungry workload on an under-provisioned (8 MB) box does **not** panic — it _livelocks_: network and console input both go dead, the framebuffer freezes at whatever was last on screen, and the emulator's host CPU pegs near 100 % indefinitely. The trap is that this reads exactly like a SCSI or network hang; the actual cause is RAM. The specific trigger seen was the package tool's cache/staging path double-materializing a package (fetch → cache file, then the installer's own `TMPDIR` re-spool — a ~35 MB working set) with no headroom to page it. The verify-in-place path and a plain install fit 8 MB comfortably, so the culprit is the extra transient footprint, not the base install. **If a box wedges with a pegged host CPU and no panic, suspect memory pressure before chasing the disk or the NIC.**
+
+In emulation this translates directly to "set Fast RAM to 16 MB (not less, not more)." See [the WinUAE config table](../getting-started/emulation-winuae.md).
+
+_Sources: amix-packagemanager bench-RAM investigation 2026-07-22 (kernel sum-r 42265; digests independently recomputed via `tools/repo/altroot_attest.py`); the 8 MB livelock + 16 MB clean runs reproduced on Amiberry._
 
 ### SCSI target IDs
 
@@ -324,6 +329,7 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 - Card-specific repos: [`hydra-amix`](https://github.com/isoriano1968/hydra-amix), [`va2000-amix`](https://github.com/asokero/va2000-amix), [`xrtg-amix`](https://github.com/asokero/xrtg-amix).
 - The A4091-on-Amix project — `NOTES.md` §1, §7, §9 (reproduced locally in Amiberry on real Amix 2.1c ✅; real-hardware pending 🟡). A4091 product id `0x02020054`, the NCR/Symbios 53C710, and the chipset-gated (VPOSR `0xDFF004`) A3000-SCSI detection verified against `src/kernel-patches/sd.c` (the `scsicard[]` row), `src/kernel-patches/support.c` (the AGA/ECS chipset gate), and `src/a4091-wr.c` (the 53C710 driver).
 - a4091.device open-source project: [github.com/A4091/a4091-software](https://github.com/A4091/a4091-software) (A4091 autoboot ROM + the `ncr53cxxx` SCRIPTS assembler).
+- The **amix-packagemanager** bench-RAM investigation, 2026-07-22 (Amiberry, fixed kernel sum-r 42265): 16 MB-exactly proven clean (SCSI read/write-readback/double-read + byte-exact base-set digest, recomputed via `tools/repo/altroot_attest.py`) and the 8 MB memory-exhaustion livelock signature (pegged host CPU, no panic, all I/O dead) reproduced ✅.
 
 
 ================================================================================
@@ -3240,6 +3246,8 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 
 For the full hardware story — supported SCSI/graphics/network/serial cards, the AUTOCONFIG mechanism, the RAM-ceiling failure mode — see [the hardware reference page](../how-it-works/hardware.md).
 
+**On the Z3660 accelerator, the 16 MB contract is enforced in firmware, not left to you.** ✅ When the Z3660's Amix-interop mode is enabled, its emulator hard-wires a single 16 MB memory window (compile-time fixed — there is no config knob to raise it) and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
+
 ### Why SCSI ID 6 and ID 4 matter so much
 
 The install scripts on the root floppy stream the distribution from the tape at the literal `/dev/rmt/4h` / `/dev/rmt/4hn`, and reference the disk through a `$SCSI` variable (`/dev/dsk/c${SCSI}d0s${BOOTPART}`). ✅ The **tape must be at ID 4** — the installer looks nowhere else for the distribution media. The **disk is ID 6 by convention**: the installer prompts for the disk target, so another ID would work, but pick 6 — the chosen ID is baked into the device names (`/etc/vfstab`) once installed, so changing it later means editing that file 🟡. **Set the tape to SCSI ID 4 and the disk to SCSI ID 6 before you start.** Getting the *tape* ID wrong is the single most common reason a real-hardware install can't find its distribution media. ✅/🟡
@@ -3333,6 +3341,7 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 - Research brief §11 (Networking: A2065 `aen0`, static IP only, DNS off by default + relink recipe, `route add default … 1`, NFS, SLIP/PPP) ✅/🟡.
 - Research brief §8 (Emulation: WinUAE reference target; Amiberry 8.x adds A3000 SCSI + tape support — BlitterStudio/amiberry issue #1376, implemented). First-hand confirmation on Amiberry 8.1.6.
 - ZuluSCSI/flash-SCSI substitution, old hub / media-converter need, and the byte-level tape-free recipe: **community-reported (🟡)**, retro-Amiga community practice and comp.unix.amiga; not primary-verified in any Amix source.
+- The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window (`AMIX_A3000MEM_MB`), the dummy bank preventing coalescing past the ceiling, the `amix_mode`-forces-CPU-RAM-off contract, and the "not in section 1" panics coming only from >16 MB / split windows: read from `Z3660_emu/src/uae/uae_emulator.cpp`, `Z3660/src/config_file.c`, `AMIX_SCSI_design.md`, `docs/AMIX.md` ✅.
 
 
 ================================================================================
@@ -10205,6 +10214,14 @@ media (see below). There are no `pkg*` man pages on the box (the man tree is Ami
 [amigaunix.com/downloads](https://www.amigaunix.com/doku.php/downloads). An alternative
 distribution form seen in the wild is a `zoo`-compressed `cpio` archive 🟡.
 
+**HTTP package-repo layout gotcha ✅.** When serving packages over HTTP for a network client, the
+payloads sit one directory *below* the catalog: a catalog `filename` field of `stock/foo.pkg` is
+relative to a `pkgs/` segment, so the real URL is `<repo>/pkgs/stock/foo.pkg`, not
+`<repo>/stock/foo.pkg`. A hand-rolled probe that drops the `pkgs/` segment gets a 404 and
+mis-reads it as "the payloads were never published" — the client itself builds the correct URL, so
+only manual host-side checks fall into this. Verify against the client's own catalog, not a guessed
+path.
+
 ---
 
 ## Kernel and driver builds
@@ -10416,6 +10433,7 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 - The **amix-kerntools** bench forensics @ `8a76775` — SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660, 2026-07-12 ✅.
 - The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
+- The **amix-packagemanager** repo tooling (`tools/repo/publish.sh`, `gen-catalog.py`) — the HTTP package-repo `pkgs/`-segment URL layout, verified live 2026-07-22 ✅.
 
 
 ================================================================================
