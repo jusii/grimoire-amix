@@ -121,6 +121,35 @@ The hydra driver was written to **mirror the existing A2065 LANCE Ethernet drive
 
 Because the two drivers share so much structure, an early version of hydra could even *emulate* `aen` as a fallback when no Hydra board was present; that fallback has since been **removed** from the repo, but the shared structure is still why the in-tree `aen/` driver is the right template to start from 🟡.
 
+### ⚠ What you inherit from `aen` — five userland-reachable defects ✅
+
+Templating from `aen` is still the right call, but **audit what you copy**: an audit of the stock
+`aen.c` in 2026-07 found **five defects reachable from an unprivileged process or from the wire**,
+all inherited verbatim by at least one derived driver before they were caught. Any driver
+descended from this ancestor — which is effectively every Amix STREAMS net driver, `hydra`
+included — plausibly carries them.
+
+| Defect | Reachable by | Effect |
+|---|---|---|
+| 4.2BSD **trailer** RX arm | any crafted frame off the wire | ethertype `0x1000`–`0x1010` makes the length reach 8192 and index a 1518-byte receive buffer (~6.7 KB **out-of-bounds read**); the derived trailer count can go negative, so `allocb(length+trailn)` is undersized against the following `bcopy(..., length)` — an **mblk heap overflow** |
+| `mp->b_cont->b_rptr` dereferenced unguarded (4 ioctl cases, 3 before any TRANSPARENT test) | any process that can open the device | an `I_STR` ioctl with no data **panics the kernel** |
+| `pullupmsg()` on an unchecked `b_cont` | same | same |
+| `CLEAR_STATUS` frees `b_cont` and `break`s | same | the shared ACK epilogue then `freemsg(unlinkb(mp))` the same pointer — a **double free** |
+| `SET_CONFIG` `putnext()`s and then `break`s (both arms) | same | the epilogue re-types, unlinks, frees and re-`putnext`s a message the stream head already owns — a **use-after-free**; note a transparent `ioctl(SET_CONFIG)` returns on the `M_IOCDATA` leg and takes that same arm, so **every successful call** hit it |
+
+**The generalisable rule, and the reason a checklist misses most of these:** in a STREAMS ioctl
+handler with a shared reply epilogue, **`break` is a contract meaning "I have not disposed of the
+message"** ✅. Three of the five defects are violations of that contract, and two of them
+`putnext()` first — which is worse than the double free and completely invisible to a "did you NULL
+`b_cont`?" review. When you copy this skeleton, walk **every** `case` and ask what the epilogue will
+do to `mp` after your arm runs; if your arm has already freed, forwarded, or handed off the
+message, it must `return`, not `break`.
+
+The trailer arm is best **deleted** rather than repaired: SVR4 IP never negotiates trailers
+(`IFF_NOTRAILERS`, `ifconfig -trailers`), so it is dead code that only serves as an attack surface.
+Removing it leaves normal RX byte-for-byte unchanged — verifiable by splitting the compiled object
+per function, which is worth doing when you touch a receive path you cannot bench-test easily.
+
 ## Building the driver (natively on Amix)
 
 hydra is **source-only** and is **built natively on the Amix box — no cross-compiler** ✅. You still need a licensed Amix install (kernel headers/libs are not redistributable), which is why no binaries ship. The driver `Makefile` uses the on-box compiler (`cc`/`ld -r`); the build is just:
