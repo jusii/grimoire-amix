@@ -52,7 +52,8 @@ install will not complete.
   `BPART` derives from `/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
 - **SCSI tape on ID 4** — the distribution device is `/dev/rmt/4h` ✅.
 - **Fast RAM:** 4 MB minimum, **16 MB maximum** — the kernel hard-codes the ceiling, and exceeding it
-  mis-maps the SCSI drive ✅. Set the emulator's Fast RAM to ≤ 16 MB.
+  mis-maps the SCSI drive ✅. Set the emulator's Fast RAM to ≤ 16 MB. (Total *describable* RAM has its
+  own, silent limit far above this — [the RAM ceiling](../how-it-works/ram-ceiling.md).)
 - **Disk image size:** roughly 450–900 MB is the usual range for the ID 6 hardfile 🟡; keep individual
   partitions ≲ 1 GB 🟡.
 

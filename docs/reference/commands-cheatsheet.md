@@ -109,7 +109,8 @@ relative to a `pkgs/` segment, so the real URL is `<repo>/pkgs/stock/foo.pkg`, n
 `<repo>/stock/foo.pkg`. A hand-rolled probe that drops the `pkgs/` segment gets a 404 and
 mis-reads it as "the payloads were never published" — the client itself builds the correct URL, so
 only manual host-side checks fall into this. Verify against the client's own catalog, not a guessed
-path.
+path. Full format spec — tree, catalog grammar, integrity model, client behaviour:
+[the package repository format](../how-it-works/package-repository.md).
 
 ---
 

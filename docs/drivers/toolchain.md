@@ -197,7 +197,7 @@ The Amix install path is package-driven ✅. The `root.adf` install scripts wrap
 
 For getting *additional* software onto a running system, two community distribution forms dominate ✅:
 
-- **AmixBP** — Michael Parson's bundle of **40+ re-bundled `.pkg` packages**, hosted on **amigaunix.com/downloads** ✅. This is the practical "package repository" for Amix add-ons. (Do not redistribute the packages here; point users to amigaunix.com.)
+- **AmixBP** — Michael Parson's bundle of **40+ re-bundled `.pkg` packages**, hosted on **amigaunix.com/downloads** ✅. This is the practical "package repository" for Amix add-ons in the *download-a-bundle* sense — distinct from the machine-readable catalog+client repository format documented on [the package repository page](../how-it-works/package-repository.md). (Do not redistribute the packages here; point users to amigaunix.com.)
 - **`zoo`-compressed `cpio`** — an alternative archive form used to ship software when a full `.pkg` isn't available ✅. Unpack with the on-box `zoo` and `cpio`.
 
 The patch disk uses a related (but distinct) self-extracting mechanism — a 1 KB shell header, an SVR4 ASCII `cpio` (`070701`) archive, and a bundled `lha` unpacking `archive.lha` — documented in the [patch ADF anatomy](../boot-disks/anatomy-patch-adf.md). That is the model to study if you want to build a custom self-extracting add-on disk.

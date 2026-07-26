@@ -61,7 +61,8 @@ fell through.
 - ✅ **Not** runnable on every Amiga. It needs a 68020/68030 **with a real MMU** and a hardware FPU,
   tops out at **16 MB of Fast RAM**, supports **Zorro II only**, and does **not** run on the
   68040/68060 (so the A4000 cannot officially run it). The hard limits are detailed on the
-  [hardware](hardware.md) page and the [quirks](quirks.md) checklist.
+  [hardware](hardware.md) page and the [quirks](quirks.md) checklist; the 040/060 situation has
+  [its own status page](68040-68060-status.md).
 
 ## History at a glance
 

@@ -14,12 +14,15 @@ out="$here/llms-full.txt"
 order=(
   docs/how-it-works/overview.md
   docs/how-it-works/hardware.md
+  docs/how-it-works/ram-ceiling.md
+  docs/how-it-works/68040-68060-status.md
   docs/how-it-works/boot-process.md
   docs/how-it-works/kernel-architecture.md
   docs/how-it-works/filesystems-and-disks.md
   docs/how-it-works/networking.md
   docs/how-it-works/x11-and-desktop.md
   docs/how-it-works/package-management.md
+  docs/how-it-works/package-repository.md
   docs/how-it-works/quirks.md
   docs/how-it-works/emulation-fidelity.md
   docs/how-it-works/glossary.md

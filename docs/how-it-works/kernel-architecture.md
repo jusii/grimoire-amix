@@ -64,10 +64,10 @@ Evidence the HAT layer is live in the shipped kernel: the install bootstrap on `
 
 Two hard memory facts follow from this layer ✅:
 
-- **16 MB Fast RAM ceiling**, hard-coded in the kernel. Exceeding it **mis-maps the SCSI drive** ✅.
+- **16 MB Fast RAM ceiling**, hard-coded in the kernel. Exceeding it **mis-maps the SCSI drive** ✅. (A separate, far-higher limit on total *describable* RAM fails silently — see [the RAM ceiling](ram-ceiling.md).)
 - **No Zorro III.** The memory-mapping layer cannot address Zorro III space, and that source was never shipped, so it cannot be community-fixed — Amix is **Zorro II only** ✅.
 
-The processor cutoff is set by this same MMU dependency: the kernel **predates the 68040 MMU**, so there is **no 68040/68060 support**, and an **A4000 cannot officially run Amix** ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md).
+The processor cutoff is set by this same MMU dependency: the kernel **predates the 68040 MMU**, so there is **no 68040/68060 support**, and an **A4000 cannot officially run Amix** ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md); for the current 040/060 situation see [Amix on 68040 and 68060](68040-68060-status.md).
 
 ### The kmem allocator — what a driver can assume ✅
 

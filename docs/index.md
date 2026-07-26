@@ -50,12 +50,15 @@ headings, exact commands, and inline source-confidence tags (✅ verified · �
 ### How Amix works
 [Overview](how-it-works/overview.md) ·
 [Hardware](how-it-works/hardware.md) ·
+[RAM ceiling](how-it-works/ram-ceiling.md) ·
+[040/060 status](how-it-works/68040-68060-status.md) ·
 [Boot process](how-it-works/boot-process.md) ·
 [Kernel architecture](how-it-works/kernel-architecture.md) ·
 [Filesystems & disks](how-it-works/filesystems-and-disks.md) ·
 [Networking](how-it-works/networking.md) ·
 [X11 & desktop](how-it-works/x11-and-desktop.md) ·
 [Package management](how-it-works/package-management.md) ·
+[Package repository](how-it-works/package-repository.md) ·
 [Quirks](how-it-works/quirks.md) ·
 [Emulation fidelity](how-it-works/emulation-fidelity.md) ·
 [Glossary](how-it-works/glossary.md)

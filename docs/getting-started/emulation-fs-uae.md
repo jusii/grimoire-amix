@@ -74,6 +74,7 @@ The boot/root/patch floppies and the scanned manuals are **proprietary Commodore
 - [Install walkthrough](install-walkthrough.md) — the end-to-end boot/root/tape/patch install flow.
 - [Running Amix in Amiberry](emulation-amiberry.md) — Amiberry 8.x runs and installs Amix too.
 - [Hardware and requirements](../how-it-works/hardware.md) — the SCSI-ID rules and 16 MB ceiling these settings exist to satisfy.
+- [The Amix RAM ceiling](../how-it-works/ram-ceiling.md) — what happens far *past* the 16 MB rule, and why it is silent.
 - [Quirks](../how-it-works/quirks.md) — the hard-coded limits (ID 6 / ID 4, 16 MB, no JIT) summarized.
 
 ## Sources

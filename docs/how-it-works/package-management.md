@@ -8,7 +8,7 @@ status: draft
 
 Amix ships the **standard AT&T SVR4 packaging system** — `pkgadd`, `pkgrm`, `pkginfo`, `pkgmk`, `pkgtrans`, and friends — driving a master installed-object database under `/var/sadm`. If you have used SVR4 (or Solaris) packaging, almost everything here is familiar; this page documents the parts that are **Amix-specific or that bite on the shipped 2.1 image**: the exact on-disk layout, the [`contents(4)`](#the-contents4-database) record grammar, the two package media formats, how `pkgadd` mutates the database, and — importantly — a **data-corruption defect on the stock image that breaks `pkgrm` and `pkginfo -l` out of the box** ([F7 below](#the-space-in-a-pathname-defect)).
 
-For the *command* quick-reference (which tools exist, their flags, the `amixpkg` install wrapper), see the [command cheat sheet](../reference/commands-cheatsheet.md#packages-svr4-pkg). This page is the *internals*: what those commands read and write.
+For the *command* quick-reference (which tools exist, their flags, the `amixpkg` install wrapper), see the [command cheat sheet](../reference/commands-cheatsheet.md#packages-svr4-pkg). This page is the *internals*: what those commands read and write. For the **remote** side — how a network package repository is laid out, the catalog grammar, and the `apkg` client that consumes it — see [the package repository format](package-repository.md).
 
 Everything here was **reproduced firsthand on a clean Amix 2.1c image** (`uname -a` → `UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, on 2026-07-01. Unless tagged otherwise every claim is **✅ Verified** (observed live on the running system); items resting on community distribution practice are tagged 🟡.
 

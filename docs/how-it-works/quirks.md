@@ -15,9 +15,9 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | # | Quirk | Tag | Deeper coverage |
 |---|---|---|---|
 | 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
-| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive | ✅ | [Hardware](hardware.md) |
+| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive. A second, far-higher limit — total *describable* RAM, ~128 MB computed — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
 | 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside TT0) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
-| 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md) |
+| 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md), [040/060 status](68040-68060-status.md) |
 | 5 | **Superkickstart dual-boot** by holding the right mouse button at power-on | ✅ | [Boot process](boot-process.md) |
 | 6 | **DNS resolution is OFF by default** (`/etc/hosts` only) | ✅/🟡 | [Networking](networking.md) |
 | 7 | **Y2K bugs**: `setclk` `%02d` year + kernel date cap at 1999 | ✅/🟡 | [Versions](../reference/versions.md), [Patch ADF anatomy](../boot-disks/anatomy-patch-adf.md) |

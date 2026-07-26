@@ -59,12 +59,15 @@ nav:
   - How Amix works:
       - Overview: how-it-works/overview.md
       - Hardware & requirements: how-it-works/hardware.md
+      - The RAM ceiling: how-it-works/ram-ceiling.md
+      - 68040/68060 status: how-it-works/68040-68060-status.md
       - Boot process: how-it-works/boot-process.md
       - Kernel architecture: how-it-works/kernel-architecture.md
       - Filesystems & disks: how-it-works/filesystems-and-disks.md
       - Networking: how-it-works/networking.md
       - X11 & desktop: how-it-works/x11-and-desktop.md
       - Package management: how-it-works/package-management.md
+      - Package repository: how-it-works/package-repository.md
       - Quirks: how-it-works/quirks.md
       - Emulation fidelity: how-it-works/emulation-fidelity.md
       - Glossary: how-it-works/glossary.md
@@ -79,6 +82,7 @@ nav:
   - Driver development:
       - Driver model: drivers/driver-model.md
       - Building the kernel: drivers/kernel-build.md
+      - Kernel composition: drivers/kernel-composition.md
       - Reverse-engineering the kernel: drivers/kernel-reverse-engineering.md
       - Writing a char driver: drivers/writing-a-char-driver.md
       - Writing a STREAMS driver: drivers/writing-a-streams-driver.md

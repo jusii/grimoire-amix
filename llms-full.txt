@@ -72,7 +72,8 @@ fell through.
 - ✅ **Not** runnable on every Amiga. It needs a 68020/68030 **with a real MMU** and a hardware FPU,
   tops out at **16 MB of Fast RAM**, supports **Zorro II only**, and does **not** run on the
   68040/68060 (so the A4000 cannot officially run it). The hard limits are detailed on the
-  [hardware](hardware.md) page and the [quirks](quirks.md) checklist.
+  [hardware](hardware.md) page and the [quirks](quirks.md) checklist; the 040/060 situation has
+  [its own status page](68040-68060-status.md).
 
 ## History at a glance
 
@@ -218,35 +219,17 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 In emulation this translates directly to "set Fast RAM to 16 MB (not less, not more)." See [the WinUAE config table](../getting-started/emulation-winuae.md).
 
-**The mechanism behind the ceiling — and what actually happens past it ✅ (root-caused 2026-07-26).**
-The kernel's `page_init()` describes physical memory with a `page[]` array sized from the total RAM
-the boot path reports, allocated with `rmalloc()` out of the kernel virtual map — **and the result
-is never checked for NULL.** Present a large enough memory window and the arithmetic runs away:
-in the measured case a 528 MB total needed a 15,162,420-byte array against roughly 4 MB of map
-left, `rmalloc()` returned NULL, and `page_init()` then walked a **60-byte stride starting from
-physical address 0** — straight across chip RAM, Zorro-II I/O space, the CIAs and the custom
-chipset. The practical total-RAM ceiling is **≈128 MB**.
-
-Two consequences worth internalising:
-
-- **The failure is silent.** No panic, no Guru, **no console output at all** — the machine simply
-  never gets anywhere. It presents identically to a dead driver, a bad kernel or missing hardware,
-  which is exactly how it cost one project a long-standing "early hang" mystery attributed to a
-  SCSI driver for months. If an Amix guest produces *zero* output on a config you just gave more
-  memory to, suspect the memory before the driver.
-- **It is not emulation-specific.** The unchecked allocation is in the kernel, so any way of
-  presenting too much RAM — an emulator's debug/DDR window, a large Zorro III RAM board, an
-  accelerator's onboard memory — reaches the same code. (A Zorro III board is the more dangerous
-  route: it is AutoConfig RAM counted straight from the memory list, rather than inherited from the
-  Kickstart sizer.) This is the mechanism under the folklore that Amix wants "chip RAM plus 4–16 MB
-  of motherboard Fast RAM and nothing exotic".
+**A second, separate limit sits far above this one: total *describable* RAM.** ✅ Past a computed
+bound of roughly 128 MB, the kernel's **unchecked `rmalloc()` in `page_init()`** wild-writes a
+60-byte stride from physical address 0 and the machine dies **silently, before any console output**
+— a completely different mechanism and symptom from this section's SCSI mis-mapping, reached by any
+route that hands the guest too much memory (debug/DDR windows, Zorro III RAM boards, accelerator
+memory). Full mechanism, detection fingerprint and per-rig RAM guidance:
+**[the Amix RAM ceiling](ram-ceiling.md)**.
 
 _Sources: amix-packagemanager bench-RAM investigation 2026-07-22 (kernel sum-r 42265; digests
 independently recomputed via `tools/repo/altroot_attest.py`); the 8 MB livelock + 16 MB clean runs
-reproduced on Amiberry. The `page_init()` mechanism was read live out of a running emulator
-(`/proc/<pid>/mem` + m68k disassembly: `pages` = 0, fault offset an exact multiple of the 60-byte
-stride) during a 2026-07-26 root-cause of an emulated-rig hang, with a six-run ablation showing the
-same kernel booting to multiuser once the window was bounded._
+reproduced on Amiberry._
 
 ### SCSI target IDs
 
@@ -361,6 +344,324 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 - a4091.device open-source project: [github.com/A4091/a4091-software](https://github.com/A4091/a4091-software) (A4091 autoboot ROM + the `ncr53cxxx` SCRIPTS assembler).
 - The **amix-packagemanager** bench-RAM investigation, 2026-07-22 (Amiberry, fixed kernel sum-r 42265): 16 MB-exactly proven clean (SCSI read/write-readback/double-read + byte-exact base-set digest, recomputed via `tools/repo/altroot_attest.py`) and the 8 MB memory-exhaustion livelock signature (pegged host CPU, no panic, all I/O dead) reproduced ✅.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+
+
+================================================================================
+# FILE: docs/how-it-works/ram-ceiling.md
+================================================================================
+
+---
+title: The Amix RAM Ceiling
+summary: Why Amix cannot describe much more than ~128 MB of RAM, what the failure looks like (a silent wild write from address 0, not a panic), and how much memory to actually present in emulation and on metal.
+status: draft
+---
+
+# The Amix RAM Ceiling
+
+**Give an Amix guest too much memory and it does not complain — it dies silently before the console
+exists.** ✅ The kernel's `page_init()` allocates one ~60-byte `page` record per physical page frame
+out of the kernel virtual map, **never checks the allocation for NULL**, and on failure walks that
+60-byte stride from **physical address 0** instead: straight across chip RAM, Zorro II I/O space,
+the CIAs and the custom chipset. There is no panic, no Guru, and **no console output at all** ✅.
+
+Two limits live on this page, and they are **not the same limit**:
+
+| Limit | Value | What goes wrong past it | Tag |
+|---|---|---|---|
+| **Fast RAM configuration ceiling** | **16 MB** | The SCSI drive is mis-mapped — presents as a disk fault | ✅ |
+| **Total describable RAM** | **≈128 MB (computed)** | `page_init()` wild-writes from address 0 — total silence | ✅ mechanism / 🔴 exact figure |
+
+Set your emulator, your accelerator and your memory map to the **16 MB Fast RAM** rule and neither
+one can bite you. The rest of this page is for when something has already handed the guest more
+memory than you meant to — a debug/DDR window, a Zorro III RAM board, an accelerator's onboard
+memory — and you are staring at a machine that produces nothing.
+
+## The short version
+
+- **Cap the RAM you present.** 4–16 MB of Fast RAM is the supported envelope; see
+  [hardware and requirements](hardware.md#fast-ram-4-mb-minimum-16-mb-hard-ceiling). ✅
+- **32 MB total is the largest value with positive boot evidence** on any rig here, and it exists
+  only because one bench rig needs RAM at `0x08000000` for a DMA-threshold reason. ✅
+- **528 MB is proven fatal**, in exactly the way described below. ✅
+- **Nothing between 32 MB and 512 MB has ever been booted** — the ≈128 MB figure is *computed*, not
+  bisected. Do not quote it as a tested boundary. 🔴
+- **This is a kernel limit, not an emulator bug.** Any route that hands the guest memory reaches the
+  same code — emulator RAM knobs, a Zorro III fastmem board, accelerator DDR. ✅
+
+## What actually happens past the ceiling
+
+Everything in this section is ✅ — it was read live out of a running emulator (see
+[Provenance](#provenance-how-this-was-measured)).
+
+The kernel sizes a `struct page` array from the total RAM the boot path reports, at **60 bytes per
+page frame**, and asks the kernel virtual map for the space:
+
+```text
+528 MB of RAM
+  -> 252,707 free page frames
+  -> a 15,162,420-byte page[] array
+  -> against ~4 MB of kernel virtual map still free
+  -> rmalloc() returns NULL
+  -> the result is never checked, at either level
+  -> page_init(NULL, 252707, ...) runs anyway
+```
+
+`page_init()` then does what it always does — walk the array setting a bit in each record — except
+the array now starts at physical address `0x00000000`:
+
+```text
+080c0208:  orib   #-128,%a0@        ; set bit 7 of this "page record"
+080c020c:  addaw  #60,%a0           ; next record, 60 bytes on
+080c0210:  cmpal  8129e74,%a0       ; ... until epages
+080c0216:  bcsw   80c0208
+```
+
+The walk runs from `0x00000000` to `0x00E75C34`. Along the way it crosses chip RAM, **Zorro II I/O
+space** (`0x00b8xxxx`), the CIAs and the custom chipset registers — writing to hardware, not memory.
+The machine is dead long before console initialisation, which is why the symptom is silence. ✅
+
+The memory *sizing* was correct throughout: measured `maxpfn` was `0x50000` (× 2048 = `0x28000000`),
+the true top of RAM. The kernel knew exactly how much memory it had — **it simply could not describe
+that much**. ✅
+
+### Where ≈128 MB comes from — and why it is a bound, not a boundary
+
+The kernel virtual map free list held **one** entry at the time of failure: 2048 pages of 2048 bytes
+= 4 MB. Break-even is therefore about `2048 × 2048 ÷ 60 ≈ 69,900` describable frames ≈ **136 MB**,
+and the same allocation also has to cover the page-table array — so the practical ceiling lands
+around **128 MB of total RAM**. ✅ (the arithmetic; the inputs are measured)
+
+**Treat that number as an order of magnitude, not a tested edge.** 🔴 No boot has been attempted
+between 32 MB (works) and 512 MB (fatal), so the true boundary has never been bisected, and the free
+map size is itself a function of how much kernel virtual space the running kernel has already spent
+— a bigger kernel moves the line. The two numbers you can rely on are the measured ones: **32 MB
+boots, 528 MB kills.** ✅
+
+## Recognising it
+
+The failure has no error message, so recognise it by shape ✅:
+
+- **Zero guest output.** No SVR4 banner, no memory line, black screen, no serial log. It presents
+  identically to a dead driver, a mis-built kernel, or missing hardware — this cost one project a
+  weeks-long "early hang" investigation attributed to a SCSI driver.
+- **In an emulator log** (Amiberry/WinUAE style host logging), a storm of bus-timeout messages at
+  low Zorro II addresses from a single PC pair, with a constant **stride of 0x3C (60)**:
+
+  ```text
+  Gary timeout: 00b80038 0 R PC=080c0208
+  Gary timeout: 00b80038 0 W PC=080c020c
+  Gary timeout: 00b80074 0 R PC=080c0208     <- +0x3C
+  ```
+
+  Followed by blitter/`BEAMCON0`/"disk DMA started" noise as the walk reaches the custom chipset.
+- **The arithmetic check:** the first faulting address is an exact multiple of 60 (`0x00B80038 ÷ 60
+  = 200,978`), which is the fingerprint that the walk started at address 0 rather than at a real
+  array. ✅
+
+**Rule of thumb:** if an Amix guest emits *nothing at all* on a configuration you just gave more
+memory to, suspect the memory before the driver, the kernel or the disk. ✅
+
+## How much RAM to present
+
+### In emulation
+
+Uniformly ✅ unless tagged.
+
+| Knob | Value | Why |
+|---|---|---|
+| Chip RAM | 2 MB (4 MB on the A4000-style rigs) | Standard; not counted against the Fast RAM rule |
+| Fast / motherboard RAM | **16 MB, exactly** | The supported ceiling; 16 MB *exactly* is proven clean, and less than 8 MB livelocks under package-install workloads |
+| A debug/DDR window (e.g. a stand-in for accelerator memory) | **32 MB** if you need one at all | The only oversized value with positive boot evidence |
+| Zorro III fastmem board | avoid | It is AutoConfig RAM counted straight from the memory list, so it reaches the ceiling faster than a mapped window 🟡 |
+
+A window that is *not* an AutoConfig RAM board can still be counted: if it lands immediately above
+the machine's motherboard RAM, the A3000 Kickstart's motherboard-RAM sizer walks upward across both
+and publishes them as **one contiguous region**, which Amix then believes. That is faithful ROM
+behaviour, not an emulator defect ✅ — the guest simply cannot describe the result.
+
+See the per-emulator config tables in [WinUAE](../getting-started/emulation-winuae.md),
+[FS-UAE](../getting-started/emulation-fs-uae.md) and
+[Amiberry](../getting-started/emulation-amiberry.md).
+
+### On real hardware
+
+The same kernel code runs, so the same limit applies to a real memory map ✅. In practice the
+supported machines cannot reach it with motherboard RAM alone — the exposure is expansion:
+
+- **Accelerator memory.** The Z3660's Amix-interop firmware mode hard-wires a single 16 MB window at
+  compile time and maps a dummy bank above it so nothing can coalesce past the ceiling; the same
+  mode disables the accelerator's large CPU-RAM board ✅. That is what a *correct* accelerator
+  memory map looks like for Amix. See [real hardware](../getting-started/real-hardware.md).
+- **Zorro III RAM boards.** AutoConfig RAM is counted directly, and a modern board can be far larger
+  than anything Amix can describe.
+
+### Why the folklore says "chip RAM plus 4–16 MB and nothing exotic"
+
+Because that envelope is the one that always fits ✅. The period advice was empirical — nobody in
+1992 had a memory map large enough to *reach* the `page_init()` failure, and everything at or below
+16 MB Fast RAM works. The mechanism on this page is what sits underneath the folklore; it does not
+replace the 16 MB rule, and it is **not** the explanation for the 16 MB rule's own failure mode
+(mis-mapping the SCSI drive — a separate, older, separately-verified claim ✅).
+
+## Provenance — how this was measured
+
+✅ throughout, by measurement rather than by reading source (no Amix kernel source exists for this
+code path — see [reverse-engineering the kernel](../drivers/kernel-reverse-engineering.md)):
+
+1. The emulator logs each memory bank's host base address, so guest memory is addressable through
+   `/proc/<pid>/mem` on the host. Guest code at the faulting PC was pulled out that way and
+   disassembled with `m68k-cbm-sysv4-objdump -b binary -m m68k:68030`. **No debugger, no guest-side
+   instrumentation, no emulator patch.**
+2. The function was identified by the strings the compiler left beside it: `"page_init"` and
+   `"vm_page.c"`, plus the assertion text `"pp >= pages && pp < epages"`.
+3. Live globals at the hang: `pages = 0x00000000` (the NULL base), `epages = 0x00E75C34`
+   (= 60 × 252,707), `maxpfn = 0x50000`.
+4. **Discriminator:** a freshly built, leaner kernel containing a completely different driver set
+   reproduces the fault byte-for-byte at the same RAM size — same first address, same 0x3C stride,
+   same instruction pair, same NULL base. The driver mix is irrelevant, as it must be for a fault in
+   VM initialisation.
+5. **Control:** the same kernels and the same disk images boot normally — one to `vfs_mountroot`,
+   one all the way to `/sbin/init`, and one to a full multiuser `login:` — once the memory window is
+   bounded. Six boots, one variable at a time.
+
+## See also
+
+- [Hardware and requirements](hardware.md) — the 16 MB Fast RAM rule in its full context, plus the
+  CPU/MMU/FPU and SCSI-ID limits.
+- [Quirks and gotchas](quirks.md) — the ceiling as a one-line checklist item.
+- [Kernel architecture](kernel-architecture.md) — the HAT/MMU layer this memory description feeds.
+- [Emulation fidelity](emulation-fidelity.md) — the *other* class of silent Amix boot failure, where
+  the emulator is at fault rather than the configuration.
+- [Reverse-engineering the kernel](../drivers/kernel-reverse-engineering.md) — the technique used to
+  read this mechanism out of a binary-only kernel.
+
+## Sources
+
+- `sources/research-brief.md` §2 (hardware envelope: 4–16 MB Fast RAM) and §4 (kernel HAT/MMU, RAM
+  ceiling) — grounding for the 16 MB configuration rule.
+- The **amix-kerntools** root-cause investigation, 2026-07-26 (`docs/kernel-52550-hang.md`, commit
+  `7cdcdc9`): the live `/proc/<pid>/mem` read of a running guest, the `page_init()`/`rmalloc()`
+  disassembly and live globals (`pages` = 0, `epages` = `0x00E75C34`, `maxpfn` = `0x50000`), the
+  kernel-virtual-map free entry (2048 pages × 2048 B), the break-even arithmetic, the SCSI-only
+  discriminator kernel reproducing the fault byte-for-byte, and the six-run ablation table ✅.
+- The **amiberry** guest-RAM sizing note (`docs/z3660-amix-guest-ram.md`): the operational rule
+  (32 MB is the only oversized value with positive boot evidence; the same cap applies to every knob
+  that hands the guest memory, and a Zorro III fastmem board reaches the ceiling faster because it
+  is AutoConfig RAM) ✅.
+- The **amix-packagemanager** bench-RAM investigation, 2026-07-22 (Amiberry, fixed kernel `sum -r`
+  42265): 16 MB-exactly proven clean (SCSI read / write-readback / double-read plus a byte-exact
+  base-set tree digest) and the 8 MB memory-exhaustion livelock signature ✅.
+- The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window, the dummy
+  bank preventing coalescing past the ceiling, and the `amix_mode`-forces-CPU-RAM-off contract ✅.
+
+
+================================================================================
+# FILE: docs/how-it-works/68040-68060-status.md
+================================================================================
+
+---
+title: Amix on 68040 and 68060 — Current Status
+summary: Stock Amix 2.1 runs only on a 68020/68030 with a real MMU; what 040/060 support would actually require, what is being worked on, and what nobody should claim yet.
+status: draft
+---
+
+# Amix on 68040 and 68060 — Current Status
+
+**Stock Amix 2.1 does not run on a 68040 or a 68060, and no released version ever did.** ✅ The
+kernel predates the 68040 MMU and drives the 68030 MMU directly through its HAT layer; the MMU model
+differs, so this is a fundamental limit rather than a missing driver you could add ✅. The practical
+consequence — an **A4000 cannot officially run Amix** ✅ — is covered on the
+[hardware page](hardware.md#no-6804068060-and-therefore-no-a4000) and in the
+[quirks checklist](quirks.md).
+
+**This page is a status stub.** It exists so that "can Amix run on my 040/060?" has one honest
+answer to point at, and so that the answer can be updated in one place as the situation changes. It
+deliberately records only what can be stated publicly and shown.
+
+## What the wall actually is
+
+- **The MMU.** The kernel's memory management is written against the 68030 MMU. The 68040 and 68060
+  use a different translation model, so the kernel-side MMU enable, teardown and translation-control
+  paths are not portable between them ✅ (the fact that "the MMU model differs" is established; the
+  full technical comparison is out of scope for this stub).
+- **The FPU.** Amix requires a hardware FPU and ships **no soft-float build** ✅. A 68040 or 68060
+  has an on-chip FPU, but the context-save model differs from the 68881/68882 the kernel expects, so
+  FPU handling is kernel-side work too 🟡. The **68LC060** has no FPU at all — so even a working
+  060 kernel would additionally need software floating point before it could run stock userland 🟡.
+- **Exception handling.** Bus-error and other exception stack frames differ by CPU family, and the
+  kernel's fault paths are written for the frames a 68030 produces 🟡. (For how load-bearing exact
+  frame behaviour is on this platform, see [emulation fidelity](emulation-fidelity.md), where a
+  single mis-built 68030 frame word was enough to corrupt files silently.)
+
+None of the three is exotic in isolation; together they are a kernel port, and the Amix kernel is
+**source-free** for most of the code involved — see
+[reverse-engineering the kernel](../drivers/kernel-reverse-engineering.md) for what working on it
+without source actually costs.
+
+## What is being worked on
+
+- **Community work toward 040/060 support exists** 🟡. As of this writing there is **no published,
+  bootable 040 or 060 Amix kernel** that we can point at or verify, so this page states nothing about
+  its content or its prospects. If and when something is publicly released, it will be documented
+  here from public sources like anything else.
+- **An 040-MMU emulation lane** is in progress on our side, in the
+  [Z3660 firmware fork](emulation-fidelity.md) — the same codebase that already ships a working
+  **68030 PMMU emulator** that boots Amix on real hardware ✅. Adding an 040 MMU model there is
+  integration work plus an exception-frame debugging campaign; none of the 030 campaign's
+  frame-level results transfer 🟡. Note what this lane does and does not buy: it would let an *040
+  kernel* be **exercised** on the accelerator, but it does not by itself make one exist.
+- **A software-FPU investigation is contingent, not scheduled** 🟡 — it is triggered only if a
+  booting 040/060 kernel appears, and its goal is a real 68LC060 (no hardware FPU).
+
+## What this page does not claim
+
+Explicitly, so that nothing here gets quoted as more than it is:
+
+- **Not** that 040/060 support is coming, or that anyone has a date. 🔴 Any such claim is
+  unverified.
+- **Not** that the A4000's processor works. The separate, verified finding that Amix boots fine on
+  the **AGA chipset** with an AGA-aware bootstrap ROM is about the *chipset*, and it was proven with
+  a 68030 + AGA configuration — the CPU wall is unmoved ✅. Do not conflate the two; see
+  [hardware](hardware.md#the-aga-white-screen-was-a-kickstart-problem-not-an-amix-limit).
+- **Not** that a 68040/68060 accelerator in a supported machine helps. The limit is the CPU the
+  kernel executes on, wherever that CPU lives ✅.
+- **Not** that "68EC" parts are a route around anything — the MMU-less `68EC020`/`68EC030`/`68EC040`
+  variants drop exactly the hardware Amix depends on ✅.
+
+## If you have an 040/060 machine today
+
+Uniformly ✅.
+
+| You have | What runs Amix |
+|---|---|
+| A4000 (68040) | Not stock Amix. An **030 accelerator** plus an AGA-aware Kickstart boots to console; X11 targets the supported display hardware, not AGA. |
+| A3000 with an 040/060 card | Amix on the machine's own 68030, with the accelerator disabled — the kernel must execute on a 68020/68030 with a real MMU. |
+| A 68060 accelerator with a software-68030 mode | This is the route the [Z3660](../drivers/z3660-scsi-driver.md) takes: the Amix guest executes on a **software 68030 with MMU**, and Amix boots to multiuser on real hardware. The 060 runs the emulator, not Amix. |
+
+## See also
+
+- [Hardware and requirements](hardware.md) — the CPU/MMU/FPU rules and the A4000 consequence, in
+  full, plus the AGA correction.
+- [Quirks and gotchas](quirks.md) — the same limit as a one-line checklist item.
+- [Kernel architecture](kernel-architecture.md) — the HAT/MMU layer the processor cutoff comes from.
+- [Emulation fidelity](emulation-fidelity.md) — what a 68030-with-MMU emulator has to get exactly
+  right, and how quietly it fails when it does not.
+- [Real hardware](../getting-started/real-hardware.md) — the supported-machine shopping list.
+- [Glossary](glossary.md) — MMU, FPU, HAT.
+
+## Sources
+
+- `sources/research-brief.md` §2 (hardware and requirements: 68020/030 + real MMU + 68881/68882
+  mandatory; no 68040/68060; no A4000) — grounding for the headline limit ✅.
+- The [hardware](hardware.md) and [kernel architecture](kernel-architecture.md) pages of this site,
+  which this stub extends rather than restates: the "kernel predates the 68040 MMU / the MMU model
+  differs" finding, the no-soft-float requirement, and the AGA-versus-CPU correction ✅.
+- The **Z3660** Amix-interop firmware fork — the shipped 68030 PMMU emulator that boots Amix on a
+  real A4000 + Z3660, and the not-yet-wired 040/060 MMU model in the same codebase ✅ (the emulator
+  is first-party and cited, not reproduced here; see [emulation fidelity](emulation-fidelity.md)).
+- The existence of third-party community work toward 040/060 support 🟡 — reported, with **no
+  public, verifiable, bootable artifact** at the time of writing; deliberately documented without
+  further detail.
 
 
 ================================================================================
@@ -721,10 +1022,10 @@ Evidence the HAT layer is live in the shipped kernel: the install bootstrap on `
 
 Two hard memory facts follow from this layer ✅:
 
-- **16 MB Fast RAM ceiling**, hard-coded in the kernel. Exceeding it **mis-maps the SCSI drive** ✅.
+- **16 MB Fast RAM ceiling**, hard-coded in the kernel. Exceeding it **mis-maps the SCSI drive** ✅. (A separate, far-higher limit on total *describable* RAM fails silently — see [the RAM ceiling](ram-ceiling.md).)
 - **No Zorro III.** The memory-mapping layer cannot address Zorro III space, and that source was never shipped, so it cannot be community-fixed — Amix is **Zorro II only** ✅.
 
-The processor cutoff is set by this same MMU dependency: the kernel **predates the 68040 MMU**, so there is **no 68040/68060 support**, and an **A4000 cannot officially run Amix** ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md).
+The processor cutoff is set by this same MMU dependency: the kernel **predates the 68040 MMU**, so there is **no 68040/68060 support**, and an **A4000 cannot officially run Amix** ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md); for the current 040/060 situation see [Amix on 68040 and 68060](68040-68060-status.md).
 
 ### The kmem allocator — what a driver can assume ✅
 
@@ -1405,7 +1706,7 @@ status: draft
 
 Amix ships the **standard AT&T SVR4 packaging system** — `pkgadd`, `pkgrm`, `pkginfo`, `pkgmk`, `pkgtrans`, and friends — driving a master installed-object database under `/var/sadm`. If you have used SVR4 (or Solaris) packaging, almost everything here is familiar; this page documents the parts that are **Amix-specific or that bite on the shipped 2.1 image**: the exact on-disk layout, the [`contents(4)`](#the-contents4-database) record grammar, the two package media formats, how `pkgadd` mutates the database, and — importantly — a **data-corruption defect on the stock image that breaks `pkgrm` and `pkginfo -l` out of the box** ([F7 below](#the-space-in-a-pathname-defect)).
 
-For the *command* quick-reference (which tools exist, their flags, the `amixpkg` install wrapper), see the [command cheat sheet](../reference/commands-cheatsheet.md#packages-svr4-pkg). This page is the *internals*: what those commands read and write.
+For the *command* quick-reference (which tools exist, their flags, the `amixpkg` install wrapper), see the [command cheat sheet](../reference/commands-cheatsheet.md#packages-svr4-pkg). This page is the *internals*: what those commands read and write. For the **remote** side — how a network package repository is laid out, the catalog grammar, and the `apkg` client that consumes it — see [the package repository format](package-repository.md).
 
 Everything here was **reproduced firsthand on a clean Amix 2.1c image** (`uname -a` → `UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, on 2026-07-01. Unless tagged otherwise every claim is **✅ Verified** (observed live on the running system); items resting on community distribution practice are tagged 🟡.
 
@@ -1579,6 +1880,284 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 
 
 ================================================================================
+# FILE: docs/how-it-works/package-repository.md
+================================================================================
+
+---
+title: The Amix Package Repository Format
+summary: How a remote Amix package repository is laid out and consumed — the static tree, the pipe-delimited catalog v1 grammar, the md5 integrity model, the apkg client's three sources (HTTP / mounted medium / raw slice), and the fail-closed publish gates.
+status: draft
+---
+
+# The Amix Package Repository Format
+
+An Amix package repository is a **plain static file tree**: one `catalog` text file plus a `pkgs/`
+directory of ordinary SVR4 datastream packages ✅. There is no server-side software, no database and
+no dynamic index — publishing is an `rsync`, and serving it needs nothing more than a stock web
+server. That is deliberate: the client is a small C89 program running on a 1992 SVR4 box, and the
+simplest thing that can possibly work is the thing that keeps working.
+
+This page documents the **format and the contract** — the tree, the catalog grammar, the integrity
+model, what the client does with them, and the gates on the publish path. For the *local* package
+database that `pkgadd` maintains on the installed system (`/var/sadm`, `contents(4)`, and the
+stock-image defect that breaks `pkgrm`), see [package management](package-management.md). For
+building packages in the first place, see [toolchain and packaging](../drivers/toolchain.md).
+
+> **Licensing note.** The format is open; the *content* is not. The Amix distribution packages are
+> proprietary Commodore material (treated as abandonware, not licensed for redistribution) — a
+> repository that carries repackaged stock packages is a **private, site-local** repository, not a
+> public mirror. See [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) §5.
+> The publish tooling enforces one specific refusal of its own (below); everything else is on the
+> operator.
+
+## Repository layout
+
+Uniformly ✅ (repo source + reproduced locally against a real staging tree).
+
+```text
+<repo>/
+├── catalog                    the index (see below)
+├── catalog.md5                `md5sum`-format checksum line for `catalog`
+└── pkgs/
+    ├── base/                  packages we build ourselves
+    │   ├── APKG-0.1.pkg
+    │   └── APKGENG-1.12.0.pkg
+    ├── stock/                 repackaged distribution packages (site-local only)
+    │   ├── core-2.1.pkg
+    │   └── net-2.1.pkg
+    └── test/                  fixtures for end-to-end client tests
+        └── DEMOLIB-1.0.pkg
+```
+
+Two rules make this work:
+
+- **The `pkgs/` segment is part of the URL, not part of the catalog.** A catalog `filename` of
+  `stock/net-2.1.pkg` is served from `<repo>/pkgs/stock/net-2.1.pkg` ✅. A hand-rolled probe that
+  drops the `pkgs/` segment gets a 404 and mis-reads it as "the payloads were never published" — the
+  client builds the correct URL, so only manual host-side checks fall into this trap. Verify against
+  the client's own catalog, not a guessed path. (Also noted in the
+  [command cheat sheet](../reference/commands-cheatsheet.md).)
+- **The subdirectories are pure metadata.** `base/`, `stock/`, `test/` carry no meaning to the
+  client; they exist because the `filename` field records a relative path, so the tree can be
+  reorganised by regenerating the catalog ✅.
+
+**Package basenames must be unique repository-wide** ✅ — the URL uses the full relative path but
+the client's on-box cache is **flat** and keys on the basename. `name-version.pkg` naming makes this
+true for free.
+
+## The catalog
+
+### Grammar (catalog format v1)
+
+A UTF-8-clean ASCII text file. First line is the version banner; `#` lines are comments; one package
+per line, **pipe-delimited**, no pipes in any field ✅:
+
+```text
+#apkg-catalog 1
+name|version|pkginst|filename|md5|size|deps|category|description[|offset]
+```
+
+| # | Field | Meaning | Notes |
+|---|---|---|---|
+| 1 | `name` | Catalog name — what a user types | Lowercased `PKG` by default; overridable per package |
+| 2 | `version` | Catalog version string | Compared segment-wise (below) |
+| 3 | `pkginst` | The SVR4 `PKG` instance name | **≤ 9 characters** — stock `pkgadd` silently drops longer ones ✅ |
+| 4 | `filename` | Path under `pkgs/`, forward slashes | May contain `/`; validated (below) |
+| 5 | `md5` | 32 hex digits, of the file **as transported** | i.e. of the `.Z` file when compressed |
+| 6 | `size` | Byte size of the same file | Second integrity check |
+| 7 | `deps` | Comma-separated catalog `name`s, or `none` | Resolved recursively |
+| 8 | `category` | Free text (`system`, `application`, `test`, …) | Informational |
+| 9 | `description` | Free text; the only field where spaces are idiomatic | Searched by the client |
+| 10 | `offset` | **Optional.** Decimal byte offset into a raw slice | Only the raw-medium source uses it; a 9-field line leaves it unset and the raw source fails closed on that entry |
+
+Real rows (from the reference staging tree) ✅:
+
+```text
+#apkg-catalog 1
+apkg|0.1|APKG|base/APKG-0.1.pkg|ea72218a454ae57700d254b16e1540b8|115200|apkgeng|application|Remote package client: update/list/search/install over HTTP
+apkgeng|1.12.0|APKGENG|base/APKGENG-1.12.0.pkg|fb2f08f46c6921e979e265c36cece000|2436608|none|application|Heirloom SVR4 pkg tools: tolerant contents parser, removef/pkgask, man pages
+```
+
+### Parsing is defensive, and a bad catalog is rejected whole
+
+The client validates field count, a 32-hex `md5`, a numeric `size`, and a
+`[A-Za-z0-9._+-]`-plus-`/` whitelist on `filename` — because a filename reaches a URL, a shell
+pipeline and a cache path. A leading `/`, any `.` or `..` component, a `//`, or a trailing `/`
+**rejects the entire catalog** rather than the one row ✅. Nothing in a catalog can address anything
+outside the `pkgs/` tree.
+
+**Version comparison** ✅: split on `.` and `-`; numeric segments compare numerically, otherwise
+`strcmp`; a missing segment counts as 0. That is the rule `upgrade` and the already-installed skip
+both use.
+
+### Dependencies are authored, not inherited
+
+Stock Amix package metadata carries **no dependency information at all** — no `depend` files, no
+install scripts ✅. The catalog's `deps` field is therefore **authored**, in a separate host-side
+`deps.conf` the catalog generator reads. Two principles keep that graph honest ✅:
+
+- `core` is the essential base OS and is **never** listed as a dependency — it is always present.
+- **No "you need a compiler" dependencies.** Which compiler (the stock AT&T `cc` or the community
+  GCC) is the user's choice, and installing a source package purely to read it is legitimate.
+
+## Integrity model
+
+**Today: md5 plus size, everywhere, checked before anything is mutated.** ✅
+
+| Artifact | Check |
+|---|---|
+| `catalog` | `catalog.md5` sits beside it; the publisher refuses to publish a catalog that does not match its own checksum file, and re-fetches the served copy afterwards to compare |
+| each package | the catalog's `md5` **and** `size`, verified after staging and before `pkgadd` sees the file |
+| a dependency chain | **every** member is staged and verified before the **first** `pkgadd` runs — a bad source cannot leave a half-installed chain |
+
+The md5 covers the file **as transported**: for a `.pkg.Z` the digest is of the compressed file ✅.
+
+**Planned, not yet implemented** 🟡: a `sha256` field alongside `md5`, plus a detached signature over
+the catalog (minisign/signify family). The reason it is on the roadmap rather than "nice to have" is
+sequencing — retrofitting signatures *after* third-party clients exist never happens, so the scheme
+is meant to land before the repository is public. On the client side sha256 verification is a small
+C addition; the catalog grammar already tolerates extra fields at the end.
+
+## The client (`apkg`)
+
+`apkg` is a single C89 binary (MIT) that reads installed state straight from the stock
+`/var/sadm/pkg` database and drives `pkgadd`/`pkgrm` non-interactively, so it coexists with the
+native tools ✅.
+
+```text
+apkg [-n] [-f] [-v] [-c conffile] [-R root] <verb> [args]
+
+update                  fetch <repo>/catalog -> the local catalog (tmp + rename)
+list [installed|all]    catalog entries with an installed-version column
+search <substr>         case-insensitive match on name|description
+info <name>             full catalog entry + installed state
+download <name>         fetch <repo>/pkgs/<filename> into the cache, md5-verify
+install <name>...       resolve deps -> stage + verify ALL -> pkgadd each
+upgrade <name>          catalog newer than installed: pkgrm old, pkgadd new
+remove <name>           pkgrm wrapper
+```
+
+Exit codes ✅: `0` ok · `1` usage/config · `2` network · `3` verify (md5/size/catalog) · `4`
+`pkgadd`/`pkgrm`/`zcat` failure · `5` dependency cycle or missing dependency.
+
+Configuration is `/etc/apkg.conf`, `key=value`, `#` comments — `repo=`, `cachedir=`, `pkgadd=`,
+`pkgrm=`, `admin=`, `timeout=` ✅.
+
+### Three sources, one format
+
+The `repo=` string is classified **explicitly** — no heuristics, and anything unrecognised is a hard
+error ✅. The same catalog format serves all three:
+
+| `repo=` form | Source | Catalog fetch | Package staging |
+|---|---|---|---|
+| `http://host[:port]/path` | **HTTP** | `GET <repo>/catalog` | download to cache, then verify |
+| `file:///cdrom`, or a bare `/cdrom` | **mounted medium** | copy `<dir>/catalog` | a plain `.pkg` is verified **in place** and handed to `pkgadd` from the medium (no cache copy); a `.pkg.Z` is decompressed into the cache |
+| `raw:/dev/rdsk/...` | **raw slice** (tape / install slice) | read a fixed metadata region at offset 0 | `dd` from the catalog's byte `offset` into the cache, then verify |
+
+Staging is driven by **read cost**: a mounted plain package is read once, not three times. The raw
+slice is *self-describing* — catalog at offset 0, `catalog.md5` at 32768, packages at 512-aligned
+offsets the catalog records — which is what a tape or a from-media install slice looks like ✅.
+
+### HTTP specifics
+
+The client speaks **HTTP/1.0 only**, hand-rolled over BSD sockets ✅:
+
+- `GET` with a `Host:` header (**load-bearing** — the reference repository is virtual-hosted) and
+  `Connection: close`.
+- Headers parsed case-insensitively; `Content-Length` used as a truncation check.
+- Follows **exactly one** 301/302 redirect.
+- Whole-transfer `alarm()` timeout, 60 s by default.
+- IPv4 literals are parsed locally, because the SVR4 `gethostbyname()` need not accept dotted quads.
+- **Plain `http://` only** — no TLS.
+
+**There is no FTP transport in the client** ✅. (FTP appears throughout this project as the *host ↔
+box* development file bridge, and a future public site may offer FTP for browsers, but `apkg` itself
+speaks HTTP, a mounted filesystem, or a raw device — nothing else.) No TLS means a public repository
+must lean on the planned catalog signature for authenticity rather than on the transport.
+
+### Other behaviours worth knowing ✅
+
+- **`.Z` transparency:** a `filename` ending in `.Z` is piped through the box's native `zcat` into
+  the cache before `pkgadd` sees it.
+- **Installed state** is `<root>/var/sadm/pkg/<pkginst>/pkginfo` existing; its `VERSION=` is the
+  installed version. Stock Amix packages predate that convention and read as *unversioned*, which
+  `upgrade` treats as older than any catalog version.
+- **`pkgadd`/`pkgrm` run via `fork`/`execv`**, not a shell — no quoting surface, exact argv logging.
+  The child's stdin is `/dev/null` so the stock 1991 `pkgadd`'s prompts read EOF and abort loudly
+  instead of hanging forever.
+- **An `admin` file** with the interactive checks disabled is shipped alongside the client and passed
+  as `pkgadd -n -a <admin> -d <file> <pkginst>`.
+- **`-R <target>`** prefixes the install target (the "is it installed?" database and `pkgadd -R`)
+  without moving the engine — the engine runs from the installer medium and installs *into* the
+  target. Keep alternate-root paths short: stock SVR4 `libadm` has a fixed-size path buffer that
+  smashes its stack past roughly 105 characters ✅.
+
+## Publishing
+
+Publishing is `rsync` plus verification, in a deliberate order ✅:
+
+1. **Packages first, catalog second** — a client must never see a catalog that references payloads
+   that are not uploaded yet.
+2. The staged `catalog` must match its own `catalog.md5`, or the publish refuses (that catches a
+   stale generator run or a hand-edited catalog).
+3. Removed packages are pruned from the server, so the tree cannot accumulate orphans.
+4. After the sync, the published catalog is **fetched back over plain HTTP** — the same path the
+   client uses — and its md5 compared against the staged copy. A mismatch is a non-zero exit.
+
+### The fail-closed content gate
+
+The publish path also refuses, unconditionally, to push **kernel packages** ✅. Those packages carry
+a whole `/stand/unix` plus the second-stage boot loader; that payload is proprietary-derived, so it
+is private-only and may never reach a redistributable tree.
+
+Two details make the gate trustworthy rather than decorative:
+
+- **It keys on `pkginfo` markers, not on pathnames.** An earlier pathname-keyed version condemned
+  *stock* packages, which legitimately ship `/stand` members as original distribution content. The
+  markers are parameters the kernel-package build mints for exactly this purpose, so the refusal
+  matches kernel packages precisely.
+- **It fails closed and has no `--force`.** The publisher syncs every package present in staging
+  (not merely the catalogued ones), so a hand-added or stale-catalog kernel package would otherwise
+  reach the server. If the scan cannot even run, the publish refuses rather than proceeding
+  unverified.
+
+**Planned** 🟡: an explicit, separately-confirmed `--public-release` override for the day a genuinely
+public repository ships distribution content deliberately — with the fail-closed gates remaining the
+default, so nothing proprietary can leak *accidentally*.
+
+## See also
+
+- [Package management](package-management.md) — the *local* side: `/var/sadm`, the `contents(4)`
+  grammar, how `pkgadd` mutates the database, and the stock-image defect that breaks `pkgrm`.
+- [Toolchain and packaging](../drivers/toolchain.md) — `pkgproto` → `pkgmk` → `pkgtrans` → `pkgadd`,
+  i.e. how the `.pkg` files in `pkgs/` are built.
+- [Command cheat sheet](../reference/commands-cheatsheet.md) — the `pkg*` command table and the
+  `pkgs/`-segment URL gotcha.
+- [Filesystems and disks](filesystems-and-disks.md) — `cdfs`, which is what makes the mounted-medium
+  source reach an optical disc.
+
+## Sources
+
+- The **amix-packagemanager** repository (the reference implementation of everything on this page)
+  ✅: `docs/design.md` §2 (client verbs, config keys, catalog format v1, HTTP client, version
+  compare), §2a (the three package sources and the self-describing raw layout) and §5 (repo tools);
+  `src/apkg/README.md` (HTTP/1.0 details, catalog validation whitelist, flat-cache basename
+  requirement, `fork`/`execv` install path, `-R` semantics); `tools/repo/gen-catalog.py` (catalog
+  emission, the `#apkg-catalog 1` banner, the 9-character `PKG` limit, `--raw` offsets);
+  `tools/repo/publish.sh` (publish ordering, the `catalog.md5` precondition, the marker-keyed
+  private-content refusal with no `--force`, the post-publish HTTP re-fetch and md5 compare);
+  `tools/repo/deps.conf` (the authored dependency graph and its two principles).
+- A **real staging tree** inspected locally (2026-07-26): 32 catalog rows over `stock/` (27),
+  `base/` (3) and `test/` (2), catalog md5 `edeba578b73fc892f3c8c5ede603aca7` ✅.
+- The stock-metadata facts the authored dependency graph rests on (no `depend` files, no install
+  scripts, `CLASSES=none`) — bench-verified on a live Amix 2.1c image, and recorded on the
+  [package management](package-management.md) page ✅.
+- Roadmap items (sha256 + catalog signature; the `--public-release` override) are **planned, not
+  implemented** 🟡 — recorded here so the format's evolution is predictable, not as current
+  behaviour.
+
+
+================================================================================
 # FILE: docs/how-it-works/quirks.md
 ================================================================================
 
@@ -1599,9 +2178,9 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | # | Quirk | Tag | Deeper coverage |
 |---|---|---|---|
 | 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
-| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive | ✅ | [Hardware](hardware.md) |
+| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive. A second, far-higher limit — total *describable* RAM, ~128 MB computed — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
 | 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside TT0) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
-| 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md) |
+| 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md), [040/060 status](68040-68060-status.md) |
 | 5 | **Superkickstart dual-boot** by holding the right mouse button at power-on | ✅ | [Boot process](boot-process.md) |
 | 6 | **DNS resolution is OFF by default** (`/etc/hosts` only) | ✅/🟡 | [Networking](networking.md) |
 | 7 | **Y2K bugs**: `setclk` `%02d` year + kernel date cap at 1999 | ✅/🟡 | [Versions](../reference/versions.md), [Patch ADF anatomy](../boot-disks/anatomy-patch-adf.md) |
@@ -2122,7 +2701,8 @@ boot ("brel") format ✅. Part of the on-box kernel build: native `cc`/GCC → E
 through HAT ✅; the install kernel even carries the panic string
 `hat_vtokp_prot: user addr in kernel space` ✅. The MMU requirement is why Amix needs MMU emulation
 in WinUAE and cannot run on MMU-less CPUs or the 68040 (whose MMU the kernel predates) ✅. See the
-[kernel architecture](kernel-architecture.md) and [hardware](hardware.md).
+[kernel architecture](kernel-architecture.md), [hardware](hardware.md), and the current
+[040/060 status](68040-68060-status.md).
 
 ## kernel.c
 
@@ -2314,7 +2894,7 @@ All of the following are required for a *clean* boot. The four bolded rows are t
 
 - **MMU ON / JIT OFF** — these two are a pair. Amix is one of the very few classic-Amiga OSes that *requires* the MMU, and JIT and the MMU emulation do not coexist for it. JIT on → panic ✅.
 - **More Compatible OFF** — counter-intuitive, because for AmigaOS games you usually want it ON. For Amix it triggers a boot-time freeze 🟡.
-- **16 MB Fast RAM ceiling** — the kernel hard-codes the limit. Exceeding 16 MB does not just waste RAM; it **mis-maps the SCSI controller**, so the symptom looks like a disk problem, not a memory problem ✅.
+- **16 MB Fast RAM ceiling** — the kernel hard-codes the limit. Exceeding 16 MB does not just waste RAM; it **mis-maps the SCSI controller**, so the symptom looks like a disk problem, not a memory problem ✅. (Far past this rule sits a second, *silent* limit on total describable RAM — see [the RAM ceiling](../how-it-works/ram-ceiling.md).)
 - **SCSI ID 4 = tape, ID 6 = disk.** The **tape ID 4 is hard-coded** (the scripts read `/dev/rmt/4h` and look nowhere else); the **disk ID 6 is convention** — the installer prompts for the disk target and computes the boot partition from `c${SCSI}d0s${BOOTPART}`. Use 6: it's the universal default and gets baked into the installed device names (`/etc/vfstab`), so you'd only have to undo it later. ✅/🟡
 - **Which *controller* for the install disk + tape — put both on the A3000 onboard SCSI.** ✅ (2026-07-05) WinUAE emulates the **A4091 (53C710)** for **tapes** (TAPEEMU) but **not for hard disks** — a hardfile attached at `scsi6_a4091` is never seen by the installer's SCSI scan ("No hard disks attached", RDB or not). Put the target disk on the **A3000 onboard SCSI** (`scsi_a3000=true`, hardfile at `scsi6_a3000`); it is detected and installs. And keep the **tape on the same controller as the disk** — `/dev/rmt/4hn` (the `ct` tape) routes to **card 0**, so with the A3000 SCSI enabled (card 0) and an A4091 also present (card 1), a tape left on the a4091 gives `A3000 Internal SCSI: tape ct4: SCSI timeout / cannot open`. Both on the A3000 SCSI (card 0) → a full install (disk detect → partition → tape read → package install → reboot into the laid-down system) works.
 
@@ -2462,6 +3042,7 @@ The boot/root/patch floppies and the scanned manuals are **proprietary Commodore
 - [Install walkthrough](install-walkthrough.md) — the end-to-end boot/root/tape/patch install flow.
 - [Running Amix in Amiberry](emulation-amiberry.md) — Amiberry 8.x runs and installs Amix too.
 - [Hardware and requirements](../how-it-works/hardware.md) — the SCSI-ID rules and 16 MB ceiling these settings exist to satisfy.
+- [The Amix RAM ceiling](../how-it-works/ram-ceiling.md) — what happens far *past* the 16 MB rule, and why it is silent.
 - [Quirks](../how-it-works/quirks.md) — the hard-coded limits (ID 6 / ID 4, 16 MB, no JIT) summarized.
 
 ## Sources
@@ -2668,6 +3249,7 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
 - [Install walkthrough](install-walkthrough.md) — the end-to-end tape install (works on Amiberry 8.x, WinUAE, and FS-UAE).
 - [Amix on WinUAE](emulation-winuae.md) / [Amix on FS-UAE](emulation-fs-uae.md) — the other UAE-family targets.
 - [Hardware & requirements](../how-it-works/hardware.md) — why the SCSI IDs and RAM ceiling are fixed.
+- [The Amix RAM ceiling](../how-it-works/ram-ceiling.md) — the separate total-describable-RAM limit (debug windows, Zorro III RAM) and its silent failure.
 - [Putting Amix on your real LAN](networking-on-the-lan.md) — A2065 networking on Amiberry.
 - [The A4091 / 53C710 SCSI driver](../drivers/a4091-53c710-driver.md) — the native driver that makes the emulated A4091 usable (and bootable) under Amix.
 
@@ -3046,7 +3628,8 @@ install will not complete.
   `BPART` derives from `/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
 - **SCSI tape on ID 4** — the distribution device is `/dev/rmt/4h` ✅.
 - **Fast RAM:** 4 MB minimum, **16 MB maximum** — the kernel hard-codes the ceiling, and exceeding it
-  mis-maps the SCSI drive ✅. Set the emulator's Fast RAM to ≤ 16 MB.
+  mis-maps the SCSI drive ✅. Set the emulator's Fast RAM to ≤ 16 MB. (Total *describable* RAM has its
+  own, silent limit far above this — [the RAM ceiling](../how-it-works/ram-ceiling.md).)
 - **Disk image size:** roughly 450–900 MB is the usual range for the ID 6 hardfile 🟡; keep individual
   partitions ≲ 1 GB 🟡.
 
@@ -3350,7 +3933,7 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 
 For the full hardware story — supported SCSI/graphics/network/serial cards, the AUTOCONFIG mechanism, the RAM-ceiling failure mode — see [the hardware reference page](../how-it-works/hardware.md).
 
-**On the Z3660 accelerator, the 16 MB contract is enforced in firmware, not left to you.** ✅ When the Z3660's Amix-interop mode is enabled, its emulator hard-wires a single 16 MB memory window (compile-time fixed — there is no config knob to raise it) and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
+**On the Z3660 accelerator, the 16 MB contract is enforced in firmware, not left to you.** ✅ When the Z3660's Amix-interop mode is enabled, its emulator hard-wires a single 16 MB memory window (compile-time fixed — there is no config knob to raise it) and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. (The dummy bank is guarding the separate total-describable-RAM limit — see [the Amix RAM ceiling](../how-it-works/ram-ceiling.md).) The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
 
 **The Z3660's effective config is two layers — the preset overlay wins.** ✅ `z3660cfg.txt` declares the `hdfN` disk-image files, but the active `presets/presetN.txt` (chosen by `presets/preset.txt`) **overrides every key it sets** — boot mode, `amix_mode`, the Kickstart choice, and the `scsiN <hdf-index>` assignments — and the env parser handles only the `scsiN` indices, never `hdfN` declarations. The practical trap: editing `z3660cfg.txt` alone to re-map which image sits on which SCSI ID is **silently inert** when a preset carries `scsiN` lines. Change both layers (declare the image in the base, remap the SCSI ID in the active preset), and always confirm from the firmware's own boot print — it logs the effective join as `[CFG]`/`[ENV] SCSIn assigned to …`.
 
@@ -6259,7 +6842,7 @@ The Amix install path is package-driven ✅. The `root.adf` install scripts wrap
 
 For getting *additional* software onto a running system, two community distribution forms dominate ✅:
 
-- **AmixBP** — Michael Parson's bundle of **40+ re-bundled `.pkg` packages**, hosted on **amigaunix.com/downloads** ✅. This is the practical "package repository" for Amix add-ons. (Do not redistribute the packages here; point users to amigaunix.com.)
+- **AmixBP** — Michael Parson's bundle of **40+ re-bundled `.pkg` packages**, hosted on **amigaunix.com/downloads** ✅. This is the practical "package repository" for Amix add-ons in the *download-a-bundle* sense — distinct from the machine-readable catalog+client repository format documented on [the package repository page](../how-it-works/package-repository.md). (Do not redistribute the packages here; point users to amigaunix.com.)
 - **`zoo`-compressed `cpio`** — an alternative archive form used to ship software when a full `.pkg` isn't available ✅. Unpack with the on-box `zoo` and `cpio`.
 
 The patch disk uses a related (but distinct) self-extracting mechanism — a 1 KB shell header, an SVR4 ASCII `cpio` (`070701`) archive, and a bundled `lha` unpacking `archive.lha` — documented in the [patch ADF anatomy](../boot-disks/anatomy-patch-adf.md). That is the model to study if you want to build a custom self-extracting add-on disk.
@@ -10648,7 +11231,8 @@ relative to a `pkgs/` segment, so the real URL is `<repo>/pkgs/stock/foo.pkg`, n
 `<repo>/stock/foo.pkg`. A hand-rolled probe that drops the `pkgs/` segment gets a 404 and
 mis-reads it as "the payloads were never published" — the client itself builds the correct URL, so
 only manual host-side checks fall into this. Verify against the client's own catalog, not a guessed
-path.
+path. Full format spec — tree, catalog grammar, integrity model, client behaviour:
+[the package repository format](../how-it-works/package-repository.md).
 
 ---
 
@@ -11269,7 +11853,7 @@ You regenerate `llms-full.txt` with the bundled script after any content change:
 
 ```sh
 tools/gen-llms-full.sh
-# wrote .../llms-full.txt (NNNNN bytes, 37 pages, 0 missing)
+# wrote .../llms-full.txt (NNNNN bytes, 52 pages, 0 missing)
 ```
 
 `tools/gen-llms-full.sh` resolves paths relative to the repo root, prepends a header that points back at `sources/research-brief.md`, and walks a fixed `order=( … )` array. A non-zero "missing" count in its output means a page in the reading order does not exist yet — that is expected while the site is being filled in, but it should reach **0 missing** for a complete corpus.
@@ -11336,7 +11920,7 @@ Before you finish a page edit, confirm:
 
 - [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — repo contract: grounding, fact-confidence tags, `## Sources` requirement, front matter, licensing boundary, "keep `llms.txt` in sync / run `tools/gen-llms-full.sh`".
 - [`docs/contributing/style-guide.md`](style-guide.md) — page skeleton, headings, relative links, tags.
-- [`tools/gen-llms-full.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/gen-llms-full.sh) — the generator for `llms-full.txt`; its `order=()` array is the canonical reading order (37 pages).
+- [`tools/gen-llms-full.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/gen-llms-full.sh) — the generator for `llms-full.txt`; its `order=()` array is the canonical reading order (52 pages).
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §0 (source-of-truth hierarchy, confidence tags) and the §1 versions example (2.2 / 2.1c-1994 lore as 🔴).
 - The `llms.txt` convention: <https://llmstxt.org/> (Jeremy Howard, Answer.AI, Sept 2024).
 

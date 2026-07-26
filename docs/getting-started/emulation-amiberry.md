@@ -190,6 +190,7 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
 - [Install walkthrough](install-walkthrough.md) — the end-to-end tape install (works on Amiberry 8.x, WinUAE, and FS-UAE).
 - [Amix on WinUAE](emulation-winuae.md) / [Amix on FS-UAE](emulation-fs-uae.md) — the other UAE-family targets.
 - [Hardware & requirements](../how-it-works/hardware.md) — why the SCSI IDs and RAM ceiling are fixed.
+- [The Amix RAM ceiling](../how-it-works/ram-ceiling.md) — the separate total-describable-RAM limit (debug windows, Zorro III RAM) and its silent failure.
 - [Putting Amix on your real LAN](networking-on-the-lan.md) — A2065 networking on Amiberry.
 - [The A4091 / 53C710 SCSI driver](../drivers/a4091-53c710-driver.md) — the native driver that makes the emulated A4091 usable (and bootable) under Amix.
 

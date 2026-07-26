@@ -86,7 +86,8 @@ boot ("brel") format ✅. Part of the on-box kernel build: native `cc`/GCC → E
 through HAT ✅; the install kernel even carries the panic string
 `hat_vtokp_prot: user addr in kernel space` ✅. The MMU requirement is why Amix needs MMU emulation
 in WinUAE and cannot run on MMU-less CPUs or the 68040 (whose MMU the kernel predates) ✅. See the
-[kernel architecture](kernel-architecture.md) and [hardware](hardware.md).
+[kernel architecture](kernel-architecture.md), [hardware](hardware.md), and the current
+[040/060 status](68040-68060-status.md).
 
 ## kernel.c
 
