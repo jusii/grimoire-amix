@@ -73,23 +73,38 @@ The two are the **same bug class seen from opposite ends**. The producer-side fi
 
 After the consumer-side fix the same workloads produced **zero panics, zero corruption, and a full CD read suite byte-identical to the source ISO** (7/7 files `cmp`-verified host-side). ✅ This is the emulator-side counterpart of the driver-side [direct-vs-bounce gate contract](../drivers/z3660-scsi-driver.md#the-mandatory-bounce-buffer): both the firmware and the driver must agree on **who copies** and on **when the caches are coherent**, or data silently rots at the handoff.
 
-## Desktop-emulator infidelity: the kernel-relink write-path corruption, measured ✅
+## Desktop-emulator infidelity: the kernel-relink corruption, root-caused and fixed ✅
 
 The fidelity concerns above are about emulators *on the real hardware path*. The desktop bench
-emulator (Amiberry) has its own long-known infidelity: **relinking the Amix kernel under
-emulation corrupts the output most of the time** — an ~8 KB block of the linked kernel shifted
-by 8 bytes, randomly placed. This was finally **measured** (2026-07-20) with a fixed-N harness
-on a RAW (non-VHD) disk image: **85% of relink rounds corrupt (17/20)**, confirming the
-historical ~70% working figure and **refuting** the hypothesis that dynamic-VHD block-remapping
-of host-side reads explained it — the corruption is intrinsic to the emulated relink,
-independent of the backing-image format ✅. Two properties matter for anyone building kernels
-on a bench:
+emulator (Amiberry) had its own long-known infidelity: **relinking the Amix kernel under emulation
+corrupted the output most of the time**. It was measured in 2026-07 (**85% of rounds at 8 MB**),
+then **root-caused on 2026-07-26 — and it is a 68030 MMU defect in the emulator, not a linker or
+disk problem.** Full mechanism and damage signature on the [kernel build
+page](../drivers/kernel-build.md#the-d245-boot-breaker--an-intermittent-ld-corruption); the short
+version, because it generalises to any emulator running a demand-paging guest:
 
-- Every linked-but-corrupt round kept the symbol table **clean** (`nm -h -u` empty) — the
-  corruption is invisible to symbol-level checks; only a **recurring-checksum** gate catches it
-  (a clean `ld` output is byte-deterministic; corruption is random and unique) ✅.
-- **D245-class corruption is emulation-only**: the real A4000+Z3660 links deterministically —
-  every metal-proven kernel was linked on the box or on real hardware without a gate ✅.
+- The bus-fault format-`$B` frame packs `mmu030_state[2]` and `wb3_status` into one 16-bit word;
+  the `RTE` restored the **whole word** into `mmu030_state[2]`, so an in-`RTE` re-fault built its
+  frame over a **stale** write-back status and undid an `(An)+` side effect **twice** — a silent
+  4-byte address-register rewind, mid-copy, no exception ✅.
+- Every event hit the guest kernel's `MOVES.L (A0)+` **copyin** loop, so the victim was the
+  kernel's copy of the linker's `write()` buffer. **`ld` was innocent throughout** ✅.
+- Fixed by masking the restore to its real 8-bit width (both `RTE` variants): 55–59% → **0/39**
+  with paging traffic unchanged. The defect existed in **upstream WinUAE** too and was reported
+  there; the maintainer's own fix is equivalent and measured 40/40 clean ✅.
+
+Three properties remain worth carrying, independent of the fix:
+
+- The rate was **configuration-dependent** — 85% at 8 MB motherboard RAM, pooled **0/354** on a
+  16 MB config — and **measurement suppressed it** (adding I/O around each link drove 85% → 28%).
+  Never quote an emulation-corruption rate without its memory config and capture mode ✅.
+- Corrupt kernels kept the symbol table **clean** (`nm -h -u` caught **0 of 21** captured
+  corruptions; `checkunix` 7, relocation analysis 15, **byte-diff 21/21**). Symbol-level gates are
+  not sufficient; byte-diff against a known-good link is the only complete oracle ✅.
+- **This class of bug is emulation-only and silent**: real hardware links deterministically, the
+  guest's own checkers see nothing, and the guest survives enormous numbers of malformed fault
+  frames without complaint (~142k in-`RTE` re-faults per measured run). An emulated OS that
+  "mostly works" can still be quietly corrupting data under paging pressure ✅.
 
 ## Where this was discovered
 

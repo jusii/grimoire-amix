@@ -260,26 +260,51 @@ The longword breaks down as: `0x52454C41` = ASCII `"RELA"`; setting bit 31 (`AT_
 "unrecoverable" flag exec ORs into a deadly alert) yields `0xD2454C41`, displayed as `D245 4C41` in
 the Guru requester. ✅
 
-### What it actually is — `ld`'s write path corrupts the output ~70% of the time ✅
+### What it actually is — an emulator MMU defect, **not** `ld` ✅ (root-caused 2026-07-26)
 
-✅ The real fault is an **intermittent corruption introduced when `ld` writes the linked kernel to
-disk**. About **70% of `make` runs** shift **one ~8 KB block of the output by 8 bytes**, at a
-random offset. If that shift lands in `.symtab` or `.rela.*`, the boot relocator chokes → `D245`:
+🔴 **Superseded attribution.** This page previously said the corruption was introduced "when `ld`
+writes the linked kernel to disk". That was wrong, and so was every variant of it: **`ld` is
+innocent** and computes correct output every time. The corruption is injected by the *emulator*,
+inside the guest kernel's copy loop, while the guest is demand-paging.
 
-| Where the 8-byte shift lands | Effect at boot |
-|---|---|
-| `.symtab` | a reloc-referenced symbol gets a garbage `st_shndx` → `symvaddr` COMPLAIN → **D245** ✅ |
-| `.rela.*` | garbage relocation type/offset → `relocsection` COMPLAIN → **D245** ✅ |
-| `.text` / `.data` | wrong code/data, **no D245** — boots but is subtly broken / may wild-branch ✅ |
+✅ **The mechanism.** On the 68030, a bus-fault format-`$B` stack frame packs two unrelated fields
+into the 16-bit word at frame offset `0x34`: `mmu030_state[2]` in the low byte and the write-back
+status `wb3_status` in the high byte. The emulator's `RTE` extracted `wb3_status` correctly but
+restored the **whole word** into `mmu030_state[2]`. When the `RTE`'s own retry access faulted
+again — routine under heavy paging, rare otherwise — the next frame was built carrying the
+**stale** `wb3_status`, so an `(An)+` post-increment side effect that had already been undone was
+undone a **second** time: a silent 4-byte rewind of an address register, mid-copy, with no
+exception raised.
 
-✅ It is **code-independent**. The same source relinked 10× gave **3 byte-identical clean** builds
-(all `sum -r` = the same value) and **7 corrupt** builds, each with a *different* `sum`. Copying the
-*same* file with `cp`, `dd`, or FTP is **always clean**, which localises the corruption to `ld`'s
-own write path (emulated-disk or SVR4 `ld` buffer interaction).
+Every observed event landed at one guest PC: the Amix kernel's `MOVES.L (A0)+` **copyin** loop. So
+what actually happened is that the *kernel's copy of `ld`'s `write()` buffer* was rewound — which
+is why the damage looks like a linker bug, why `cp`/`dd`/FTP of the same bytes are always clean
+(no paging pressure, no faults), and why real hardware never shows it.
 
-🟡 The **root layer is unconfirmed** — whether it originates in the emulated disk write, the SVR4
-`ld` buffering, or their interaction is not yet pinned down, and this has not been observed on real
-hardware. Keep it 🟡: it is reproduced in emulation but the underlying mechanism is inferred.
+✅ **What the damage looks like** (this supersedes the "~8 KB block shifted by 8 bytes" description,
+which was one small-delta member of a wider family): every damaged region is a **byte-exact
+displaced copy of content from earlier in the same file**. Per-region displacements measured
+12–9012 bytes, always a multiple of 4, **never** a multiple of the guest page size (2048 B), and
+constant across page boundaries — which is precisely what excludes every page-granular explanation
+(lost dirty page, wrong swap slot, stale frame, recycled buffer). Damage begins at file offset
+≡ `0x19f`–`0x1a4` (mod 2048) and ends on an 8192 boundary.
+
+✅ **The rate is configuration-dependent, and quoting one number is a mistake.** At `a3000mem_size=8`
+it reproduces at **85%** of relinks; on the standing **16 MB** bench config the same measurement
+pooled **0/354** (95% upper bound 0.84%). Measurement itself suppresses it: adding I/O around each
+link drove the observed rate 85% → 45% → 35% → 28%. Always state the capture mode with the rate.
+
+✅ **Fixed.** Masking the restore to the field's real 8-bit width (both `RTE` variants) takes the
+8 MB corruption rate from 55–59% on matched controls to **0/39**, with the fault/paging traffic
+unchanged — i.e. it removes the damage, not the workload. The defect was present in upstream WinUAE
+as well as Amiberry; it was reported upstream and the maintainer's own fix (masking the local
+immediately after the two halves are separated) compiles to byte-identical code and measured
+**40/40 clean**.
+
+✅ **What was ruled out along the way**, each by measurement rather than argument: the emulator's
+disk stack (every guest write replayed byte-exactly and every logged read returned disk truth, at
+both 8 and 16 MB), `ld`'s inputs (byte-identical between a clean and a corrupt round), and the
+MMU's own fault-resume machinery and descriptor `M`-bit handling.
 
 ### The fix — build until the checksum is stable ✅
 
@@ -323,7 +348,29 @@ linked-but-corrupt round kept `nm -h -u` **empty**: the ~8 KB block-shift never 
 symbol table, so **sum-recurrence is the load-bearing arm** of the gate for SCSI/combined
 kernels (the nm-empty arm covers the larger cdfs kernel's distinct silent-symbol-drop mode).
 One round in 20 was the separate intermittent `ld` "Unresolved Symbol" nolink mode, which the
-gate's retry already handles ✅.
+gate's retry already handles ✅. (That 85% is the **8 MB** figure; see the configuration
+dependence above.)
+
+**Oracle coverage, scored against 21 real captured corruptions (2026-07-25) ✅.** This is the
+number that matters when choosing a gate, and it is uncomfortable:
+
+| Oracle | Caught |
+|---|---|
+| `nm -h -u` (undefined symbols) | **0 / 21** |
+| `checkunix` (symtab `st_shndx`) | 7 / 21 |
+| `relsim` / relocation-record analysis | 15 / 21 |
+| **byte-diff against a known-good link** | **21 / 21** |
+
+**Six of the 21 passed `checkunix` *and* relocation analysis together** — i.e. the bar a
+combined-kernel gate used would have called them STABLE. Adding a relocation-record arm to that
+gate takes the miss count from 6 to 2; it does not take it to zero, because a pure `.text`-content
+displacement is invisible to every symbolic check. **Byte-diff against a reference link is the only
+complete oracle.** Read a green symbolic gate as "not corrupt in any way visible from here", never
+as "byte-correct".
+
+Note also that `relsim`-class tools must **fail closed**: a kernel whose section-header table is
+damaged (the dominant shape — the table is the last ~400 bytes of `relocunix` and gets overwritten
+wholesale) can crash the analyser rather than being reported as corrupt.
 
 ### Who is exposed to a cross-toolchain bug — the build-model boundary ✅
 
