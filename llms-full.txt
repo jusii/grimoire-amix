@@ -218,7 +218,35 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 In emulation this translates directly to "set Fast RAM to 16 MB (not less, not more)." See [the WinUAE config table](../getting-started/emulation-winuae.md).
 
-_Sources: amix-packagemanager bench-RAM investigation 2026-07-22 (kernel sum-r 42265; digests independently recomputed via `tools/repo/altroot_attest.py`); the 8 MB livelock + 16 MB clean runs reproduced on Amiberry._
+**The mechanism behind the ceiling — and what actually happens past it ✅ (root-caused 2026-07-26).**
+The kernel's `page_init()` describes physical memory with a `page[]` array sized from the total RAM
+the boot path reports, allocated with `rmalloc()` out of the kernel virtual map — **and the result
+is never checked for NULL.** Present a large enough memory window and the arithmetic runs away:
+in the measured case a 528 MB total needed a 15,162,420-byte array against roughly 4 MB of map
+left, `rmalloc()` returned NULL, and `page_init()` then walked a **60-byte stride starting from
+physical address 0** — straight across chip RAM, Zorro-II I/O space, the CIAs and the custom
+chipset. The practical total-RAM ceiling is **≈128 MB**.
+
+Two consequences worth internalising:
+
+- **The failure is silent.** No panic, no Guru, **no console output at all** — the machine simply
+  never gets anywhere. It presents identically to a dead driver, a bad kernel or missing hardware,
+  which is exactly how it cost one project a long-standing "early hang" mystery attributed to a
+  SCSI driver for months. If an Amix guest produces *zero* output on a config you just gave more
+  memory to, suspect the memory before the driver.
+- **It is not emulation-specific.** The unchecked allocation is in the kernel, so any way of
+  presenting too much RAM — an emulator's debug/DDR window, a large Zorro III RAM board, an
+  accelerator's onboard memory — reaches the same code. (A Zorro III board is the more dangerous
+  route: it is AutoConfig RAM counted straight from the memory list, rather than inherited from the
+  Kickstart sizer.) This is the mechanism under the folklore that Amix wants "chip RAM plus 4–16 MB
+  of motherboard Fast RAM and nothing exotic".
+
+_Sources: amix-packagemanager bench-RAM investigation 2026-07-22 (kernel sum-r 42265; digests
+independently recomputed via `tools/repo/altroot_attest.py`); the 8 MB livelock + 16 MB clean runs
+reproduced on Amiberry. The `page_init()` mechanism was read live out of a running emulator
+(`/proc/<pid>/mem` + m68k disassembly: `pages` = 0, fault offset an exact multiple of the 60-byte
+stride) during a 2026-07-26 root-cause of an emulated-rig hang, with a six-run ablation showing the
+same kernel booting to multiuser once the window was bounded._
 
 ### SCSI target IDs
 
