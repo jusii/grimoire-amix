@@ -4250,12 +4250,13 @@ number that matters when choosing a gate, and it is uncomfortable:
 | `relsim` / relocation-record analysis | 15 / 21 |
 | **byte-diff against a known-good link** | **21 / 21** |
 
-**Six of the 21 passed `checkunix` *and* relocation analysis together** — i.e. the bar a
-combined-kernel gate used would have called them STABLE. Adding a relocation-record arm to that
-gate takes the miss count from 6 to 2; it does not take it to zero, because a pure `.text`-content
-displacement is invisible to every symbolic check. **Byte-diff against a reference link is the only
-complete oracle.** Read a green symbolic gate as "not corrupt in any way visible from here", never
-as "byte-correct".
+**A symbolic two-arm bar (`nm` + `checkunix`) passes 14 of those 21** — it would have declared
+two-thirds of them STABLE. Adding a relocation-record arm takes that to **6**. It does not take it
+to zero, because a pure `.text`-content displacement is invisible to every symbolic check.
+**Byte-diff against a reference link is the only complete oracle** (and where a gate can use it,
+`sum -r` recurrence also scores 21/21 — every corrupt link had a unique checksum — which is why
+that arm stays load-bearing on the kernels where it converges). Read a green symbolic gate as "not
+corrupt in any way visible from here", never as "byte-correct".
 
 Note also that `relsim`-class tools must **fail closed**: a kernel whose section-header table is
 damaged (the dominant shape — the table is the last ~400 bytes of `relocunix` and gets overwritten
