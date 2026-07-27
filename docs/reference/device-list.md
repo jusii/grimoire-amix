@@ -36,29 +36,13 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 > check your own `cdevsw[]` in `master.d/kernel.c` and renumber (driver + `mknod`) as needed — the
 > zz9000 INSTALL.md itself tells you to verify 49 is free first ✅.
 
-### Major-number registry (cross-tree coordination)
+### Major-number registry — moved to its own page
 
-Because there is no authority that allocates majors, this section consolidates **every known claim
-across the community trees** so anyone [composing a multi-driver kernel](../drivers/kernel-composition.md)
-can pick a genuinely free slot. The *claims* are facts ✅ (from the driver repos above); the
-*reservations* are this project's proposed convention, offered for coordination — not something any
-stock or community kernel enforces.
-
-| Char major | This family tree | isoriano1968 tree | asokero tree | Coordination note |
-|---|---|---|---|---|
-| **47** | *(kept free)* | hydra `hya` | — | treat as **reserved for hydra** |
-| **48** | `z3660eth` / `zen0` | `random` | — | ⚠ **collision** — see below |
-| **49** | *(kept free)* | zz9000 | — | treat as **reserved for zz9000** |
-| **50** | *(kept free)* | `sad` | — | treat as claimed |
-| **68** | *(kept free)* | — | va2000 | treat as **reserved for va2000** |
-
-Proposed convention: new drivers from this family pick majors **≥ 51** (skipping 68), leaving the
-community claims above intact. The **48 collision** (`z3660eth` vs the zz9000-author's `random`
-device) only bites when drivers from both trees are linked into *one* kernel — at merge time one
-side must renumber (driver constant + `mknod`); `z3660eth`'s 48 is the one already burned into
-real-hardware-proven kernels and shipped `/dev/zen0` nodes on this family's images, so the
-practical resolution is renumbering the experimental `random` device. Stock majors (console 0,
-`/dev/scsi` 11, floppy block 16, SCSI disk block 18 / char 40, par 21) are never reusable.
+The cross-tree claim map outgrew this page. **[The Major-Number Registry](major-number-registry.md)**
+now carries every known `cdevsw[]`/`bdevsw[]`/`vfssw[]`/AutoConfig claim across the community trees —
+including the **two live collisions** (stock `mx` vs `hydra` at char 47; `z3660eth` vs the unpublished
+`random` at char 48), the free ranges (51–67, 69; `CDEVSIZE` = 70 so nothing above 69 exists), and the
+conventions for adding a driver ✅. Pick your slot there.
 
 ### Minor-number encoding for the SCSI disk (major 18)
 
@@ -157,7 +141,7 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev/mem` | Physical-memory device; `lszorro` opens it and `mmap()`s AutoConfig windows ✅ | ✅ |
 | `/dev/scsi` | `gsioctl` raw-SCSI-command passthrough, **char major 11** (`scsi.c:gsioctl`); used by the `gsio` userspace tool to send arbitrary CDBs — *not* the block path (block 18 / char 40) ✅ | ✅ |
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
-| `aen0` | A2065 Ethernet **network interface** (not a `/dev` node — an `ifconfig` name) ✅ | ✅ |
+| `aen0` | A2065 Ethernet **network interface** (an `ifconfig` name, not a `/dev` node — but the underlying `aen` LANCE driver **does occupy char major 18** in `cdevsw[]`; see the [registry](major-number-registry.md)) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
 | `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-48 driver) ✅ | ✅ |
 

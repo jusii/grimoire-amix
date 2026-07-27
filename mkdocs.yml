@@ -109,6 +109,7 @@ nav:
   - Reference:
       - Version matrix: reference/versions.md
       - Device & card list: reference/device-list.md
+      - Major-number registry: reference/major-number-registry.md
       - Command cheat sheet: reference/commands-cheatsheet.md
       - Bibliography & sources: reference/bibliography.md
   - Contributing:

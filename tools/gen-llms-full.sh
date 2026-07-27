@@ -60,6 +60,7 @@ order=(
   docs/boot-disks/build-pipeline.md
   docs/reference/versions.md
   docs/reference/device-list.md
+  docs/reference/major-number-registry.md
   docs/reference/commands-cheatsheet.md
   docs/reference/bibliography.md
   docs/contributing/style-guide.md

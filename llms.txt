@@ -66,6 +66,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 ## Reference
 - [Version Matrix](docs/reference/versions.md)
 - [Device & Card Reference](docs/reference/device-list.md)
+- [Major-Number Registry](docs/reference/major-number-registry.md): every known cdevsw/bdevsw/vfssw/AutoConfig claim across the community trees — the two live collisions, the free ranges (51–67, 69), and the conventions for adding a driver.
 - [Command Cheat Sheet](docs/reference/commands-cheatsheet.md)
 - [Bibliography & Sources](docs/reference/bibliography.md)
 

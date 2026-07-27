@@ -153,7 +153,7 @@ Before a driver is admitted into a shared family kernel, it must pass all five g
    it provably cannot displace that family's root controller from card 0 (register only on positive
    identification; remember `SDCARDS = 2` and the address sort).
 3. **Major number registered.** The driver's `cdevsw[]`/`bdevsw[]` major must be recorded
-   collision-free in the [major-number registry](../reference/device-list.md) — community trees have
+   collision-free in the [major-number registry](../reference/major-number-registry.md) — community trees have
    already collided on major 48 ✅.
 4. **Size delta checked.** Against the A3000-class DMA-reach hazard for installed-system kernels,
    and against the compressed floppy budget for any kernel that ships on a boot floppy.

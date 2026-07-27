@@ -104,6 +104,7 @@ Case studies: [va2000](drivers/case-studies/va2000.md) ·
 ### Reference
 [Versions](reference/versions.md) ·
 [Device & card list](reference/device-list.md) ·
+[Major-number registry](reference/major-number-registry.md) ·
 [Command cheat sheet](reference/commands-cheatsheet.md) ·
 [Bibliography](reference/bibliography.md)
 

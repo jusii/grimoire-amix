@@ -60,7 +60,7 @@ You regenerate `llms-full.txt` with the bundled script after any content change:
 
 ```sh
 tools/gen-llms-full.sh
-# wrote .../llms-full.txt (NNNNN bytes, 52 pages, 0 missing)
+# wrote .../llms-full.txt (NNNNN bytes, 53 pages, 0 missing)
 ```
 
 `tools/gen-llms-full.sh` resolves paths relative to the repo root, prepends a header that points back at `sources/research-brief.md`, and walks a fixed `order=( … )` array. A non-zero "missing" count in its output means a page in the reading order does not exist yet — that is expected while the site is being filled in, but it should reach **0 missing** for a complete corpus.
@@ -127,6 +127,6 @@ Before you finish a page edit, confirm:
 
 - [`AGENTS.md`](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — repo contract: grounding, fact-confidence tags, `## Sources` requirement, front matter, licensing boundary, "keep `llms.txt` in sync / run `tools/gen-llms-full.sh`".
 - [`docs/contributing/style-guide.md`](style-guide.md) — page skeleton, headings, relative links, tags.
-- [`tools/gen-llms-full.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/gen-llms-full.sh) — the generator for `llms-full.txt`; its `order=()` array is the canonical reading order (52 pages).
+- [`tools/gen-llms-full.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/gen-llms-full.sh) — the generator for `llms-full.txt`; its `order=()` array is the canonical reading order (53 pages).
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §0 (source-of-truth hierarchy, confidence tags) and the §1 versions example (2.2 / 2.1c-1994 lore as 🔴).
 - The `llms.txt` convention: <https://llmstxt.org/> (Jeremy Howard, Answer.AI, Sept 2024).
