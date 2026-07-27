@@ -11855,13 +11855,22 @@ kernel's ABI, so it still needs recording.
 | 9 | `namefs` | stock ✅ |
 | 10 | `fdfs` | stock ✅ |
 | 11 | `nfs` | stock ✅ |
-| **12** | **`cdfs`** (this family) — appended last | claimed 🟡 — see note |
+| **12** | **`cdfs`** (this family) — appended last | claimed ✅ |
 
-> 🟡 **Unresolved index.** Counting the shipped table's rows directly gives `cdfs` = **12** (with
-> `INCLUDE_RFS` on, as shipped; 11 with it off) ✅ for the count itself. But
-> `amix-cdfs/docs/packet-c-bench-results.md` records it as **index 11**, with stock as 0–10. The
-> two differ by exactly the `rfs` row. **Resolve with the cdfs owner before promoting this row to
-> ✅.** The safe statement, true either way: **`cdfs` is appended as the last `vfssw[]` row** ✅.
+> ✅ **Index resolved 2026-07-27: `cdfs` = 12.** The staged `master.d/filesys.c` defines
+> `INCLUDE_RFS` **unconditionally in the file itself**, immediately above the `#ifdef` guarding the
+> `rfs` row — so `rfs` (index 4) always compiles, stock rows are 0–11 (`nfs` at 11), and the
+> appended `cdfs` row is **12**. No build knob ever turns `INCLUDE_RFS` off (the kerntools fstype
+> staging only appends the row; it never touches the guard). Confirmed at the binary level: the
+> `vfssw` tables dumped out of two independently linked kernels during the a3091 bounce
+> investigation are identical row for row, cdfs last at 12
+> (`amix-kerntools/docs/a3091-bounce-boot-patch.md`) ✅. The competing figure — "index 11, stock
+> 0–10" in `amix-cdfs/docs/packet-c-bench-results.md` (since corrected) — was a static miscount
+> that treated the `#ifdef INCLUDE_RFS` row as not compiled; excluding `rfs` yields exactly 11/0–10,
+> which is how the discrepancy arose. That doc's load-bearing claim (row appended **last**, no
+> index shift of stock rows) was true all along. Note the index is **load-bearing for nothing**:
+> `cdfsinit()` self-locates its row by *name* at boot and records the index it finds
+> (`cdfs_fstype`), and mount matches by name — by design, cdfs works at either index ✅.
 
 New filesystems should likewise **append**, never insert — inserting renumbers every type above it.
 
@@ -11950,6 +11959,9 @@ friendliest pattern for a shared kernel and the one this project recommends.
   @ `dcb7d24`, and this project's relink tree. A full diff between them shows five hunks, all hydra.
 - `usr/sys/master.d/filesys.c` — `vfssw[]` rows, read from this project's staged tree with `cdfs`
   appended.
+- `amix-kerntools/docs/a3091-bounce-boot-patch.md` — the 2026-07-26 a3091 investigation's binary
+  `vfssw` table dumps from two independently linked kernels (cdfs last, index 12) — the
+  measurement that resolved the 11-vs-12 index question.
 - `/usr/sys/amiga/alien/contrib/mx/{kernel.c.mx,README}` — the stock Amix 2.1 MAX-125 contrib
   driver's major-47 claim, `int2_tbl[]` and `io_poll[]` entries (present in two independently
   obtained copies of the stock tree; files dated 1992-03-21).
