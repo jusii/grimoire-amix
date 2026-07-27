@@ -106,6 +106,99 @@ Three properties remain worth carrying, independent of the fix:
   frames without complaint (~142k in-`RTE` re-faults per measured run). An emulated OS that
   "mostly works" can still be quietly corrupting data under paging pressure ✅.
 
+
+## The cycle-exact core: a correct emulator default that Amix does not survive ✅
+
+**Not every emulator-side Amix death is an emulator defect. A hand-written UAE-family config that
+simply never mentions cycle-exactness selects the *cycle-exact* 68030 core — and an Amix guest dies on
+it at PID 1** ✅. Omission is not neutral here: it is a choice, and it is the wrong one.
+
+The failure is a good imitation of a guest, driver or memory-map bug. The kernel boots normally —
+banner, device configuration, root mounted — and then:
+
+```text
+NOTICE: User BUS ERROR at E0001770, PC:C100F35E FAULT:6 PID:1 CMD:/sbin/init
+```
+
+That signature was on record for a day as a suspected interaction between a rig's extra RAM at
+`0x08000000` and an accelerator board, with a memory bisect proposed as the next move. It is neither ✅.
+
+### Why omission selects it ✅
+
+In Amiberry, `default_prefs()` (`src/cfgfile.cpp`) initialises **all three** cycle-exact flags `true`:
+
+```c
+p->cpu_cycle_exact = true;
+p->cpu_memory_cycle_exact = true;
+p->blitter_cycle_exact = true;
+```
+
+and nothing in the plain config-load path lowers them ✅. `buildin_default_prefs()` *does* clear all
+three, but it is reached only via `built_in_prefs()`, which the parser calls only for a `quickstart=`
+line. `target_default_options()` also clears them — but **only when the host's `amiberry.conf` sets
+`default_disable_cycle_exact`**, which itself defaults to `false`. So **the effective default is
+host-dependent**: the same `.uae` can select different CPU cores on two machines ✅. That is a second,
+independent reason to pin the key rather than trust any default — and it is why a config can be
+"verified working" on one host and kill the guest on another.
+
+### `cycle_exact=false` is the one key that clears all three ✅
+
+The parser reads four non-equivalent keys; picking the wrong one leaves the trap half-armed ✅:
+
+| Key | Effect |
+|---|---|
+| `cpu_cycle_exact` | sets `cpu_cycle_exact`, copies it to `cpu_memory_cycle_exact`; leaves the blitter flag alone |
+| `blitter_cycle_exact` | sets only the blitter flag — **does not touch the CPU flags** |
+| `cpu_memory_cycle_exact` | when false, also forces `blitter_cycle_exact` and `cpu_cycle_exact` false |
+| **`cycle_exact`** | parsed against `{ "false", "memory", "true" }` — **`false` clears all three in one line** |
+
+So `cycle_exact=false` is what to pin; `blitter_cycle_exact=false` alone would leave the cycle-exact
+CPU core enabled and fix nothing ✅. The file is parsed top-to-bottom and the last matching key wins,
+which is why a GUI-saved config emits `cycle_exact` *after* the other three — its trailing
+`cycle_exact` is the authoritative one ✅.
+
+### The pre-boot host-log tell — check this first, every time ✅
+
+There is a reliable read-out **before the guest boots at all**. Every Amix config here disables sound
+(`sound_output=none` / `produce_sound=0`), and on that combination `fixup_prefs()` (`src/main.cpp`)
+prints, right after the config-load line and *before* `KS ver =`:
+
+```text
+Cycle-exact mode requires at least Disabled but emulated sound setting.
+```
+
+That line is emitted **only** when `cpu_memory_cycle_exact` survived config load, so on a
+sound-disabled Amix config it is a direct read-out of whether the trap is armed ✅. Across 16 host logs
+from the session that found this it discriminates perfectly: present in **all 6** runs whose config
+omitted the key, absent in **all 10** that pinned `cycle_exact=false` — including all three logs of
+the memory bisect that was the dead end. The line naming the real cause was in the host log the whole
+time ✅.
+
+A quieter second consequence, worth knowing whenever a config seems to be ignored: `fixup_prefs()`
+also forces **`cpu_compatible = true`** whenever `cpu_memory_cycle_exact` is set — so a config asking
+for `cpu_compatible=false` (which Amix wants) silently does not get it ✅.
+
+### Why it stayed hidden, and the rule ✅
+
+A GUI-saved config always writes all four keys, so every config derived from the GUI or from a golden
+image already carries `cycle_exact=false` — the default had never been exercised. A hand-written
+config does not, and the omission **does not appear in a config diff against a GUI-saved file as a
+changed value** — only as one absent key among ~138 other absent keys ✅.
+
+> **The rule: a hand-written `.uae` is guilty until proven otherwise.** Derive from a GUI-saved or
+> known-good config when you can; when you must hand-write one, pin `cycle_exact=false` explicitly
+> with a DO-NOT-REMOVE comment naming the trap ✅.
+
+Two boundaries on this finding, stated so nobody over-reads it:
+
+- **It is not an emulator defect.** The emulator implements what the config asked for. Changing
+  `default_prefs()` would be an upstream-facing behaviour change affecting every user, and is a
+  separate decision ✅.
+- **Why the cycle-exact core kills Amix specifically has not been root-caused** — the ablation
+  established *that* it does (10 boots, same image and same kernel throughout, including the run that
+  added `cycle_exact=false` and nothing else and reached multiuser), not *why*. Treat "the cycle-exact
+  68030 core is not an Amix-capable core" as a measured operational fact, not an explained one.
+
 ## Where this was discovered
 
 These findings come from running Amix on the **Z3660**, a Zorro III **68030/68060-class accelerator** built around a Xilinx **Zynq-7000** SoC, whose firmware emulates the 68k with a **UAE-4.4.0-derived software CPU (with MMU)** running on the Zynq's ARM cores. So a real **A4000 + Z3660** executes Amix on that software 68030 emulator — which is exactly why the emulator-core fidelity above is load-bearing on *real hardware*, and was verified there: Amix 2.1 cold-boots to a **multiuser root login** (confirmed on the HDMI console and over telnet, `uname -a` → `UNIX_System_V … 2.1c … m68k`), reproduced on a real A4000 + Z3660 (2026-06). ✅
@@ -125,6 +218,9 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
 - [Running Amix in WinUAE](../getting-started/emulation-winuae.md) — the reference emulator's MMU/JIT/SCSI settings (the *knobs*; this page is the *why*).
 - [Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md) — the driver-vs-emulator triage method behind the first-generation fixes.
 - [Quirks](quirks.md) — the emulator-hang and interrupt-storm gotchas as one-line checklist items.
+
+- [Amix on Amiberry](../getting-started/emulation-amiberry.md) — the config keys, including the
+  mandatory `cycle_exact=false`.
 
 ## Sources
 

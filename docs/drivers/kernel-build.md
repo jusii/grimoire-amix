@@ -425,48 +425,105 @@ Two more SVR4-box gotchas that bite build scripts ✅:
 - **SVR4 `grep` has no `\|` alternation** — use separate `grep` invocations instead of one
   alternation pattern. (This is in addition to the pre-POSIX `/bin/sh` limits noted above.)
 
-## Building an a4091 (or a4091 + cdfs) kernel — two required kernel patches
+## The A3000 onboard-SCSI DMA bounce patch — nearly every kernel needs it ✅
 
-Building a working **a4091** kernel — and, above all, an a4091 **+ cdfs** kernel — needs **two**
-`amix-a4091` kernel patches, both under `src/kernel-patches/` ✅:
+**If your kernel boots by reading its root disk through the A3000 onboard SCSI, it needs the
+`a3091.c` chip-mem DMA bounce patch — whatever else is in it.** ✅ This is not an A4091 requirement
+and not a cdfs requirement, though it was documented as both for months: `a3091.c` is the **A3000
+onboard** SCSI driver (super-DMAC + WD33C93 at `0xDD0000`), it is in the stock `amiga/alien` Makefile,
+and it links into **every** kernel. It lives under `amix-a4091/src/kernel-patches/` only because that
+project did the work ✅.
 
-- **`scsi.c.patch`** enlarges the userspace `/dev/scsi` **GSIO** bounce iobuf to **64 KB** ✅. The
-  GSIO path bounces every transfer through this iobuf — which is why userspace `/dev/scsi` reads can
-  be multi-sector even though the *in-kernel* SCSI path cannot (see the DMA gotcha below).
-- **`a3091.c.patch`** (commit `e70c1d7`; `patch -p0` on `amiga/alien/a3091.c`) adds a high-address
-  DMA **bounce** to the A3000 onboard SCSI **super-DMAC** (WD33C93 at `0xDD0000`) ✅. Stock
-  `startdma()` set `device->sac = cp->addr` — the caller's 32-bit buffer address — **directly, with
-  no bounce**, unlike the A2091-card sibling `a2091.c`, which bounces any buffer ≥ `0x1000000`
-  (16 MB) through `AllocMem(cp->tc, MEMF_CHIP)` (copy-out before a write, copy-back after a read,
-  freed in `stopdma`). The patch ports that same chip-mem bounce into `a3091.c`.
+**`a3091.c.patch`** (commit `e70c1d7`; `patch -p0` on `amiga/alien/a3091.c`) adds a high-address DMA
+**bounce**: any buffer at or above `0x1000000` is copied through a per-unit chip-RAM buffer, which is
+always DMA-reachable. Stock `startdma()` sets `device->sac = cp->addr` — the caller's 32-bit buffer
+address — **directly, with no bounce**, unlike the A2091-card sibling `a2091.c`, which already bounces
+any buffer ≥ `0x1000000` (16 MB) through `AllocMem(cp->tc, MEMF_CHIP)` (copy-out before a write,
+copy-back after a read, freed in `stopdma`). The patch ports that same chip-mem bounce into
+`a3091.c` ✅.
 
-### The `s5mountroot VOP_OPEN error 6` panic — why a *bigger* kernel stops booting
+**Who is exposed** ✅:
 
-Without `a3091.c.patch`, adding the in-kernel **cdfs** filesystem (~64 KB of kernel) is by itself
-enough to break the boot with ✅:
+| Rig | Roots through | Needs the patch? |
+|---|---|---|
+| Any emulated bench box (`c6d0s1`, card 0) | A3000 onboard SCSI | **Yes** — regardless of which add-on HBA the kernel carries |
+| A4091 bench profiles | A3000 onboard SCSI (A4091 sorts to card 1) | **Yes** |
+| Real A4000 + Z3660, root on the piscsi mailbox | the Z3660 | No — `a3091` is linked but never carries the root read |
 
-```
+That last row is why the defect survived so long: **the metal-proven kernels were never exposed to
+it**, so a build path that silently skipped the patch produced kernels that were fine on real
+hardware and unbootable on every bench box ✅.
+
+> **Build-harness note.** A patch keyed to a *driver repo* is only applied when that repo is part of
+> the build. Keying this one to `amix-a4091` meant `build-kernel.sh <some-other-driver>` silently
+> omitted it — a boot-critical patch skipped by an unrelated repo-selection rule. If your harness
+> selects patches by repo, mark this one **unconditional** and fail closed when its file is
+> missing ✅.
+
+### The `s5mountroot VOP_OPEN error 6` panic — how to read it ✅
+
+Without the bounce patch, a kernel that roots through the A3000 can fail like this ✅:
+
+```text
 s5mountroot VOP_OPEN error 6
-PANIC vfs_mountroot errno 30
+WARNING: nfs_mountroot called
+PANIC: vfs_mountroot: cannot mount root: errno 30
 ```
 
-The trigger is **size/layout, not a cdfs code bug** ✅. Growing the kernel pushes `getrdb()`'s static
-RDB buffer (the `union block` in `sdpart.c`) up to a higher address, **past the super-DMAC's reach**;
-the boot root-device read then DMAs to an address the super-DMAC can't hit and **returns all-zeros**,
-so `sdopen()` fails `ENXIO` → `s5mountroot VOP_OPEN error 6`. Proof it is size-driven: a
-section-matched, code-**inert** cdfs stub of the same size panics identically, and the a4091-only
-"golden" kernel (same `scsi.c.patch`, no cdfs) boots fine ✅.
+**Read the first line, not the last** ✅. `rootfstype` is the empty string in every kernel here, so
+`vfs_mountroot` *iterates* `vfssw[1 .. nfstype-1]`, calls each row's mountroot op, stops at the first
+that returns 0, and prints the **last** return value it saw. So:
 
-**Savestate-diff root cause** ✅: comparing an Amiberry savestate of the *booting* golden kernel
-against the *panicking* cdfs kernel, the same RDB buffer held a valid `RDSK`/`PART` block named
-`UNIX_Root` in the golden kernel but was **all-zeros** in the cdfs kernel (now at a higher VA —
-~`0x078F…` vs ~`0x078E…`), while `queue[0].f` (the registered card's dispatch function) was
-**populated in both**. So the card is registered (autoconfig is fine) — the **DMA read itself** is
-what fails. With `a3091.c.patch` the a4091 + cdfs kernel boots both **warm and cold** and mounts a CD
-byte-exact ✅.
+- **`errno 30` is not diagnostic.** It is whatever the last `vfssw` row returned — with cdfs linked
+  that row is cdfs, and a read-only filesystem declining a root mount with `EROFS`(30) is
+  unremarkable. On a kernel without cdfs the same panic prints whatever `nfs_mountroot` returned.
+  **Don't chase errno 30** ✅.
+- **`s5mountroot VOP_OPEN error 6` is the whole story.** `s5` is row 1, tried first. `error 6` is
+  `ENXIO` **from opening the root block device**, before any filesystem question is asked — so `ufs`
+  (row 2, the actual root type) fails identically one line later, silently, and the walk runs off the
+  end. A healthy boot prints **neither** line ✅.
 
-Unlike the **D245 boot-breaker** (a *random* `ld` write corruption, covered above), this failure is
-**deterministic and genuinely size-triggered**.
+**The mechanism** ✅. `ddopen()` (`amiga/alien/dd.c`) has two `ENXIO` sources — `sdopen()` (no
+controller on that card) and `sdpartition()` (the RDB/PART walk). `sdpartition()`
+(`amiga/alien/sdpart.c`) reads the RigidDiskBlock into a **file-static 512-byte buffer**
+(`static union block block;`) and `dd.c`'s `startio()` hands the SCSI layer `vtop()` of that kernel
+static as the DMA destination. With stock `a3091.c` the super-DMAC is pointed straight at it; when
+that address is one the DMAC cannot reach, **the transfer completes without an error and the buffer
+reads back all-zeros** — no `RDSK`, so `getrdb()` walks all 16 blocks and returns `ENXIO`.
+
+**Savestate-diff corroboration** ✅ (independent, 2026-07-10): comparing an Amiberry savestate of a
+*booting* kernel against a *panicking* one, the same RDB buffer held a valid `RDSK`/`PART` block named
+`UNIX_Root` in the booting kernel and was **all-zeros** in the panicking one, while `queue[0].f` (the
+registered card's dispatch function) was **populated in both** — so the card is registered and
+autoconfig is fine; the **DMA read itself** is what fails.
+
+#### It is *not* a size threshold — measured ✅
+
+The tempting story is that cdfs (~64 KB) pushes the kernel past a size limit. **It does not.** Section
+sizes read out of four linked kernels, with the load-image offset of `sdpart.c`'s `block` ✅:
+
+| kernel | drivers / patches | loaded image | `block` at | boots? |
+|---|---|---|---|---|
+| `64119` | z3660scsi, **stock** a3091 | 1 016 636 | `0x0EB924` | **yes** |
+| `56225` | z3660scsi + cdfs, **stock** a3091 | 1 087 259 | `0x0FCD04` | **PANIC** |
+| `01159` | a4091 + cdfs, **patched** a3091 | 1 151 887 | `0x0FCD78` | **yes** |
+| `55619` | z3660scsi + cdfs, **patched** a3091, stock `scsi.c` | 1 087 911 | `0x0FCF90` | **yes** |
+
+Read the last row against the second: same builder, same drivers, same cdfs object, a loaded image
+**652 bytes larger** — the only substantive difference is that `a3091.c` bounces — and it boots. Both
+booting cdfs kernels also put the RDB buffer at a **higher** address than the panicking one.
+
+So the failure is not a size threshold, and not "the buffer moved up" as such. It is that **with a
+direct DMA the buffer's address matters at all** ✅. With the bounce it does not, at any address —
+which is why every patched kernel boots from a *higher* buffer address than the unpatched one that
+fails.
+
+The image is not a variable either: a 2×2 over two different base images and two kernels reproduces
+the panic text **and its backtrace addresses exactly** in both panicking cells, and a host-side diff
+of the two images' whole `/usr/sys` is byte-identical **except** `amiga/alien/` ✅.
+
+Unlike the **D245 boot-breaker** (a *random* emulator-injected corruption, covered above), this
+failure is **deterministic**: the same kernel fails the same way every time.
 
 > **Distinct from the error-*5* panic.** This is `VOP_OPEN error 6` (`ENXIO` — a super-DMAC
 > high-address DMA failure). The `s5mountroot VOP_OPEN error 5` (`EIO`) seen on an A4091-only machine
@@ -478,6 +535,23 @@ Unlike the **D245 boot-breaker** (a *random* `ld` write corruption, covered abov
 threshold is `a2091`'s proven-safe cutoff, not a measured `a3091` boundary — and the failing buffer
 sat around VA `0x078F0000`, well above 16 MB, so a plain 24-bit-address story is incomplete. Treat the
 bounce as a safe over-approximation pending real-hardware measurement.
+
+### The separate GSIO `scsi.c.patch` — userspace only ✅
+
+`amix-a4091`'s **`scsi.c.patch`** is a different thing and is **not** a boot requirement: it enlarges
+the userspace `/dev/scsi` **GSIO** bounce iobuf to **64 KB** ✅. The GSIO path bounces every transfer
+through that iobuf, which is why userspace `/dev/scsi` reads can be multi-sector even though the
+*in-kernel* SCSI path cannot (see the DMA gotcha below). The in-kernel `cdfs` read path goes through
+`sdqueue` and does not need it ✅. A kernel that boots **without** `scsi.c.patch` but **with** the
+bounce patch has been built and booted, which is what isolates the two ✅.
+
+> ⚠️ **`scsi.c.patch` plus a patched `a3091` is a latent userland-reachable panic.** With the 64 KB
+> iobuf, `gsioctl()` accepts transfers up to 65 536 bytes; on a bench box all Fast RAM sits at
+> `0x07000000`, i.e. above the patch's `>= 0x1000000` bounce threshold, and a transfer larger than
+> `BOUNCESZ` (one 4 KB page) reaches `panic("a3091: DMA too big")`. The patch's own comment assumes
+> GSIO "bounces through a low kernel iobuf that never trips the `>=0x1000000` test", which is not
+> true on this memory map ✅ (the code facts) / 🟡 (the reachable panic — reasoned from source and the
+> bench memory map, **not yet reproduced**). It ships today in the a4091 bench kernels.
 
 ## Two kernel gotchas that bite any module (found porting cdfs)
 
@@ -582,12 +656,22 @@ partition) was reliable 🟡. Always identity-check *which* kernel actually boot
 - amix-a4091 kernel patches `src/kernel-patches/scsi.c.patch` (userspace `/dev/scsi` GSIO bounce iobuf
   → 64 KB) and `src/kernel-patches/a3091.c.patch` (commit `e70c1d7`) — the A3000 super-DMAC
   high-address chip-mem DMA bounce for buffers ≥ `0x1000000`, ported from the `a2091.c` sibling;
-  evidence = source + Amiberry-savestate differential.
-- The `s5mountroot VOP_OPEN error 6` / `PANIC vfs_mountroot errno 30` boot panic and its size/layout
-  root cause — cdfs (~64 KB) grows the kernel, pushing `getrdb()`'s `union block` RDB buffer
-  (`sdpart.c`) past the super-DMAC's reach; savestate diff shows a valid `UNIX_Root` `RDSK`/`PART`
-  block in the booting golden kernel vs all-zeros in the panicking cdfs kernel, with `queue[0].f`
-  populated in both (amix-a4091 CD-ROM-effort handoff, 2026-07-10).
+  evidence = source + Amiberry-savestate differential (amix-a4091 CD-ROM-effort handoff, 2026-07-10),
+  including the savestate pair showing a valid `UNIX_Root` `RDSK`/`PART` in the booting kernel vs
+  all-zeros in the panicking one with `queue[0].f` populated in both.
+- **Scope correction (2026-07-26/27) ✅** — the **amix-kerntools** root cause
+  (`docs/a3091-bounce-boot-patch.md` @ `05d0d78`, fix `f459afa`). The bounce is required by **every**
+  kernel that roots through the A3000 onboard SCSI, not by a4091 or cdfs kernels specifically:
+  `a3091.c` is the A3000 onboard driver, is in the stock `amiga/alien` Makefile and links into every
+  kernel. The panic is **not size-triggered** — a patched kernel with a **652-byte larger** loaded
+  image boots, and both booting cdfs kernels place `sdpart.c`'s static RDB buffer at a *higher*
+  address than the panicking one; the four-kernel section-size/`block`-offset table, the two-image
+  2×2 (identical panic text and backtrace addresses in both panicking cells; whole-`/usr/sys`
+  byte-identical except `amiga/alien/`) and the `vfs_mountroot` disassembly (empty `rootfstype` ⇒
+  iterate `vfssw`, print the *last* errno ⇒ errno 30 is not diagnostic; `error 6` = `ENXIO` from
+  `ddopen`→`sdpartition`→`getrdb`) are all first-party measurements. Real hardware rooting through a
+  Z3660 is indifferent to the patch, which is why metal never caught it; the 2026-07-11 kernel
+  `52550` that "stopped at `vfs_mountroot`" and was attributed to code staleness is the same defect.
 - amix-cdfs `ad09035` — byte-loop `memset` replacing the SVR4 kernel `bzero` that under-clears a
   > ~1 KB region (tail left as garbage); it bit cdfs twice from one ~1.1 KB struct clear
   (`has_child_link`, `is_relocated`).

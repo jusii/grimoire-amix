@@ -181,6 +181,155 @@ if it barely moves while the box dies, the culprit is **STREAMS `mblk`s**, not t
 **open** issue on the [`z3660eth`](../drivers/z3660-ethernet-driver.md) / TCP network path; cdfs was
 ruled out with these numbers.)
 
+
+A 2026-07-27 soak of 69 530 cdfs mount/read/unmount cycles measured `FAIL=0` in every STREAMS class
+with `use` at baseline, so cdfs is not a source of this ✅; and a *refused* (rather than timed-out)
+connection is the [`inetd` throttle](#the-inetd-anti-looping-throttle--one-service-refuses-connections-while-the-box-is-healthy),
+not this.
+
+## The `inetd` anti-looping throttle — one service refuses connections while the box is healthy ✅
+
+**If telnet answers `Connection refused` while FTP still answers, ICMP is alive, and the console shows
+an undisturbed `login:`, the box is fine — SVR4 `inetd` has disabled that one service because
+something opened 40 connections to it inside 60 seconds** ✅. It re-enables itself within ten minutes
+with no intervention, and it says so only into a log nobody is reading (below). This is the most
+misleading failure shape on a bench Amix box: it was chased for two days as a filesystem/STREAMS wedge
+before being reproduced in four minutes from bare TCP connect/close with the filesystem unmounted ✅.
+
+### The mechanism and its constants ✅
+
+`inetd`'s accept loop counts invocations **per service entry** and, on the 40th inside the window,
+logs a message, closes and deregisters the listening socket, and arms a re-enable alarm. All three
+constants are **compile-time immediates** in the shipped `/usr/sbin/inetd` (Amix 2.1c; 38 228 bytes,
+md5 `ddfbd40aaaa02a1935a5ef6a37879337`, not stripped), read out of its disassembly ✅:
+
+| Constant | Value | Governs |
+|---|---|---|
+| `TOOMANY` | **40** invocations | the trip threshold, counted per service |
+| `CNT_INTVL` | **60 s** | the counting window |
+| `RETRYTIME` | **600 s** | the `alarm()` that re-enables the service |
+
+These match the classic BSD `inetd` values 🟡 — but this build **encodes them as immediates**, which
+is what makes the next section true. The message is
+`<service>/<proto> server failing (looping), service terminated` at **`daemon.err`**, tagged
+`inetd[<pid>]` (`openlog("inetd", LOG_NOWAIT|LOG_PID, LOG_DAEMON)`) ✅.
+
+Three details change how you reason about it ✅:
+
+- **The window is anchored, not sliding.** `se_time` is stamped when the counter is at 1 and the
+  elapsed check runs only once the counter reaches 40, so the real rule is: *the 40th connection of a
+  window trips iff it lands within 60 s of the 1st.* A trailing-60 s counter held under 40 is
+  therefore a sound and conservative guard.
+- **The 600 s re-enable timer is global, not per service.** `retry()` re-`setup()`s *every* service
+  whose listening fd is `-1`, so a second service that trips while the timer is already running does
+  not get its own 600 s. Recovery is "**up to** 600 s"; a recovery much shorter than ten minutes is
+  not evidence against this mechanism.
+- **The refusal you observe lands later than the 40th connect**, because the kernel's listen backlog
+  keeps completing handshakes while `inetd` works through them. Measured first-refusal indexes across
+  four trips: **40, 61, 68, 70** ✅. **40 is the floor and the only safe number to design against** —
+  never calibrate a guard against an observed refusal index.
+
+### There is no knob ✅
+
+**This build exposes no per-service rate cap, by any syntax or flag** ✅ — established three
+independent ways:
+
+- **The `inetd.conf` wait field is a boolean.** `getconfigent()` parses the 4th field with a single
+  full-token `strcmp("wait", …)` and stores 0/1. There is no `se_max` member and no suffix parsing,
+  so the 4.4BSD/Linux **`nowait.<max>` syntax is simply not implemented** ✅.
+- **Live confirmation.** `telnet stream tcp nowait.100 root /usr/sbin/in.telnetd in.telnetd` plus a
+  `SIGHUP` was re-read **without complaint**, telnet kept working — and the service still tripped, at
+  connect #68. The `.100` is **silently ignored**: a config that looks like it worked and did
+  nothing ✅.
+- **No command-line flag either.** Argument parsing is hand-rolled and accepts exactly `-d` (debug),
+  `-s` (standalone, i.e. outside the SAF), and `-t` (log every connection); anything else prints
+  `inetd: Unknown flag -%c ignored.` There is no `-R rate` ✅.
+
+So the only ways to move the threshold are to patch three immediates in a vendor binary, or not to
+trip it. **Don't trip it** — see the operational rule below.
+
+### It is per service — which makes the diagnosis one command ✅
+
+The counter lives in the per-service `servtab` entry, so every `nowait` service in
+`/etc/inet/inetd.conf` has its own independent counter (on the stock image: `ftp`, `telnet`, `shell`,
+`login`, `exec`, `uucp`, `nntp`, `finger`). Measured in both directions on the same box ✅:
+
+- tripping **ftp** (70 rapid connects to :21) → **:21 refused, :23 still open**
+- tripping **telnet** (68 rapid connects to :23) → **:23 refused, :21 still open**
+
+**Port 21 answering while port 23 refuses ⇒ the throttle.** Nothing needs fixing; the service returns
+by itself. It also means you can still pull evidence off the box over FTP while telnet is throttled.
+
+Distinguish it from the two failures it imitates ✅:
+
+| What you see | What it is |
+|---|---|
+| One port **refuses** (`ECONNREFUSED`), another answers, ICMP alive, console healthy | this throttle — wait up to 10 min |
+| Ports **time out**, console prints `ldterm: (ldtermsrv) out of blocks` | STREAMS `mblk` starvation (previous section) 🟡 |
+| Nothing answers and the console is dead | a genuine kernel wedge |
+
+### Why it is silent: `syslogd` ships deliberately disabled ✅
+
+The box *does* report the trip — into a void. Everything the logging system needs is present and
+correct on the stock image: `/usr/sbin/syslogd` (22 728 bytes, May 1992), a valid `/etc/syslog.conf`,
+the eight `/var/log/*` targets (all present, all zero-length, never written), and `/dev/log` +
+`/dev/conslog`. What is missing is the daemon ever starting — **`/etc/init.d/syslogd` line 8 is a
+vendor-hardcoded `exit`** ✅:
+
+```sh
+#
+#TO USE SYSLOGD, COMMENT OR REMOVE THE exit ON THE NEXT LINE:
+exit
+```
+
+`sh -x /etc/init.d/syslogd start` outputs exactly `+ exit`. Note also that this SVR4 logs to
+**`/var/log/*`, not `/var/adm/messages`** ✅ — looking for the latter finds nothing and misleads you
+into "this image has no syslog".
+
+Enabling it is **one commented-out line**, with **no `/etc/syslog.conf` change**: the stock
+`*.notice;kern.none  /var/log/notice` line already selects `daemon.err` ✅.
+
+> 🔗 **Edit with `cp` in place, never `mv`.** `/etc/init.d/syslogd` and `/etc/rc2.d/S70syslogd` are
+> the **same inode** (3 hard links, inode 10261 on the stock image). `mv` replaces the file and
+> silently breaks the `rc2.d` hook, so the fix works once and never again after a reboot ✅. This is
+> the same hazard as the `S69inet` / `inetinit` hardlink noted above.
+
+```sh
+# on the box, as root
+cp /etc/init.d/syslogd /etc/init.d/syslogd.orig
+sed '8s/^exit$/#exit/' /etc/init.d/syslogd > /tmp/sl.new
+cp /tmp/sl.new /etc/init.d/syslogd        # cp, NOT mv -- preserves the inode
+/etc/init.d/syslogd start                 # or reboot; S70syslogd now runs it
+```
+
+Verified end to end — both real trips were then recorded ✅:
+
+```text
+Mar 23 09:51:02 uaeamix inetd[156]: ftp/tcp server failing (looping), service terminated
+Mar 23 10:02:59 uaeamix inetd[156]: telnet/tcp server failing (looping), service terminated
+```
+
+**Measured cost**, over 23 minutes of deliberate abuse (2 trips, ~170 telnet logins, 120 batched
+commands): one daemon, and **293 bytes total across the whole of `/var/log`** ✅ — roughly 80 bytes
+per event, into the eight pre-existing files, with no new files or directories. The 20-minute `mark`
+heartbeat is routed to `/dev/console` **only** by the stock config and never to a file, so its disk
+cost is zero (`syslogd -m 0` disables it outright) ✅. Nothing else broke across the session. To also
+put it on the console, add one line — `daemon.err<TAB>/dev/console`. Reverse it by restoring the
+`exit`.
+
+### The operational rule for anything that drives an Amix box ✅
+
+The throttle only ever fires on **automation**. Any harness that opens a fresh telnet (or FTP)
+session per command reaches 40 in a minute trivially — a `for f in *; do <one login>; done` loop
+self-destructs at the 40th file and then looks dead for ten minutes. Measured: **~30 invocations/min
+never tripped across 200 invocations; ~575/min tripped within seconds** ✅.
+
+- **Hold one session open for a batch** of commands instead of one login per command.
+- Or keep invocations **under ~30 per 60 s, per service** — the same guard is needed on port 21,
+  because a per-file FTP loop trips identically at 40 files.
+- Best for bulk work: **run an on-box script and poll for progress at a low rate.** One soak sustained
+  ~330 filesystem cycles/min at **0.5 telnet logins/min** for three hours with no trips ✅.
+
 ## Serial networking: SLIP is buggy, no PPP
 
 - **PPP is not available** on Amix ✅ — there is no PPP stack to dial out with.
@@ -220,6 +369,8 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
 | PPP | not available | ✅ |
 | STREAMS `mblk` starvation | box wedges (`ldterm: out of blocks`) while `freemem` is fine; tracks session churn — power-cycle, single-session long jobs | 🟡 |
+| **Service refuses connections** (one port only) | `inetd` anti-looping throttle: 40 conns/60 s per service, self-heals ≤ 600 s. Diagnose: port 21 open + port 23 refused ⇒ throttle | ✅ |
+| See the throttle (and every other `daemon.*`) | Comment the `exit` on line 8 of `/etc/init.d/syslogd` (**`cp` in place — 3 hard links**); logs land in `/var/log/notice` | ✅ |
 
 ## See also
 
@@ -247,3 +398,19 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.
 - The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`zen0`, cdevsw 48) for the Z3660's onboard ethernet, **validated on a real A4000 + Z3660, 2026-06-21** ✅ (`ifconfig zen0`, `netstat -in` zero-error, laptop↔box `ping`/`ftp`); the firmware-mailbox protocol, the INT6 storm, and the polled-RX design are on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
 - The **amix-kerntools** bench forensics @ `8a76775` — STREAMS `mblk`-arena exhaustion wedges the box (`ldterm: (ldtermsrv) out of blocks`, `console_get_buffer: out of blocks`; TCP then console echo die) while `freemem` stays ~2100 pages, tracking telnet/FTP session count rather than filesystem load; suspected per-connection/per-packet leak on the network path, driver not yet isolated — real A4000 + Z3660, 2026-07-12, carried **🟡**.
+- The **amix-kerntools** inetd investigation @ `f7d741d` (`docs/inetd-telnet-throttle.md`), 2026-07-27 ✅ —
+  the throttle's constants read out of the shipped `/usr/sbin/inetd` (md5 `ddfbd40aaaa02a1935a5ef6a37879337`):
+  `TOOMANY` 40 / `CNT_INTVL` 60 s / `RETRYTIME` 600 s as compile-time immediates, the `daemon.err`
+  `openlog()` identity, the anchored (not sliding) window, the global re-enable alarm, the absence of any
+  `nowait.<max>` syntax or command-line flag (disassembly **plus** a live `nowait.100` + `SIGHUP` test that
+  still tripped at #68), the per-service independence measured both directions (ftp tripped → 23 open;
+  telnet tripped → 21 open), and the `syslogd` enablement (`/etc/init.d/syslogd` line-8 `exit`, the
+  3-hard-link `cp`-in-place hazard, `daemon.err` already selected by the stock `syslog.conf`, 293 B of
+  growth in 23 min of abuse). Measured on a disposable copy of a golden bench image; the golden masters
+  were never written to.
+- The **amix-cdfs** Packet C wedge soak @ `c3eba7e` (`docs/packet-c-wedge-soak.md`), 2026-07-26/27 ✅ —
+  the discovery story and the rate measurements: the wedge reproduced on the first literal sweep replay
+  with the filesystem loop **paused**; four bare-TCP trips (29.9/min → no trip in 200 invocations;
+  ~550–575/min → trip at 40/61/77); three self-recoveries at 9m48s / 10m11s / 10m00s; FTP up throughout;
+  and the box verified healthy *while refusing* (28 processes, zero `in.telnetd`, STREAMS `fail=0` in
+  every class, the cdfs mount still traversable).

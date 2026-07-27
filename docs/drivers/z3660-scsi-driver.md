@@ -306,6 +306,43 @@ lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS
   divide-by-zero**. This is *why* the driver gates on `P_DRVTYPE ∈ {0,1}` before touching per-unit
   registers. 🟡
 
+## Exercising this driver without the board ✅
+
+The results above are all real-hardware. Since 2026-07 the same driver can also be exercised on a
+desktop bench: a **downstream fork of Amiberry** (not upstream — see the caveat below) emulates the
+Z3660 as a Zorro III board carrying the piscsi mailbox, and a current `z3660scsi` kernel boots on it
+and drives both **disk and CD** units through that mailbox ✅.
+
+> ⚠️ **This is not released Amiberry.** The board emulation lives on a private branch of a fork of
+> [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) (`src/z3660_scsi.cpp`); upstream
+> Amiberry has no Z3660 support and no published build does. The capability is recorded here because
+> it changes what this driver's *documented* coverage rests on, not because you can go and use it
+> today. Everything else on this page is real-hardware and independent of it.
+
+What the facility establishes ✅:
+
+| | |
+|---|---|
+| Guest | Amix 2.1c, **32 MB** guest RAM (`Total Unix memory = 33552384`), well under [the RAM ceiling](../how-it-works/ram-ceiling.md) |
+| Boot/root | the **A3000** onboard SCSI (`c6d0s1`, card 0) — the rig exercises the mailbox as a *second* controller, it does not root through it |
+| Card index | the A3000 sits at `0xdd0000`, the emulated Z3660 in Zorro III space at `0x40000000`; controllers register in AutoConfig **address** order, so the A3000 is always card 0 and the Z3660 card 1 |
+| Disk | ~**261 MB** of mixed raw/UFS read + write traffic through the mailbox, **40** digest comparisons against host truth, **0** mismatches, **0** timeouts, across 8 soak rounds and 2 cold boots |
+| CD | `mount -F cdfs 1,2 /cdrom` on a combined `z3660scsi`+`cdfs` kernel; **6/6** files digest-identical to host truth, repeated on a **second cold boot** (6/6 again) |
+| Not covered | rooting *through* the mailbox (the address sort pins the A3000 to card 0 and the compiled-in `ROOTDEV` names card 0), error/timeout paths, and reselect under contention |
+
+The CD result is the one that mattered: the mailbox is now exercised for the **CD command set**
+(PDT 0x05, 2048-byte blocks), not only for hard disks ✅.
+
+**How "host truth" is established on a box with no `md5`.** Amix has no `md5` and no `cksum`, and an
+FTP **GET** off the box is unreliable above ~1 KB, so neither a strong on-box digest nor a host-side
+byte compare is available out of the box. The bench supplies both halves: a **chunked CRC-32** in K&R
+C, compiled by the box's **own 1992 `cc`**, printing a per-chunk line plus a completion marker (so a
+transcript truncated in flight is not mistaken for a clean digest), and a host twin with identical
+CRC, chunking and output grammar. It is **calibrated first** by pushing a random payload over FTP and
+digesting both sides — which proves the two implementations agree *and* that the FTP **PUSH** path is
+byte-exact — before any on-box digest is allowed to mean anything about a disk ✅. That pattern is
+reusable on any Amix bench, not just this one.
+
 ## Status
 
 | Claim | Status |
@@ -316,6 +353,7 @@ lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS
 | Z2 RTG+SCSI combo (`product 0x03`) variant | ❌ unusable (bounce window decodes to ROM space) ✅ |
 | Firmware serial-breadcrumb lever + unmapped-drive divide-by-zero hazard | 🟡 asserted (no firmware citation / standalone repro) |
 | The pre-fix "hang" | ✅ proven to be a firmware-emulator bug, **not** the driver |
+| Disk **and** CD units over the mailbox, exercised without the physical board | ✅ on a **downstream** Amiberry fork's Z3660 emulation (2026-07-26): ~261 MB / 40 digest comparisons / 0 mismatches on disk; 6/6 CD files digest-identical on two cold boots. Not upstream Amiberry |
 
 ## See also
 
@@ -374,3 +412,14 @@ lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS
 - Delta verified against [`llms-full.txt`](https://github.com/Jusii/grimoire-amix/blob/master/llms-full.txt):
   grimoire documents the Z3660 *ethernet* (`zen0`) and A4091 *53C710* drivers; this page adds the
   previously-undocumented Z3660 *piscsi SCSI* driver.
+- **The emulated piscsi bench** — amix-kerntools `docs/piscsi-rig.md` @ `33ab7c3` (rig stood up in
+  `c1cd679`), 2026-07-26 ✅: a current `z3660scsi` kernel (`sum -r` 64119, four-arm gate green) cold-boots
+  twice to multiuser and LAN on a downstream Amiberry fork's Z3660 board emulation at 32 MB guest RAM;
+  8 soak rounds moved ~261 MB through the mailbox for **40/40** digest matches against host truth with
+  zero timeouts; a combined `z3660scsi`+`cdfs` kernel (`sum -r` 55619) then mounted the mailbox's CD unit
+  (`mount -F cdfs 1,2 /cdrom`) and read all six fixture files digest-identical to `bsdtar`-extracted host
+  truth, on each of two cold boots. Card ordering (A3000 `0xdd0000` = card 0, Z3660 `0x40000000` = card 1)
+  is the AutoConfig address sort. Rooting through the mailbox remains untested.
+- **The board emulation itself is a downstream fork**, not upstream Amiberry: `src/z3660_scsi.cpp` on a
+  workspace branch; `origin/master` (BlitterStudio/amiberry) carries no Z3660 sources. Cited as provenance
+  for the results above, not as an available capability.

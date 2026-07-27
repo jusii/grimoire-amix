@@ -20,7 +20,8 @@
 ;      make Amix a real host on your LAN -- see docs/getting-started/networking-on-the-lan.md
 ;      and tools/host-net/. For simple outbound NAT instead, set:  a2065=slirp
 ;
-; Mandatory or Amix will not boot: MMU on, JIT off, "More compatible" off, 68030 + FPU.
+; Mandatory or Amix will not boot: MMU on, JIT off, "More compatible" off, cycle-exact OFF,
+; 68030 + FPU.
 
 use_gui=yes
 kickstart_rom_file=Kickstart v2.04 r37.175 (1991)(Commodore)(A3000).rom
@@ -32,6 +33,9 @@ fpu_model=68882
 mmu_model=68030
 cpu_compatible=false
 cachesize=0
+; DO NOT REMOVE: omitting this selects the cycle-exact 68030 core (default_prefs() starts it
+; TRUE) and Amix dies at PID 1 with a user bus error. It also makes cpu_compatible=false stick.
+cycle_exact=false
 
 ; --- Chipset / A3000 ---
 chipset=ecs

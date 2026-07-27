@@ -117,6 +117,10 @@ folds in all *admitted* non-storage drivers, because those stack safely:
 | Z3660-family | z3660scsi | z3660eth, cdfs | ✅ in use, real-hardware-proven |
 | *(future)* | — | + admitted community net/fb drivers (hydra, zz9000/va2000 kernel side) | planned |
 
+> **Every** family kernel whose root device hangs off the A3000 onboard SCSI carries the patched
+> `a3091.c`/`a2091.c` stock rows — it is not a property of the A4091 family. See
+> [the bounce patch](kernel-build.md#the-a3000-onboard-scsi-dma-bounce-patch--nearly-every-kernel-needs-it) ✅.
+
 - **Install kernels stay minimal**: source medium + target disk (+ net where the install needs it)
   + cdfs, nothing else. At install time an extra driver is pure probe risk with zero benefit — the
   bench install only worked once its kernel was stripped to a single HBA ✅.

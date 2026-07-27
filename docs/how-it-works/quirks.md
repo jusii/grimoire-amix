@@ -34,6 +34,13 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 18 | **`pkgrm` and `pkginfo -l` fail out of the box on the stock 2.1c image** — one malformed `contents` record (a filename containing a space) aborts every full parse of the package DB (`bad read of contents file … unknown ftype`). Delete that one line to fix both | ✅ | [Package management](package-management.md#the-space-in-a-pathname-defect) |
 | 19 | **`mount(2)` silently *stacks* a second mount on an already-mounted directory** — the second `mount` returns 0, `umount` then pops one layer and returns 0 while the media looks "still mounted": a perfect fake broken-umount. An in-kernel filesystem must refuse it itself. Smoking gun: duplicate fstype lines in `/etc/mnttab` | ✅ | [Driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract) |
 | 20 | **"Password expired" at login is the *future-`lastchg`* check, not max-age** — a dead RTC battery boots the box in 1978; if a previous session set the clock forward, `/etc/shadow`'s `lastchg` is now in the future and SVR4 `login` forces a password change every boot. **Never set the box RTC forward** | ✅ | [Time & Y2K](#20-password-expired-is-the-future-lastchg-check-never-set-the-rtc-forward) |
+| 21 | **A colon-less zoneinfo `TZ` crashes every `tzset()` caller** — `TZ=US/Eastern` gives `User BUS ERROR at 474D5400` (= ASCII `"GMT\0"` dereferenced as a pointer) in `date`, `who -r`, `cron`, `ls -l`…; use the colon form `TZ=:US/Eastern` | ✅ | [Quirks §21](#21-a-colon-less-zoneinfo-tz-crashes-every-tzset-caller) |
+| 22 | **Reused writable test media accumulates state that masks bugs** — acceptance runs must start from fresh media; two green passes were green only because a reused root floppy carried an `/etc/mnttab` written by an earlier, unrelated run | ✅ | [Quirks §22](#22-reused-writable-test-media-accumulates-state-that-masks-bugs) |
+| 23 | **`inetd` disables a service after 40 connections in 60 s** — that port answers `Connection refused` while every *other* port, ICMP and the console stay healthy; it re-enables itself within 10 min. No config knob exists (`nowait.N` is silently ignored). Diagnosis: port 21 open + port 23 refused ⇒ throttle | ✅ | [Networking](networking.md#the-inetd-anti-looping-throttle--one-service-refuses-connections-while-the-box-is-healthy) |
+| 24 | **`syslogd` ships deliberately disabled** — a vendor `exit` on line 8 of `/etc/init.d/syslogd`, so every `daemon.*`/`auth.*` message on the box is discarded. One commented-out line enables it; this SVR4 logs to `/var/log/*`, **not** `/var/adm/messages`. ⚠ that file is one inode with 3 hard links — edit with `cp` in place, never `mv` | ✅ | [Networking](networking.md#why-it-is-silent-syslogd-ships-deliberately-disabled) |
+| 25 | **A hand-written UAE-family `.uae` selects the cycle-exact 68030 core and Amix dies at PID 1** — omitting `cycle_exact` is not neutral, the default is `true` (and host-dependent). Pin `cycle_exact=false`; it also silently overrides `cpu_compatible=false` | ✅ | [Emulation fidelity](emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
+| 26 | **Three diagnostic tools lie or don't work**: `netstat -a` prints `corrupt control block chain` on a perfectly healthy box; `sar -v` fails `sadc: Not enough space`; `ipcs -a` fails `read error: No such device or address`. Don't chase any of them, and don't budget on them for a capture | ✅ | [Quirks §26](#26-three-diagnostic-tools-that-lie-or-do-not-work) |
+| 27 | **`dd skip=` on a `cdfs` file is not an effective seek** — the skipped bytes are really transferred, through the one-sector in-kernel SCSI path, so a read at the 1 GiB mark needs ~20 minutes. Never score that timeout as a read failure | ✅ | [Quirks §27](#27-dd-skip-on-cdfs-is-not-a-seek), [Filesystems & disks](filesystems-and-disks.md#mounting-a-cd) |
 
 The rest of this page expands each item.
 
@@ -113,11 +120,77 @@ This is **independent of the `/etc/domain` weirdness** ✅: a box with an alread
 
 `lo0` is always `127.0.0.1`; `aen0` uses the host's own static address (the one already in `/etc/hosts`). Configuring your own interface should never depend on a name service, so this is the correct design regardless — and DNS for clients/mail/etc. is untouched. Full procedure in [networking](networking.md) and [networking on the LAN](../getting-started/networking-on-the-lan.md).
 
+### 23. `inetd` disables a service after 40 connections in 60 seconds ✅
+
+A port that answers **`Connection refused`** while ICMP, the console and *every other port* stay
+healthy is almost never a wedge. SVR4 `inetd` counts invocations **per service entry** and, on the
+40th inside a 60-second window, logs `<service>/<proto> server failing (looping), service terminated`,
+closes the listening socket and arms a **600-second** re-enable alarm ✅. All three constants are
+compile-time immediates in the shipped `/usr/sbin/inetd` — **there is no config knob**: the
+`inetd.conf` wait field is parsed as a boolean, so the 4.4BSD `nowait.<max>` syntax is **silently
+ignored** (tested: `nowait.100` + `SIGHUP` was accepted without complaint and still tripped) ✅.
+
+Because the counter is per service, tripping telnet leaves FTP up and vice versa — which makes the
+diagnosis one command: **port 21 answering while port 23 refuses ⇒ the throttle** ✅. Nothing needs
+fixing; wait up to ten minutes. It only ever fires on **automation**: a harness that opens one telnet
+(or FTP) session per command reaches 40 in a minute trivially. Hold one session open for a batch, keep
+invocations under **~30 per 60 s per service**, or drive bulk work from an on-box script and poll at a
+low rate. Measured: 29.9/min never tripped in 200 invocations; ~575/min tripped within seconds ✅.
+Full mechanism, constants and the syslog story on
+[networking](networking.md#the-inetd-anti-looping-throttle--one-service-refuses-connections-while-the-box-is-healthy).
+
 ### 14. An unhandled board interrupt storms the kernel ✅
 
 A gotcha for **driver authors**, learned bringing up the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) on real hardware: if a board (or its firmware) raises a CPU interrupt level for which **Amix installs no handler**, the unacknowledged source fires continuously and **hard-locks the machine** ✅. The Z3660 firmware raises Amiga **INT6 (EXTER)** on *every* received ethernet frame, but Amix has no level-6 ethernet handler — so the moment the interface came up, normal LAN **ARP broadcast traffic stormed INT6 and instantly froze the box** (caps-lock LED dead). The whole kernel had booted to `login:` fine; only bringing the interface up triggered it.
 
 **Fix:** disable the board/firmware interrupt and **poll** the receive path instead — `z3660eth` writes the firmware's `ZZ_CONFIG_DISABLE` so INT6 is never raised, and drains RX from a clock-level `timeout()` callout ✅. Interrupt-driven RX would need a level-6 hook the firmware's model doesn't safely give Amix. The general lesson: when adding a driver, don't enable an interrupt source Amix can't service — confirm there's a handler (and an ack path) for that level, or run polled. Full story on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
+
+## Diagnostics & logging quirks
+
+### 24. `syslogd` is present, correct, and deliberately switched off ✅
+
+The stock image has a complete, working logging system that never starts. `/usr/sbin/syslogd`, a valid
+`/etc/syslog.conf`, all eight `/var/log/*` targets and `/dev/log` are present — but
+**`/etc/init.d/syslogd` line 8 is a vendor-hardcoded `exit`** ✅, so the daemon is never started and
+every `syslog(3)` message on the box is written into `/dev/log` with nothing reading it. The comment
+above the line says so out loud: `#TO USE SYSLOGD, COMMENT OR REMOVE THE exit ON THE NEXT LINE:`.
+Consequence: **every `daemon.*` and `auth.*` event this system generates is discarded**, which is why
+failures like [quirk 23](#23-inetd-disables-a-service-after-40-connections-in-60-seconds) look
+inexplicable. Note also that this SVR4 logs to **`/var/log/*`, not `/var/adm/messages`** ✅ — looking
+for the latter finds nothing and yields the wrong conclusion ("this image has no syslog").
+
+Enabling it is one commented-out line and needs **no** `/etc/syslog.conf` change (the stock
+`*.notice;kern.none /var/log/notice` line already selects `daemon.err`) ✅. Measured cost across
+23 minutes of deliberate abuse: one daemon and **293 bytes** total in `/var/log` ✅.
+
+> 🔗 **Edit it with `cp` in place, never `mv`.** `/etc/init.d/syslogd` and `/etc/rc2.d/S70syslogd` are
+> the **same inode** (3 hard links). `mv` replaces the file and silently breaks the `rc2.d` hook, so
+> the fix works once and never again after a reboot ✅ — the same hazard as `S69inet`/`inetinit`.
+
+### 26. Three diagnostic tools that lie or do not work ✅
+
+Recorded so nobody re-chases them, and so nobody plans a capture around them:
+
+- **`netstat -a` prints `corrupt control block chain`** — on a **fully healthy** box. A control run
+  during a known-good session prints the identical message, so it is an Amix `netstat` limitation,
+  **not** evidence of anything ✅. (`netstat -m` likewise answers
+  `Memory information not currently supported`.) `netstat -in` and `netstat -rn` *do* work.
+- **`sar -v` fails** with `sadc: Not enough space` ✅.
+- **`ipcs -a` fails** with `read error: No such device or address` ✅.
+
+The last two are pre-existing tooling gaps on the stock image, not symptoms — don't budget on them
+when planning what to capture from a box in a bad state.
+
+### 27. `dd skip=` on `cdfs` is not a seek ✅
+
+SVR4 `dd`'s `skip=` on a `cdfs` file **really transfers** the skipped bytes rather than seeking past
+them, and the in-kernel `cdfs` read path is capped at **one 2048-byte sector per SCSI transfer** (see
+[the in-kernel DMA cap](../drivers/kernel-build.md#gotcha-in-kernel-scsi-dma-corrupts-transfers-larger-than-one-2048-byte-block)).
+A read at the **1 GiB** mark of a large disc therefore takes **minutes of real transfer** — budget a
+command timeout of about **20 minutes**, not the usual seconds ✅. This matters for scoring as much as
+for patience: the first attempt at such a read was recorded as a **failure** purely because it hit a
+300-second cap ✅. **Never score a timeout on a deep `cdfs` read as a read failure** — re-run it with
+a real timeout before concluding anything.
 
 ## Driver-authoring quirks
 
@@ -181,6 +254,40 @@ there) — the real bug was silent stacking on repeated mounts ✅. Stock filesy
 in-kernel filesystem must do the same (return `EBUSY` on the second mount). **Diagnostic:** count the
 fstype's lines in `/etc/mnttab` — duplicates are the smoking gun. Full contract on
 [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
+
+## Emulation & bench quirks
+
+(Two more emulator gotchas live under driver authoring, because that is where they bite:
+[16 — the machine hung ≠ your driver hung](#16-on-an-emulator-the-machine-hung-your-driver-hung) and
+[17 — instruction-batching and the SCSI bootstrap](#17-an-instruction-batching-emulator-can-hang-the-scsi-bootstrap).)
+
+### 25. A hand-written `.uae` selects the cycle-exact core, and Amix dies at PID 1 ✅
+
+**Omitting `cycle_exact` from a UAE-family config does not leave cycle-exactness neutral — it selects
+the cycle-exact 68030 core**, and an Amix guest does not survive it ✅. Amiberry's `default_prefs()`
+initialises `cpu_cycle_exact`, `cpu_memory_cycle_exact` and `blitter_cycle_exact` **all `true`**, and
+nothing in the plain config-load path lowers them; the only thing that does is a **host-side**
+`default_disable_cycle_exact` in `amiberry.conf`, which itself defaults to false — so **the same
+`.uae` can select different CPU cores on two machines** ✅.
+
+The failure imitates a guest/driver/memory-map bug perfectly. The kernel boots, configures devices and
+mounts root, and then PID 1 dies:
+
+```text
+NOTICE: User BUS ERROR at E0001770, PC:C100F35E FAULT:6 PID:1 CMD:/sbin/init
+```
+
+**Pin `cycle_exact=false`** — it is the one key that clears all three flags (`blitter_cycle_exact=false`
+alone leaves the cycle-exact CPU enabled and fixes nothing) ✅. It also matters for a knob you thought
+you had: `fixup_prefs()` forces `cpu_compatible = true` whenever memory-cycle-exactness is set, so
+`cpu_compatible=false` silently does not take while the trap is armed ✅.
+
+**There is a pre-boot host-log tell**: with sound disabled, the host log prints `Cycle-exact mode
+requires at least Disabled but emulated sound setting.` **if and only if** the cycle-exact core
+survived config load — grep for it before blaming the guest ✅. Why the cycle-exact core kills Amix
+has not been root-caused; that it does is measured. Full mechanism on
+[emulation fidelity](emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive);
+config keys on [Amix on Amiberry](../getting-started/emulation-amiberry.md).
 
 ## Time & Y2K quirks
 
@@ -300,3 +407,23 @@ A defect can hide for entire test campaigns because a *reused* piece of writable
 - The **amix-cdfs** project @ `31e8c3b` — quirk 19 (`mount(2)` silently stacks on an already-mounted directory; `mount(2)`'s only busy check is `v_vfsmountedhere`, which `lookupname` clears by traversing into the mount; guard in the fs's own mount op like `prmount`/`fdmount`), from stock-kernel disassembly + reproduction on a real A4000 + Z3660, 2026-07-13 ✅ (`844c2ed`). See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - The **amix-kerntools** bench forensics @ `8a76775` — quirk 20 (SVR4 `login`'s future-`lastchg` "expired" trap on an RTC-1978 box after a clock was set forward; same-password workaround, never set the RTC forward), root-caused on a real A4000 + Z3660, 2026-07-11 ✅.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The **amix-kerntools** inetd investigation @ `f7d741d` (`docs/inetd-telnet-throttle.md`) and the
+  **amix-cdfs** Packet C wedge soak @ `c3eba7e` (`docs/packet-c-wedge-soak.md`), 2026-07-26/27 ✅ —
+  quirk 23 (the `TOOMANY=40` / `CNT_INTVL=60 s` / `RETRYTIME=600 s` throttle read out of the shipped
+  `/usr/sbin/inetd` as compile-time immediates, the absent `nowait.<max>` syntax proven by disassembly
+  *and* a live `SIGHUP` test, per-service independence measured both directions, and the rate bound:
+  29.9/min never trips in 200 invocations, ~575/min trips within seconds) and quirk 24 (the
+  vendor-hardcoded `exit` in `/etc/init.d/syslogd`, its 3-hard-link `cp`-in-place hazard, `/var/log/*`
+  rather than `/var/adm/messages`, and the measured 293 B of log growth under abuse). Quirk 26's
+  `netstat -a` control run and the `sar -v`/`ipcs -a` failures are from the same soak's wedge-time
+  capture ✅.
+- The **amix-cdfs** Packet C bench run @ `419e16c` (`docs/packet-c-bench-results.md` §6), 2026-07-26 ✅
+  — quirk 27: on a 1.25 GiB multi-extent UDF disc, `dd skip=` to the 1 GiB mark transfers rather than
+  seeks and needs a ~20-minute command timeout; the first tail read was scored a failure only because
+  it hit a 300 s cap.
+- The **amiberry** workspace fork `docs/amix-guest-cycle-exact.md` @ `aa077b0` and the
+  **amix-kerntools** rig ablation `docs/piscsi-rig.md` §3 @ `33ab7c3`, 2026-07-26 ✅ — quirk 25: the
+  `default_prefs()` all-true initialisation, the four non-equivalent config keys, the host-dependent
+  `default_disable_cycle_exact`, the `fixup_prefs()` host-log tell (present in 6/6 omitting runs,
+  absent in 10/10 pinning runs) and its `cpu_compatible` side effect, and the 10-boot single-variable
+  ablation whose decisive run added `cycle_exact=false` and nothing else.

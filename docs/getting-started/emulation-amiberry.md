@@ -56,8 +56,22 @@ Same as any Amix target ✅ — and the CPU/MMU settings are mandatory or it won
 
 - **68030 with MMU on** (`cpu_model=68030`, `mmu_model=68030`) + a **68881/68882 FPU**
 - **JIT off** (`cachesize=0`) and **"More compatible" off** (`cpu_compatible=false`)
+- **Cycle-exact off — `cycle_exact=false`, pinned explicitly.** Omitting the key does **not** leave
+  it neutral: Amiberry's `default_prefs()` starts all three cycle-exact flags `true`, so a
+  hand-written config selects the cycle-exact 68030 core and Amix dies at PID 1 with
+  `NOTICE: User BUS ERROR at … PID:1 CMD:/sbin/init` ✅. It also silently overrides the
+  `cpu_compatible=false` above. See [the cycle-exact
+  trap](../how-it-works/emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive).
 - **4–16 MB Fast RAM** (16 MB hard ceiling) and an **A3000 Kickstart 2.04** ROM
 - `scsi_a3000=true`
+
+> ⚠️ **A hand-written `.uae` is guilty until proven otherwise.** The effective cycle-exact default is
+> **host-dependent** — `target_default_options()` clears the flags only when the *host's*
+> `amiberry.conf` sets `default_disable_cycle_exact`, which itself defaults to `false` ✅. The same
+> config file can therefore boot on one machine and kill `/sbin/init` on another. Pin the key; don't
+> rely on the default. There is a pre-boot tell in the host log: with sound disabled, the line
+> `Cycle-exact mode requires at least Disabled but emulated sound setting.` appears **if and only if**
+> the cycle-exact core survived config load ✅ — grep for it before blaming the guest.
 
 See [hardware & requirements](../how-it-works/hardware.md) and the [WinUAE config table](emulation-winuae.md)
 for the shared requirement list.
@@ -131,6 +145,13 @@ The project's working configs (in the A4091 repo; ROM/HDF paths point at user-su
 | `amix-a4091-boot-aga.uae` | A4000, `chipset=aga`, KS 3.0 r39.106 | A4000/AGA + A4091 boot |
 | `amix-dbg.uae` | A3000, `chipset=ecs`, `scsi_a3000=true` | A3000 root (`scsi6_a3000`) **+** A4091 as a second card (`scsi0_a4091`) — the build/diagnostic environment |
 
+
+> **Not in Amiberry: the Z3660.** Upstream Amiberry emulates the A3000 SCSI, the A4091 and the A2065,
+> but **not** the Z3660 accelerator. A downstream fork adds a Z3660 board emulation (piscsi mailbox,
+> disk and CD units) used to exercise the [Z3660 piscsi driver](../drivers/z3660-scsi-driver.md#exercising-this-driver-without-the-board)
+> without the physical card; it is not part of any released build. Don't go looking for a
+> `z3660=` key in 8.x ✅.
+
 ## Headless / LLM-driven Amiberry
 
 For automation — CI, AFK agents, or an LLM driving the Amix console without a visible window — Amiberry can
@@ -202,3 +223,14 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
 - The A4091-on-Amix project — `NOTES.md` §9 (A4091-in-Amiberry config + the A3000(ECS)/A4000(AGA) Kickstart matrix) and §10 (the `amishot` IPC-socket screenshot tool), reproduced locally ✅. Config files `amix-a4091-boot.uae`, `amix-a4091-boot-aga.uae`, `amix-dbg.uae`; A4091 product id `0x02020054` verified in `src/a4091-blk.c`. Screenshot wrapper: [`tools/amishot.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amishot.sh).
 - [A4091/a4091-software](https://github.com/A4091/a4091-software) — the A4091 autoboot ROM (`amiga-boot-a4091.rom`) and the `ncr53cxxx` SCRIPTS assembler.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The **amiberry** workspace fork, `docs/amix-guest-cycle-exact.md` @ `aa077b0`, 2026-07-26 ✅ — the
+  `default_prefs()` initialisation (`src/cfgfile.cpp`), the four non-equivalent config keys and why only
+  `cycle_exact` clears all three flags, the host-dependent `default_disable_cycle_exact` path
+  (`src/osdep/amiberry.cpp` / `src/include/options.h`), the `fixup_prefs()` host-log tell and its
+  `cpu_compatible = true` side effect (`src/main.cpp`), and the 16-log discrimination (present in 6/6
+  omitting runs, absent in 10/10 pinning runs).
+- The **amix-kerntools** piscsi-rig ablation @ `33ab7c3` (`docs/piscsi-rig.md` §3, first landed
+  `c1cd679`), 2026-07-26 ✅ — 10 boots, same image and same kernel throughout, isolating
+  `cycle_exact` as the single variable (R14: the hand-written config plus `cycle_exact=false` and
+  nothing else reaches multiuser); supersedes two earlier runs that had been attributed to a
+  RAM/board interaction.
