@@ -83,10 +83,11 @@ between the two shows **five hunks, all of them hydra** — so both trees agree 
 | **45** | `kdebug` — only under `KERNEL_DEBUGGER` | stock | ⚠ **avoid** — same ✅ |
 | 46 | `audio` | stock | occupied ✅ |
 | **47** | **`mx`** (stock contrib) ⚔ **`hydra`** (community) | — | ⚔ **COLLISION** — see §2.1 ✅ |
-| **48** | **`z3660eth`/`zen0`** (this family) ⚔ **`random`** (isoriano1968 dev tree) | — | ⚔ **COLLISION** — see §2.2 ✅ / 🟡 |
+| **48** | `random` (isoriano1968 dev tree, unpublished) — **vacated by `z3660eth` 2026-07-30** | — | 🟡 dev-tree prose only; collision resolved — see §2.2 |
 | **49** | **`zz9000`** (isoriano1968) | community | claimed ✅ |
 | 50 | `sad` — STREAMS administrative driver | stock | occupied ✅ |
-| **51–67** | — | — | ✅ **FREE** — verified row-by-row in two trees; **take a slot here** |
+| **51** | **`z3660eth`/`zen0`** (this family) — renumbered from 48, 2026-07-30 | community | claimed ✅ — source-side; **shipped kernels and `/dev/zen0` nodes carry 48 until the next kernel rebuild** |
+| **52–67** | — | — | ✅ **FREE** — verified row-by-row in two trees; **take a slot here** |
 | **68** | **`va2000`** (asokero) | community | claimed ✅ |
 | **69** | — | — | ✅ **FREE** — the last slot in the array |
 | 70+ | *does not exist* | — | 🚫 requires extending `cdevsw[]` ✅ |
@@ -124,11 +125,11 @@ Neither side knows about the other.
 > Edwards, 1991, GPL), **claims no major** — it only adds `ctioctl` to the existing `/*16=ct*/`
 > row ✅. Recorded here so it need not be re-checked.
 
-### 2.2 Major 48 — `z3660eth` vs `random` ⚔
+### 2.2 Major 48 — `z3660eth` vs `random` — resolved 2026-07-30
 
-This family's [`z3660eth` driver](../drivers/z3660-ethernet-driver.md) occupies char **48**, tag
-`zen`, interface `zen0` ✅ — chosen because 48 is a free `nostr` row on the stock and A4091 kernels,
-and now burned into real-hardware-proven kernels and shipped `/dev/zen0` nodes.
+This family's [`z3660eth` driver](../drivers/z3660-ethernet-driver.md) occupied char **48**, tag
+`zen`, interface `zen0` ✅ — chosen in 2026-06 because 48 is a free `nostr` row on the stock and
+A4091 kernels, and burned into real-hardware-proven kernels and shipped `/dev/zen0` nodes.
 
 Against it, `zz9000-amix`'s `integration/kernel.c.txt` states ✅:
 
@@ -138,10 +139,11 @@ Against it, `zz9000-amix`'s `integration/kernel.c.txt` states ✅:
 **That is the only evidence for `48 = random` anywhere** — a prose line describing an author's
 **unpublished** development tree 🟡. The *published* `hydra-amix` tree leaves 48 empty ✅.
 
-**Resolution:** the collision only bites when drivers from both trees are linked into one kernel.
-This project is nonetheless **renumbering `z3660eth` off 48 into 51–67**, because our own convention
-(§5) says community claims win and because a documented claim — even a weak one — is cheaper to
-respect than to argue with.
+**Resolution (2026-07-30): `z3660eth` renumbered off 48 to 51** ✅ — the lowest slot of the
+verified-free 51–67/69 range — because this project's own convention (§5) says community claims
+win, and a documented claim — even a weak one — is cheaper to respect than to argue with. The
+renumber is **source-side**: kernels and `/dev/zen0` nodes built before the next kernel rebuild
+still register and open 48 ✅. 48 now carries only the unpublished-dev-tree `random` claim 🟡.
 
 ## 3. Block majors — `bdevsw[]`
 
@@ -246,7 +248,7 @@ friendliest pattern for a shared kernel and the one this project recommends.
 ## 7. Conventions for adding a driver
 
 1. **Take 51–67 or 69.** Never 7, 38, 39, 44, 45 (traps), never ≥ 70 (off the end of the array).
-2. **Respect existing community claims** — 47, 48, 49, 68. When in doubt, the party who has *not*
+2. **Respect existing community claims** — 47, 48, 49, 68 (48 = an unpublished dev-tree claim; this project vacated it anyway, 2026-07-30). When in doubt, the party who has *not*
    shipped hardware-proven kernels renumbers.
 3. **A SCSI host adapter takes no new major** — add a `scsicard[]` row under block 18 (§3).
 4. **A filesystem appends to `vfssw[]`** — never inserts (§4).
@@ -263,13 +265,13 @@ friendliest pattern for a shared kernel and the one this project recommends.
 
 | Project | Char | Block | Other | Verified on metal |
 |---|---|---|---|---|
-| [`z3660eth`](../drivers/z3660-ethernet-driver.md) (this family) | **48** → renumbering to 51–67 | — | — | ✅ A4000 + Z3660, 2026-06 |
+| [`z3660eth`](../drivers/z3660-ethernet-driver.md) (this family) | **51** (renumbered from 48, 2026-07-30 source-side; shipped kernels carry 48 until the next rebuild) | — | — | ✅ A4000 + Z3660, 2026-06 (at 48) |
 | [`z3660scsi`](../drivers/z3660-scsi-driver.md) (this family) | via 40 | via **18** (`scsicard[]`, `0x144B0001`) | — | ✅ 2026-06 |
 | [`a4091`](../drivers/a4091-53c710-driver.md) (this family) | via 40 | via **18** (`scsicard[]`, ×3 IDs) | — | 🟡 emulated; metal pending |
 | `cdfs` (this family) | — | — | `vfssw[]` last row | ✅ 2026-07 |
 | [`hydra`](../drivers/case-studies/hydra.md) (isoriano1968) | **47** ⚔ | — | `init_tbl[]`, `int2_tbl[]` | ✅ 2026-06 |
 | [`zz9000`](../drivers/case-studies/zz9000.md) (isoriano1968) | **49** | — | `init_tbl[]` | ✅ |
-| `random` (isoriano1968, unpublished) | **48** ⚔ | — | — | 🟡 prose-only |
+| `random` (isoriano1968, unpublished) | **48** (uncontested since 2026-07-30) | — | — | 🟡 prose-only |
 | [`va2000`](../drivers/case-studies/va2000.md) (asokero) | **68** | — | `io_init[]` | ✅ |
 | `mx` MAX-125 (stock contrib, 1992) | **47** ⚔ | — | `int2_tbl[]`, `io_poll[]` | 🔴 no modern report |
 | `viper` tape (stock contrib, 1991) | *none* — extends 16 | — | — | 🔴 no modern report |
@@ -305,7 +307,7 @@ friendliest pattern for a shared kernel and the one this project recommends.
   (the `/*68*/` literal-match patcher), `src/va2000.c` (`VA2000_PRODUCT = 0x6D6E0001`).
 - [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix) @ `dcb7d24` — `README.md`
   (char 47, tag `hya`, `mknod /dev/hya0 c 47 0`, AutoConfig `0x08490001`).
-- This project's driver manifests — `amix-z3660net/driver.conf` (`net z3660eth … 48 zen`),
+- This project's driver manifests — `amix-z3660net/driver.conf` (`net z3660eth … 51 zen` (48 until 2026-07-30)),
   `amix-z3660scsi/driver.conf` (`0x144B0001 z3660queue`), `amix-a4091/driver.conf`
   (`0x02020054` / `0xc0de0001` / `0xc0de0002`) — and the build harness's free-row gate
   (`build-cross-kernel.sh`, `build-net-kernel.sh`).
