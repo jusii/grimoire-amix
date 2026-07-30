@@ -248,7 +248,7 @@ This is why emulator configs pin the disk hardfile to **SCSI ID 6** and the tape
 
 ### No 68040/68060 — and therefore no A4000
 
-The Amix kernel **predates the 68040 MMU** and has no support for it (or the later 68060). ✅ Consequently the **A4000 cannot officially run Amix** ✅ — its standard 68040 CPU is exactly the part the kernel cannot drive. This is a fundamental limit, not a missing driver you could add: the MMU model differs.
+The Amix kernel **predates the 68040 MMU** and has no support for it (or the later 68060). ✅ Consequently the **A4000 cannot officially run Amix** ✅ — its standard 68040 CPU is exactly the part the kernel cannot drive. This is not a missing driver you could add: the MMU model differs, and moving the limit would be a kernel port (MMU, FPU context model, and exception frames all differ by CPU family). For what that port would actually take, what is being worked on, and what nobody should claim yet, see [Amix on 68040 and 68060](68040-68060-status.md).
 
 > **The blocker is the 68040 CPU, not the AGA chipset.** "No A4000" is about the processor/MMU, *not* AGA. An **030-based AGA** configuration (an accelerated A4000/030, or AGA in emulation) boots Amix to the **text console** fine 🟡 — AGA is **console-only**, though: Amix's **X11** server targets the supported display hardware (the **A2410** TIGA card, or the ECS framebuffer), not AGA. So with AGA you get the console but not X. (Operator-reported, 2026-06.)
 
@@ -2397,7 +2397,7 @@ The kernel hard-codes a Fast RAM ceiling of **16 MB** (minimum 4 MB) ✅. Going 
 
 ### 4. No 68040/68060 — the A4000 is out ✅
 
-The kernel **predates the 68040 MMU** ✅, so it runs only on a **68020 or 68030 with a real MMU plus a 68881/68882 FPU** ✅. There is no soft-float and the MMU-less `68EC020/030` variants cannot run Amix ✅. Practical upshot: an **A4000 cannot officially run Amix** ✅. Targets are the A3000(UX) and the A2500UX. See [hardware](hardware.md).
+The kernel **predates the 68040 MMU** ✅, so it runs only on a **68020 or 68030 with a real MMU plus a 68881/68882 FPU** ✅. There is no soft-float and the MMU-less `68EC020/030` variants cannot run Amix ✅. Practical upshot: an **A4000 cannot officially run Amix** ✅. Targets are the A3000(UX) and the A2500UX. See [hardware](hardware.md); for what 040/060 support would actually require and the current state of work toward it, see the [040/060 status page](68040-68060-status.md).
 
 ### 5. Superkickstart dual-boot via the right mouse button ✅
 
@@ -4352,7 +4352,7 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 |---|---|---|
 | **CPU** | 68020 **or** 68030 with a **real MMU** | Amix uses the 68030 MMU (HAT layer); a 68EC020/68EC030 (no MMU) **cannot** run Amix |
 | **FPU** | **68881 or 68882** mandatory | No soft-float; the kernel and userland assume hardware FP |
-| **No 68040/68060** | A4000 **cannot** officially run Amix | Kernel predates the 68040 MMU |
+| **No 68040/68060** | A4000 **cannot** officially run Amix | Kernel predates the 68040 MMU — see the [040/060 status page](../how-it-works/68040-68060-status.md) |
 | **Fast RAM** | **4 MB minimum, 16 MB MAXIMUM** | Kernel hard-codes a 16 MB ceiling; **>16 MB mis-maps the SCSI drive** |
 | **SCSI disk** | **ID 6** (convention) | Installer prompts for the disk target; ID 6 is the universal default, baked into device names once installed |
 | **SCSI tape** | **must be SCSI ID 4** | Hard-coded in install scripts (`/dev/rmt/4h`) |

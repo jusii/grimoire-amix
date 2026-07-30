@@ -47,7 +47,7 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 |---|---|---|
 | **CPU** | 68020 **or** 68030 with a **real MMU** | Amix uses the 68030 MMU (HAT layer); a 68EC020/68EC030 (no MMU) **cannot** run Amix |
 | **FPU** | **68881 or 68882** mandatory | No soft-float; the kernel and userland assume hardware FP |
-| **No 68040/68060** | A4000 **cannot** officially run Amix | Kernel predates the 68040 MMU |
+| **No 68040/68060** | A4000 **cannot** officially run Amix | Kernel predates the 68040 MMU — see the [040/060 status page](../how-it-works/68040-68060-status.md) |
 | **Fast RAM** | **4 MB minimum, 16 MB MAXIMUM** | Kernel hard-codes a 16 MB ceiling; **>16 MB mis-maps the SCSI drive** |
 | **SCSI disk** | **ID 6** (convention) | Installer prompts for the disk target; ID 6 is the universal default, baked into device names once installed |
 | **SCSI tape** | **must be SCSI ID 4** | Hard-coded in install scripts (`/dev/rmt/4h`) |

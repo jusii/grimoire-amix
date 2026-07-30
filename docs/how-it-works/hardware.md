@@ -95,7 +95,7 @@ This is why emulator configs pin the disk hardfile to **SCSI ID 6** and the tape
 
 ### No 68040/68060 — and therefore no A4000
 
-The Amix kernel **predates the 68040 MMU** and has no support for it (or the later 68060). ✅ Consequently the **A4000 cannot officially run Amix** ✅ — its standard 68040 CPU is exactly the part the kernel cannot drive. This is a fundamental limit, not a missing driver you could add: the MMU model differs.
+The Amix kernel **predates the 68040 MMU** and has no support for it (or the later 68060). ✅ Consequently the **A4000 cannot officially run Amix** ✅ — its standard 68040 CPU is exactly the part the kernel cannot drive. This is not a missing driver you could add: the MMU model differs, and moving the limit would be a kernel port (MMU, FPU context model, and exception frames all differ by CPU family). For what that port would actually take, what is being worked on, and what nobody should claim yet, see [Amix on 68040 and 68060](68040-68060-status.md).
 
 > **The blocker is the 68040 CPU, not the AGA chipset.** "No A4000" is about the processor/MMU, *not* AGA. An **030-based AGA** configuration (an accelerated A4000/030, or AGA in emulation) boots Amix to the **text console** fine 🟡 — AGA is **console-only**, though: Amix's **X11** server targets the supported display hardware (the **A2410** TIGA card, or the ECS framebuffer), not AGA. So with AGA you get the console but not X. (Operator-reported, 2026-06.)
 

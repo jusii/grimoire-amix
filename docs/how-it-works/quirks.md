@@ -62,7 +62,7 @@ The kernel hard-codes a Fast RAM ceiling of **16 MB** (minimum 4 MB) ✅. Going 
 
 ### 4. No 68040/68060 — the A4000 is out ✅
 
-The kernel **predates the 68040 MMU** ✅, so it runs only on a **68020 or 68030 with a real MMU plus a 68881/68882 FPU** ✅. There is no soft-float and the MMU-less `68EC020/030` variants cannot run Amix ✅. Practical upshot: an **A4000 cannot officially run Amix** ✅. Targets are the A3000(UX) and the A2500UX. See [hardware](hardware.md).
+The kernel **predates the 68040 MMU** ✅, so it runs only on a **68020 or 68030 with a real MMU plus a 68881/68882 FPU** ✅. There is no soft-float and the MMU-less `68EC020/030` variants cannot run Amix ✅. Practical upshot: an **A4000 cannot officially run Amix** ✅. Targets are the A3000(UX) and the A2500UX. See [hardware](hardware.md); for what 040/060 support would actually require and the current state of work toward it, see the [040/060 status page](68040-68060-status.md).
 
 ### 5. Superkickstart dual-boot via the right mouse button ✅
 
