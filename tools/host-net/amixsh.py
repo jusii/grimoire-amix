@@ -9,12 +9,12 @@
 #   python3 amixsh.py 'ifconfig aen0' 'netstat -rn' 'ping www.google.com'
 #
 # Override target/credentials via env: AMIX_HOST, AMIX_USER, AMIX_PASS.
-import os, socket, sys, time
+import os, re, socket, sys, time
 
 HOST = os.environ.get('AMIX_HOST', '192.168.2.38')
 PORT = int(os.environ.get('AMIX_PORT', '23'))
 USER = (os.environ.get('AMIX_USER', 'root') + '\r\n').encode()
-PW   = (os.environ.get('AMIX_PASS', 'changeme') + '\r\n').encode()   # set AMIX_PASS to your root password
+PW   = (os.environ.get('AMIX_PASS', 'pass') + '\r\n').encode()   # 'pass' = the standardized root pw on every image; override via AMIX_PASS
 
 def strip_iac(sock, data):
     """Strip/answer telnet IAC negotiation; refuse all options (WONT/DONT)."""
@@ -55,9 +55,28 @@ readuntil(s, [b'ogin:'], 30); s.sendall(USER)
 readuntil(s, [b'assword:'], 15); s.sendall(PW)
 readuntil(s, [b'# ', b'$ '], 25)
 out = b''
+rc_overall = 0
 for c in sys.argv[1:]:
     s.sendall(c.encode() + b"; echo D''ONE_$?\r\n")
-    out += b'\n========== ' + c.encode() + b' ==========\n' + readuntil(s, [b'DONE_'], 60)
+    buf = readuntil(s, [b'DONE_'], 60)
+    # readuntil stops at the marker prefix -- the status digits may still be in
+    # flight. Drain until DONE_<n> is complete (or give up and call it a hang).
+    end = time.time() + 3
+    while not re.search(rb'DONE_(\d+)', buf) and time.time() < end:
+        s.settimeout(0.5)
+        try: chunk = s.recv(4096)
+        except socket.timeout: continue
+        except OSError: break
+        if not chunk: break
+        buf += strip_iac(s, chunk)
+    m = None
+    for m in re.finditer(rb'DONE_(\d+)', buf): pass   # last match = this command's own echo
+    rc = int(m.group(1)) if m else 124                # no complete marker = hang/transport loss
+    if rc != 0 and rc_overall == 0: rc_overall = rc
+    out += b'\n========== ' + c.encode() + b' ==========\n' + buf
 try: s.sendall(b'exit\r\n')
 except OSError: pass
 sys.stdout.buffer.write(out); sys.stdout.flush()
+# The remote status was always captured (DONE_$?) but never propagated -- so a
+# caller's `set -e` could not fire on an on-box failure (half-patch audit F3).
+sys.exit(rc_overall)
