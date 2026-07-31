@@ -22,6 +22,30 @@ Practical consequences of the RDB choice:
 
 **Note:** The disk's SCSI ID is **baked into its device names** at install time — at the conventional ID 6 every path is `c6d0s…` — so although the installer accepts other targets, the ID is then fixed *in `/etc/vfstab`* (the SVR4 mount table) and the boot partition, and can't be changed without editing those 🟡. The tape, by contrast, is genuinely hard-wired to **SCSI ID 4** (`/dev/rmt/4h`) ✅. See [hardware](hardware.md#scsi-target-ids) and [Quirks](quirks.md).
 
+### `/etc/rdb` and `mkfs_s5`: the grammar and the units
+
+`/etc/rdb` is the installer's RDB create/edit tool, and its conventions are easy to get wrong because **its own usage text omits the flags that matter**. Everything in this subsection is ✅ **first-party** (2026-07-31): the stock installer's exact command sequence was run against a blank disk on the Amiberry bench and the produced RDB and filesystem read back host-side; the reference caller is the stock install script itself — `/etc/profile` on the root floppy (see [the root-floppy anatomy](../boot-disks/anatomy-root-adf.md#the-install-script-is-etcprofile)).
+
+The four invocation forms, synthesised from the tool's usage text *plus* the flags the stock installer passes that the usage text does **not** list (`-d`, `-L`, `-F`):
+
+| Form | Role |
+|---|---|
+| `rdb [-v] [-w] [-H] device` | inspect / edit an existing RDB |
+| `rdb -c [-s n] [-L n] -d disksize device` | create the RDB on a blank disk |
+| `rdb -a device name start length` | append one partition |
+| `rdb -p partition [-b] [-B] [-m] [-M] [-C n] [-N] [-P n] [-R n] [-F type] device` | stamp flags / a type ID onto partition *n* |
+
+The conventions, each with its read-back proof:
+
+- **`rdb -c` requires `-d disksize`, and `-d` is in 512-byte blocks.** Omit it and the tool refuses (`rdb: -c requires -d disksize`) — yet `-d` appears nowhere in the usage block it then prints, so the working grammar cannot be learned from the tool itself. `rdb` derives the cylinder count by dividing `-d` by `-s` (sectors per cylinder; it writes `rdb_Heads = 1`): a 204,800-block `-d` with `-s 64` produced `rdb_Cylinders = 3200` on the authored disk. A value in MB or in cylinders would have produced a 1- or 50-cylinder disk.
+- **The stock create line is** `/etc/rdb -c -s 64 -L 2 -d $DISKLEN $DISK`, where `$DISKLEN` comes from `/etc/ddsize` in 512-byte blocks (the script's own `DISKMB = DISKLEN / 2048` arithmetic confirms the unit). `-L 2` is carried verbatim from the stock line; its effect is not separately identified 🔴 (the authored `rdb_LoCylinder` is 0, so it is not the low-cylinder knob).
+- **`rdb -a` start/length are also 512-byte blocks and must be cylinder-aligned** — misaligned values are refused (`rdb: partition start and length blocks must lie on a cylinder boundary`). The stock script appends root → swap → boot in that order.
+- **`rdb -p` takes a 1-based partition *number*, never a device path.** The argument is `atoi()`-ed and partitions are numbered from 1 (`rdb: partitions are numbered from 1`), so a device path decodes as 0 and every flag/type stamp is refused. Because partitions are appended in slice order, **partition *N* is slice *N*** — the stock script passes the same value it uses as the `sN` device-name suffix.
+- **`mkfs_s5`'s size operand is also in 512-byte blocks** — the tool converts to its logical block size itself (its own `total logical blocks` output line; 1 KB at the default `s_type=2`). Handing it a pre-converted 1 KB count builds a filesystem over **half** the slice; with the full 512-byte count the authored root read back `fsize=80896, type=2` — the whole slice.
+- Two harmless divergences from modern host-side RDB tooling, worth knowing before anyone "fixes" them: `rdb` writes `rdb_Flags = 0x08` and `rdb_LoCylinder = 0` where `rdbtool`-built disks carry `0x00` and `1`. Disks built both ways boot. ✅
+
+An RDB authored on-box with this sequence is structurally identical to a host-side-built one — the bench disk cold-booted repeatedly, carrying the exact [partition type IDs](#the-rdb-partition-scheme) listed above. ✅
+
 ## Default partition layout
 
 The installer either computes "obvious" partition sizes or asks you, then lays down four regions ✅:
@@ -178,3 +202,4 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
   every kernel that roots through the A3000 onboard SCSI, not by a4091/cdfs kernels specifically, and
   the `s5mountroot VOP_OPEN error 6` panic is **not** size-triggered (four-kernel section-size table;
   a 652-byte-larger patched kernel boots).
+- The **Installer-NG** author-mode matrix proof (amix-installng, 2026-07-31) ✅ — the stock installer's `/etc/rdb -c`/`-a`/`-p` + `mkfs_s5` sequence run against a blank disk on the Amiberry bench and read back host-side: `-c` refuses without `-d` and `-d` is absent from the tool's usage text; the 512-byte-block unit proven by `rdb_Cylinders = 3200 = 204800 ÷ 64` (`rdb_Sectors = 64`, `rdb_Heads = 1`); the `-p` 1-based `atoi()` partition-number convention; `mkfs_s5`'s 512-byte-block operand (authored root `fsize=80896, type=2`, the full slice); the resulting disk cold-boots. Reference caller: the stock install script, `/etc/profile` on `amix_21_root.adf`, read by path with an s5 reader; `/etc/rdb` byte-identical stock ↔ rebuilt miniroot, md5 `6cacf95f738abea7cfddc6bb9ebf28e7`.

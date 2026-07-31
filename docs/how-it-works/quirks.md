@@ -41,6 +41,9 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 25 | **A hand-written UAE-family `.uae` selects the cycle-exact 68030 core and Amix dies at PID 1** — omitting `cycle_exact` is not neutral, the default is `true` (and host-dependent). Pin `cycle_exact=false`; it also silently overrides `cpu_compatible=false` | ✅ | [Emulation fidelity](emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
 | 26 | **Three diagnostic tools lie or don't work**: `netstat -a` prints `corrupt control block chain` on a perfectly healthy box; `sar -v` fails `sadc: Not enough space`; `ipcs -a` fails `read error: No such device or address`. Don't chase any of them, and don't budget on them for a capture | ✅ | [Quirks §26](#26-three-diagnostic-tools-that-lie-or-do-not-work) |
 | 27 | **`dd skip=` on a `cdfs` file is not an effective seek** — the skipped bytes are really transferred, through the one-sector in-kernel SCSI path, so a read at the 1 GiB mark needs ~20 minutes. Never score that timeout as a read failure | ✅ | [Quirks §27](#27-dd-skip-on-cdfs-is-not-a-seek), [Filesystems & disks](filesystems-and-disks.md#mounting-a-cd) |
+| 28 | **The partitioning tools' units are all 512-byte blocks, and `rdb`'s usage text omits the flags that matter** — `rdb -c` requires a `-d disksize` its usage block never mentions; `rdb -p` wants a 1-based partition *number* (a device path `atoi()`s to 0 and is refused); `mkfs_s5`'s size operand is 512-byte blocks (pass a pre-converted 1 KB count and the filesystem covers half the slice) | ✅ | [Filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units) |
+| 29 | **The stock kernel writes motherboard register `0xde0002` at every boot and at reboot/halt** — on the A3000 that is the SuperKickstart re-kick bit; on an A4000 the same address is Fat Gary's coldreboot latch, which nothing consumes, so the write is benign. Don't chase it in bus traces or emulator logs; decode-and-ignore is the correct model for an A4000 target | ✅ | [Quirks §29](#29-the-kernel-pokes-the-a3000-re-kick-register-0xde0002-at-every-boot-and-reboot) |
+| 30 | **A scripted `ed` edit that misses its address search still writes the file** — earlier inserts in the same body stay applied, and a name-wide `grep` guard then reports "already patched" forever: a permanent, invisible half-patch. Pre-probe the target row, one `ed` run per edit, post-verify the row — never trust `ed`'s exit status alone | ✅ | [Quirks §30](#30-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file), [Kernel build](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap) |
 
 The rest of this page expands each item.
 
@@ -72,6 +75,36 @@ A3000UX machines ship a **"Superkickstart 1.4"** bootstrap ROM ✅. At power-on:
 - **Hold the right mouse button** at power-on → load an **AmigaOS Kickstart** instead.
 
 So the "gotcha" is the inverse of what AmigaOS users expect: the machine boots Unix by default, and you reach AmigaOS only by holding a mouse button. Details in [the boot process](boot-process.md).
+
+
+### 29. The kernel pokes the A3000 re-kick register `0xde0002` at every boot and reboot ✅
+
+The stock Amix kernel writes motherboard address **`0xde0002`** unconditionally — once in its boot
+path and again in its reboot/halt path ✅. What that write means depends on the machine:
+
+- **A3000 — the SuperKickstart re-kick control.** Bit 7 of `0xde0002` (a Gary register, flanked by
+  the bus-timeout controls at `0xde0000`/`0xde0001`) arms a **hard re-kick**: the next reset
+  re-enters the bootstrap ROM and reloads the soft Kickstart from disk instead of warm-starting the
+  RAM-resident image ✅. This is public, non-Amix hardware knowledge — Linux/m68k performs the
+  identical write (`0xde0002 |= 0x80`) on A3000-class machines and names the mechanism "Magic Hard
+  Rekick". On a SuperKickstart machine that is the right bit for a Unix to arm — see
+  [Superkickstart dual-boot](#5-superkickstart-dual-boot-via-the-right-mouse-button) and
+  [the boot process](boot-process.md).
+- **A4000 — an unconsumed latch.** The same address decodes to **Fat Gary's coldreboot/re-kick
+  latch** (the same bit-7 convention), but an A4000 boots Kickstart from real ROM — there is no
+  soft-Kickstart machinery, and **nothing on the machine consumes the latch** ✅. The write
+  terminates normally and has no effect. UAE-family emulators model it accordingly: a settable,
+  readable bit-7 "coldreboot flag" with no consumer ✅.
+
+The gotcha is diagnostic: the poke surfaces as an unexplained motherboard-register write in bus
+traces, emulator logs and disassemblies — on exactly the machine family (A4000-based rigs) where
+the register does nothing, which invites chasing it as the cause of whatever else is wrong. Don't:
+on this project's A4000 the write is exercised on **every** metal boot — the accelerator forwards
+it to the physical bus, where the real Fat Gary latches it — with no ill effect ✅. For emulator
+and bus-bridge authors the only requirement is to *tolerate* the access (decode-and-ignore is
+correct for an A4000 target; only an A3000 SuperKickstart model needs to honour the bit). And don't
+confuse this motherboard address with the similar-looking AutoConfig product code `0xc0de0002` in
+[the major-number registry](../reference/major-number-registry.md) — they are unrelated.
 
 ## Networking quirks
 
@@ -255,6 +288,25 @@ in-kernel filesystem must do the same (return `EBUSY` on the second mount). **Di
 fstype's lines in `/etc/mnttab` — duplicates are the smoking gun. Full contract on
 [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 
+### 30. A scripted `ed` edit that misses its address still writes the file ✅
+
+Anyone scripting kernel-source edits (`master.d/kernel.c`, `master.d/filesys.c`, a subdir
+Makefile) ends up pushing an `ed` heredoc — and its worst failure mode is silent ✅. When an
+address search misses, `ed` prints `?`, but the commands that already ran stay applied to the
+buffer and the trailing `w` still writes the file. Pair an insert with an address-searched change
+in one body and a miss leaves the file **half-patched**: insert landed, row change never happened,
+kernel builds and links, device never answers. If the wrapper's idempotency guard is a
+**name-wide grep**, the surviving insert satisfies it, and every later run reports
+already-patched — a permanent, invisible half-patch produced *and then defended* by the same
+script ✅. Measured variants: a tag-addressed change **overwriting the wrong claimant's row** with
+no error, and `ed`'s wrapping `/re/` search landing a table row **inside a different table**,
+exit 0 ✅. `ed`'s exit status is a weak oracle (behaviour across `?` errors is not portable
+between the host's GNU `ed` and the box's SVR4 `ed`, and a remote-shell transport can swallow it)
+— the reliable mechanism is **pre-probe the exact target row before writing, one `ed` run per
+edit, and post-verify the row in the file afterwards** ✅. The full failure catalogue and the
+fail-closed verify-then-apply pattern are on
+[building a kernel](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap).
+
 ## Emulation & bench quirks
 
 (Two more emulator gotchas live under driver authoring, because that is where they bite:
@@ -382,6 +434,17 @@ A `/etc/TIMEZONE` that sets `TZ=US/Eastern` **without a leading colon** makes ev
 
 A defect can hide for entire test campaigns because a *reused* piece of writable media carries residue from earlier runs. The concrete case: a from-scratch install died on the real hardware with `pkgadd: ERROR: unable to open mount table (/etc/mnttab)` — a freshly built miniroot ships no `/etc/mnttab` and its bare `mount(2)` writes none. Two prior emulator acceptance passes had gone green only because the **reused** root floppy still held an `/etc/mnttab` that a `cdfs` mount had written in an *earlier, unrelated* run. The rule: **acceptance runs must start from fresh media**, because reused writable media silently accumulates state that can satisfy a broken assumption and mask a whole class of defect until the day the media is clean. (The mnttab consumer requirement itself is quirk-adjacent — see [package management](package-management.md).)
 
+
+### 28. The partitioning tools' units are 512-byte blocks, and `rdb` won't tell you its own grammar ✅
+
+Three conventions of the miniroot's partitioning tools, each of which bites a scripted install, all bench-proven ✅ (first-party, 2026-07-31):
+
+- **`/etc/rdb -c` requires `-d disksize` — in 512-byte blocks — and `-d` is absent from the usage text the tool prints when it refuses.** The working grammar cannot be learned from the tool itself; the authority is the stock install script (`/etc/profile` on the root floppy).
+- **`/etc/rdb -p` takes a 1-based partition number, never a device path** — the argument is `atoi()`-ed, so a path decodes as 0 and every flag/type stamp is refused. Partitions are appended in slice order, so partition *N* is slice *N*.
+- **`mkfs_s5`'s size operand is also 512-byte blocks** — it converts to its 1 KB logical blocks itself; hand it a pre-converted count and it builds a filesystem over **half** the slice, silently.
+
+Full grammar, units, and the read-back proofs on [filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units); the stock script's own command lines on [the root-floppy anatomy](../boot-disks/anatomy-root-adf.md#the-install-script-is-etcprofile).
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -427,3 +490,24 @@ A defect can hide for entire test campaigns because a *reused* piece of writable
   `default_disable_cycle_exact`, the `fixup_prefs()` host-log tell (present in 6/6 omitting runs,
   absent in 10/10 pinning runs) and its `cpu_compatible` side effect, and the 10-boot single-variable
   ablation whose decisive run added `cycle_exact=false` and nothing else.
+- The **Installer-NG** author-mode matrix proof (amix-installng, 2026-07-31) ✅ — quirk 28: the stock `/etc/rdb -c`/`-a`/`-p` + `mkfs_s5` sequence run on a blank bench disk and read back host-side (the `-d` refusal and its absence from the usage text; the `atoi()` 1-based partition-number convention; the 512-byte-block `mkfs_s5` operand), with the stock install script (`/etc/profile` on the root floppy, read by path with an s5 reader) as the reference caller. See [Filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units).
+Append these bullets to the page's `## Sources` list (after the amiberry cycle-exact bullet):
+
+- Linux mainline `arch/m68k/amiga/config.c` — the A3000/A3000T-only `MAGIC_REKICK` hardware feature
+  ("Magic Hard Rekick") and its `0xde0002 |= 0x80` write, commented as forcing a hard rekick —
+  grounding quirk 28's A3000 register semantics ✅:
+  <https://github.com/torvalds/linux/blob/master/arch/m68k/amiga/config.c>.
+- BlitterStudio/amiberry, `src/gayle.cpp` (`mbres_write`/`mbres_read`; the bank is mapped at
+  `0xde0000` in `src/memory.cpp`) — the UAE-family model of `0xde0002`: Fat Gary's bit-7
+  "coldreboot flag", settable and readable (read-back gated on a configured Fat Gary revision), with
+  no consumer — grounding quirk 28's A4000 side ✅: <https://github.com/BlitterStudio/amiberry>.
+- First-party stock-kernel analysis and the project's metal-boot record (real A4000 + Z3660),
+  2026-07 ✅ — quirk 28: the stock kernel's unconditional `0xde0002` write in both the boot and the
+  reboot/halt paths, and its benignity on the A4000, where every metal boot forwards the write
+  through the accelerator to the physical bus with no ill effect.
+- The **amix-kerntools** cdevsw free-row gate + 2026-07-31 half-patch audit (`2b23808` →
+  `f025444`) and the **amix-z3660net** patch-script hardening (`603c719`), 2026-07-30/31 ✅ —
+  quirk 28: the `ed` miss-then-write half-patch reproduced host-side with GNU `ed` over the real
+  stock file layouts, its name-wide-grep permanence, the wrong-row-overwrite and wrapping-search
+  variants, and the pre-probe / one-run-per-edit / post-verify-the-row pattern. See
+  [building a kernel](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap).

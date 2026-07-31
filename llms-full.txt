@@ -1110,6 +1110,30 @@ Practical consequences of the RDB choice:
 
 **Note:** The disk's SCSI ID is **baked into its device names** at install time — at the conventional ID 6 every path is `c6d0s…` — so although the installer accepts other targets, the ID is then fixed *in `/etc/vfstab`* (the SVR4 mount table) and the boot partition, and can't be changed without editing those 🟡. The tape, by contrast, is genuinely hard-wired to **SCSI ID 4** (`/dev/rmt/4h`) ✅. See [hardware](hardware.md#scsi-target-ids) and [Quirks](quirks.md).
 
+### `/etc/rdb` and `mkfs_s5`: the grammar and the units
+
+`/etc/rdb` is the installer's RDB create/edit tool, and its conventions are easy to get wrong because **its own usage text omits the flags that matter**. Everything in this subsection is ✅ **first-party** (2026-07-31): the stock installer's exact command sequence was run against a blank disk on the Amiberry bench and the produced RDB and filesystem read back host-side; the reference caller is the stock install script itself — `/etc/profile` on the root floppy (see [the root-floppy anatomy](../boot-disks/anatomy-root-adf.md#the-install-script-is-etcprofile)).
+
+The four invocation forms, synthesised from the tool's usage text *plus* the flags the stock installer passes that the usage text does **not** list (`-d`, `-L`, `-F`):
+
+| Form | Role |
+|---|---|
+| `rdb [-v] [-w] [-H] device` | inspect / edit an existing RDB |
+| `rdb -c [-s n] [-L n] -d disksize device` | create the RDB on a blank disk |
+| `rdb -a device name start length` | append one partition |
+| `rdb -p partition [-b] [-B] [-m] [-M] [-C n] [-N] [-P n] [-R n] [-F type] device` | stamp flags / a type ID onto partition *n* |
+
+The conventions, each with its read-back proof:
+
+- **`rdb -c` requires `-d disksize`, and `-d` is in 512-byte blocks.** Omit it and the tool refuses (`rdb: -c requires -d disksize`) — yet `-d` appears nowhere in the usage block it then prints, so the working grammar cannot be learned from the tool itself. `rdb` derives the cylinder count by dividing `-d` by `-s` (sectors per cylinder; it writes `rdb_Heads = 1`): a 204,800-block `-d` with `-s 64` produced `rdb_Cylinders = 3200` on the authored disk. A value in MB or in cylinders would have produced a 1- or 50-cylinder disk.
+- **The stock create line is** `/etc/rdb -c -s 64 -L 2 -d $DISKLEN $DISK`, where `$DISKLEN` comes from `/etc/ddsize` in 512-byte blocks (the script's own `DISKMB = DISKLEN / 2048` arithmetic confirms the unit). `-L 2` is carried verbatim from the stock line; its effect is not separately identified 🔴 (the authored `rdb_LoCylinder` is 0, so it is not the low-cylinder knob).
+- **`rdb -a` start/length are also 512-byte blocks and must be cylinder-aligned** — misaligned values are refused (`rdb: partition start and length blocks must lie on a cylinder boundary`). The stock script appends root → swap → boot in that order.
+- **`rdb -p` takes a 1-based partition *number*, never a device path.** The argument is `atoi()`-ed and partitions are numbered from 1 (`rdb: partitions are numbered from 1`), so a device path decodes as 0 and every flag/type stamp is refused. Because partitions are appended in slice order, **partition *N* is slice *N*** — the stock script passes the same value it uses as the `sN` device-name suffix.
+- **`mkfs_s5`'s size operand is also in 512-byte blocks** — the tool converts to its logical block size itself (its own `total logical blocks` output line; 1 KB at the default `s_type=2`). Handing it a pre-converted 1 KB count builds a filesystem over **half** the slice; with the full 512-byte count the authored root read back `fsize=80896, type=2` — the whole slice.
+- Two harmless divergences from modern host-side RDB tooling, worth knowing before anyone "fixes" them: `rdb` writes `rdb_Flags = 0x08` and `rdb_LoCylinder = 0` where `rdbtool`-built disks carry `0x00` and `1`. Disks built both ways boot. ✅
+
+An RDB authored on-box with this sequence is structurally identical to a host-side-built one — the bench disk cold-booted repeatedly, carrying the exact [partition type IDs](#the-rdb-partition-scheme) listed above. ✅
+
 ## Default partition layout
 
 The installer either computes "obvious" partition sizes or asks you, then lays down four regions ✅:
@@ -1266,6 +1290,7 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
   every kernel that roots through the A3000 onboard SCSI, not by a4091/cdfs kernels specifically, and
   the `s5mountroot VOP_OPEN error 6` panic is **not** size-triggered (four-kernel section-size table;
   a 652-byte-larger patched kernel boots).
+- The **Installer-NG** author-mode matrix proof (amix-installng, 2026-07-31) ✅ — the stock installer's `/etc/rdb -c`/`-a`/`-p` + `mkfs_s5` sequence run against a blank disk on the Amiberry bench and read back host-side: `-c` refuses without `-d` and `-d` is absent from the tool's usage text; the 512-byte-block unit proven by `rdb_Cylinders = 3200 = 204800 ÷ 64` (`rdb_Sectors = 64`, `rdb_Heads = 1`); the `-p` 1-based `atoi()` partition-number convention; `mkfs_s5`'s 512-byte-block operand (authored root `fsize=80896, type=2`, the full slice); the resulting disk cold-boots. Reference caller: the stock install script, `/etc/profile` on `amix_21_root.adf`, read by path with an s5 reader; `/etc/rdb` byte-identical stock ↔ rebuilt miniroot, md5 `6cacf95f738abea7cfddc6bb9ebf28e7`.
 
 
 ================================================================================
@@ -2376,6 +2401,9 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 25 | **A hand-written UAE-family `.uae` selects the cycle-exact 68030 core and Amix dies at PID 1** — omitting `cycle_exact` is not neutral, the default is `true` (and host-dependent). Pin `cycle_exact=false`; it also silently overrides `cpu_compatible=false` | ✅ | [Emulation fidelity](emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
 | 26 | **Three diagnostic tools lie or don't work**: `netstat -a` prints `corrupt control block chain` on a perfectly healthy box; `sar -v` fails `sadc: Not enough space`; `ipcs -a` fails `read error: No such device or address`. Don't chase any of them, and don't budget on them for a capture | ✅ | [Quirks §26](#26-three-diagnostic-tools-that-lie-or-do-not-work) |
 | 27 | **`dd skip=` on a `cdfs` file is not an effective seek** — the skipped bytes are really transferred, through the one-sector in-kernel SCSI path, so a read at the 1 GiB mark needs ~20 minutes. Never score that timeout as a read failure | ✅ | [Quirks §27](#27-dd-skip-on-cdfs-is-not-a-seek), [Filesystems & disks](filesystems-and-disks.md#mounting-a-cd) |
+| 28 | **The partitioning tools' units are all 512-byte blocks, and `rdb`'s usage text omits the flags that matter** — `rdb -c` requires a `-d disksize` its usage block never mentions; `rdb -p` wants a 1-based partition *number* (a device path `atoi()`s to 0 and is refused); `mkfs_s5`'s size operand is 512-byte blocks (pass a pre-converted 1 KB count and the filesystem covers half the slice) | ✅ | [Filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units) |
+| 29 | **The stock kernel writes motherboard register `0xde0002` at every boot and at reboot/halt** — on the A3000 that is the SuperKickstart re-kick bit; on an A4000 the same address is Fat Gary's coldreboot latch, which nothing consumes, so the write is benign. Don't chase it in bus traces or emulator logs; decode-and-ignore is the correct model for an A4000 target | ✅ | [Quirks §29](#29-the-kernel-pokes-the-a3000-re-kick-register-0xde0002-at-every-boot-and-reboot) |
+| 30 | **A scripted `ed` edit that misses its address search still writes the file** — earlier inserts in the same body stay applied, and a name-wide `grep` guard then reports "already patched" forever: a permanent, invisible half-patch. Pre-probe the target row, one `ed` run per edit, post-verify the row — never trust `ed`'s exit status alone | ✅ | [Quirks §30](#30-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file), [Kernel build](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap) |
 
 The rest of this page expands each item.
 
@@ -2407,6 +2435,36 @@ A3000UX machines ship a **"Superkickstart 1.4"** bootstrap ROM ✅. At power-on:
 - **Hold the right mouse button** at power-on → load an **AmigaOS Kickstart** instead.
 
 So the "gotcha" is the inverse of what AmigaOS users expect: the machine boots Unix by default, and you reach AmigaOS only by holding a mouse button. Details in [the boot process](boot-process.md).
+
+
+### 29. The kernel pokes the A3000 re-kick register `0xde0002` at every boot and reboot ✅
+
+The stock Amix kernel writes motherboard address **`0xde0002`** unconditionally — once in its boot
+path and again in its reboot/halt path ✅. What that write means depends on the machine:
+
+- **A3000 — the SuperKickstart re-kick control.** Bit 7 of `0xde0002` (a Gary register, flanked by
+  the bus-timeout controls at `0xde0000`/`0xde0001`) arms a **hard re-kick**: the next reset
+  re-enters the bootstrap ROM and reloads the soft Kickstart from disk instead of warm-starting the
+  RAM-resident image ✅. This is public, non-Amix hardware knowledge — Linux/m68k performs the
+  identical write (`0xde0002 |= 0x80`) on A3000-class machines and names the mechanism "Magic Hard
+  Rekick". On a SuperKickstart machine that is the right bit for a Unix to arm — see
+  [Superkickstart dual-boot](#5-superkickstart-dual-boot-via-the-right-mouse-button) and
+  [the boot process](boot-process.md).
+- **A4000 — an unconsumed latch.** The same address decodes to **Fat Gary's coldreboot/re-kick
+  latch** (the same bit-7 convention), but an A4000 boots Kickstart from real ROM — there is no
+  soft-Kickstart machinery, and **nothing on the machine consumes the latch** ✅. The write
+  terminates normally and has no effect. UAE-family emulators model it accordingly: a settable,
+  readable bit-7 "coldreboot flag" with no consumer ✅.
+
+The gotcha is diagnostic: the poke surfaces as an unexplained motherboard-register write in bus
+traces, emulator logs and disassemblies — on exactly the machine family (A4000-based rigs) where
+the register does nothing, which invites chasing it as the cause of whatever else is wrong. Don't:
+on this project's A4000 the write is exercised on **every** metal boot — the accelerator forwards
+it to the physical bus, where the real Fat Gary latches it — with no ill effect ✅. For emulator
+and bus-bridge authors the only requirement is to *tolerate* the access (decode-and-ignore is
+correct for an A4000 target; only an A3000 SuperKickstart model needs to honour the bit). And don't
+confuse this motherboard address with the similar-looking AutoConfig product code `0xc0de0002` in
+[the major-number registry](../reference/major-number-registry.md) — they are unrelated.
 
 ## Networking quirks
 
@@ -2590,6 +2648,25 @@ in-kernel filesystem must do the same (return `EBUSY` on the second mount). **Di
 fstype's lines in `/etc/mnttab` — duplicates are the smoking gun. Full contract on
 [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 
+### 30. A scripted `ed` edit that misses its address still writes the file ✅
+
+Anyone scripting kernel-source edits (`master.d/kernel.c`, `master.d/filesys.c`, a subdir
+Makefile) ends up pushing an `ed` heredoc — and its worst failure mode is silent ✅. When an
+address search misses, `ed` prints `?`, but the commands that already ran stay applied to the
+buffer and the trailing `w` still writes the file. Pair an insert with an address-searched change
+in one body and a miss leaves the file **half-patched**: insert landed, row change never happened,
+kernel builds and links, device never answers. If the wrapper's idempotency guard is a
+**name-wide grep**, the surviving insert satisfies it, and every later run reports
+already-patched — a permanent, invisible half-patch produced *and then defended* by the same
+script ✅. Measured variants: a tag-addressed change **overwriting the wrong claimant's row** with
+no error, and `ed`'s wrapping `/re/` search landing a table row **inside a different table**,
+exit 0 ✅. `ed`'s exit status is a weak oracle (behaviour across `?` errors is not portable
+between the host's GNU `ed` and the box's SVR4 `ed`, and a remote-shell transport can swallow it)
+— the reliable mechanism is **pre-probe the exact target row before writing, one `ed` run per
+edit, and post-verify the row in the file afterwards** ✅. The full failure catalogue and the
+fail-closed verify-then-apply pattern are on
+[building a kernel](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap).
+
 ## Emulation & bench quirks
 
 (Two more emulator gotchas live under driver authoring, because that is where they bite:
@@ -2717,6 +2794,17 @@ A `/etc/TIMEZONE` that sets `TZ=US/Eastern` **without a leading colon** makes ev
 
 A defect can hide for entire test campaigns because a *reused* piece of writable media carries residue from earlier runs. The concrete case: a from-scratch install died on the real hardware with `pkgadd: ERROR: unable to open mount table (/etc/mnttab)` — a freshly built miniroot ships no `/etc/mnttab` and its bare `mount(2)` writes none. Two prior emulator acceptance passes had gone green only because the **reused** root floppy still held an `/etc/mnttab` that a `cdfs` mount had written in an *earlier, unrelated* run. The rule: **acceptance runs must start from fresh media**, because reused writable media silently accumulates state that can satisfy a broken assumption and mask a whole class of defect until the day the media is clean. (The mnttab consumer requirement itself is quirk-adjacent — see [package management](package-management.md).)
 
+
+### 28. The partitioning tools' units are 512-byte blocks, and `rdb` won't tell you its own grammar ✅
+
+Three conventions of the miniroot's partitioning tools, each of which bites a scripted install, all bench-proven ✅ (first-party, 2026-07-31):
+
+- **`/etc/rdb -c` requires `-d disksize` — in 512-byte blocks — and `-d` is absent from the usage text the tool prints when it refuses.** The working grammar cannot be learned from the tool itself; the authority is the stock install script (`/etc/profile` on the root floppy).
+- **`/etc/rdb -p` takes a 1-based partition number, never a device path** — the argument is `atoi()`-ed, so a path decodes as 0 and every flag/type stamp is refused. Partitions are appended in slice order, so partition *N* is slice *N*.
+- **`mkfs_s5`'s size operand is also 512-byte blocks** — it converts to its 1 KB logical blocks itself; hand it a pre-converted count and it builds a filesystem over **half** the slice, silently.
+
+Full grammar, units, and the read-back proofs on [filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units); the stock script's own command lines on [the root-floppy anatomy](../boot-disks/anatomy-root-adf.md#the-install-script-is-etcprofile).
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -2762,6 +2850,27 @@ A defect can hide for entire test campaigns because a *reused* piece of writable
   `default_disable_cycle_exact`, the `fixup_prefs()` host-log tell (present in 6/6 omitting runs,
   absent in 10/10 pinning runs) and its `cpu_compatible` side effect, and the 10-boot single-variable
   ablation whose decisive run added `cycle_exact=false` and nothing else.
+- The **Installer-NG** author-mode matrix proof (amix-installng, 2026-07-31) ✅ — quirk 28: the stock `/etc/rdb -c`/`-a`/`-p` + `mkfs_s5` sequence run on a blank bench disk and read back host-side (the `-d` refusal and its absence from the usage text; the `atoi()` 1-based partition-number convention; the 512-byte-block `mkfs_s5` operand), with the stock install script (`/etc/profile` on the root floppy, read by path with an s5 reader) as the reference caller. See [Filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units).
+Append these bullets to the page's `## Sources` list (after the amiberry cycle-exact bullet):
+
+- Linux mainline `arch/m68k/amiga/config.c` — the A3000/A3000T-only `MAGIC_REKICK` hardware feature
+  ("Magic Hard Rekick") and its `0xde0002 |= 0x80` write, commented as forcing a hard rekick —
+  grounding quirk 28's A3000 register semantics ✅:
+  <https://github.com/torvalds/linux/blob/master/arch/m68k/amiga/config.c>.
+- BlitterStudio/amiberry, `src/gayle.cpp` (`mbres_write`/`mbres_read`; the bank is mapped at
+  `0xde0000` in `src/memory.cpp`) — the UAE-family model of `0xde0002`: Fat Gary's bit-7
+  "coldreboot flag", settable and readable (read-back gated on a configured Fat Gary revision), with
+  no consumer — grounding quirk 28's A4000 side ✅: <https://github.com/BlitterStudio/amiberry>.
+- First-party stock-kernel analysis and the project's metal-boot record (real A4000 + Z3660),
+  2026-07 ✅ — quirk 28: the stock kernel's unconditional `0xde0002` write in both the boot and the
+  reboot/halt paths, and its benignity on the A4000, where every metal boot forwards the write
+  through the accelerator to the physical bus with no ill effect.
+- The **amix-kerntools** cdevsw free-row gate + 2026-07-31 half-patch audit (`2b23808` →
+  `f025444`) and the **amix-z3660net** patch-script hardening (`603c719`), 2026-07-30/31 ✅ —
+  quirk 28: the `ed` miss-then-write half-patch reproduced host-side with GNU `ed` over the real
+  stock file layouts, its name-wide-grep permanence, the wrong-row-overwrite and wrapping-search
+  variants, and the pre-probe / one-run-per-edit / post-verify-the-row pattern. See
+  [building a kernel](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap).
 
 
 ================================================================================
@@ -5512,6 +5621,86 @@ multiuser on the **old** kernel — while **cold boot** (Amiberry down/up, which
 partition) was reliable 🟡. Always identity-check *which* kernel actually booted (a version marker, or
 `sysfs(GETFSIND, …)`) before trusting a test result.
 
+## Scripting the `kernel.c` edits with `ed` — the half-patch trap ✅
+
+Sooner or later everyone automates Step 2: a script pushes an `ed` heredoc that inserts the
+`extern` declarations, address-searches the target `cdevsw[]` row, changes it, and writes the
+file. This section is uniformly first-party ✅ — every failure mode below was reproduced with GNU
+`ed` over fixture copies of the real stock file layouts (2026-07-30/31), and the fail-closed
+pattern at the end is what this family's own build tooling now enforces. It applies to any stock
+file you patch in place — `master.d/kernel.c`, `master.d/filesys.c` (`vfssw[]`), the subdir
+Makefiles — and, in general, to anyone patching SVR4 sources with `ed`.
+
+**A missed address search is not a no-op.** `ed` prints its famous `?` — but the commands that
+already ran stay applied to the buffer, and the trailing `w` still writes the file. In the
+canonical two-edit body that means the `extern` insert lands, the row change silently never
+happens, and `kernel.c` is now **half-patched**: the driver links into the kernel while its
+`cdevsw[]` slot still holds the stock filler. Nothing fails to build, nothing panics; the only
+symptom is a device that never answers.
+
+```text
+/ANCHOR-A/a         <- edit 1, the insert: applies
+  (new extern line)
+.
+/ANCHOR-B/c         <- edit 2, the row change: on a miss, ed prints ? ...
+  (replacement row)
+.
+w                   <- ... and the write still happens: a half-patched file
+```
+
+**A name-wide idempotency guard then makes it permanent.** The natural wrapper guard — "the
+driver's name is already somewhere in the file, skip" — is satisfied by the surviving `extern`
+insert alone, so every later run reports already-patched and skips the repair, forever. The
+half-patch is invisible to the very tooling that created it.
+
+Three measured variants of the same trap ✅:
+
+- **The wrong-row overwrite.** An address that searches for the row's `/*N*/` comment tag changes
+  whatever line carries that tag. A claimant that kept the bare tag (community trees do — see
+  [the registry's collision notes](../reference/major-number-registry.md#2-the-two-live-collisions))
+  is **overwritten outright, with no error**.
+- **The renumber skew.** After a driver changes major number, a name-wide guard running on a tree
+  integrated *before* the renumber sees the old claim and no-ops — while rebuilt `/dev` nodes open
+  the new major. Kernel on the old slot, nodes on the new one, every build and every symbol check
+  green; the only runtime evidence is a dead device. This exact shape was produced by this
+  family's own tooling when `z3660eth` moved 48 → 51, and is now mechanically refused (a
+  "name found at a *different* row" probe outranks every other verdict).
+- **The wrapping search.** `ed`'s `/re/` address search **wraps around the buffer**, so an address
+  computed as "the first TAB-indented `};` after the anchor" can resolve inside a *different*
+  switch table once the file drifts. Measured: a `vfssw[]` row landed inside `fmodsw[]` — exit
+  status 0, no message.
+
+**Exit status is a weak oracle.** Check `$?` on every `ed` invocation, but never let it be the
+only gate: behaviour across `?` errors is not something to build on — the two `ed`s in play (GNU
+host-side, SVR4 on the box) do not agree, wrappers habitually print "patched" unconditionally, and
+a remote-shell transport that swallows the on-box exit status turns every other guard silent ✅.
+**The reliable mechanism is verification in the file itself, before and after the write.**
+
+The fail-closed pattern the family's builders converged on ✅:
+
+1. **Pre-probe before any write** (verify-then-apply). Probe every anchor the script depends on,
+   **row-scoped, not name-wide**, and classify the file: target row free / already exactly ours
+   (an idempotent re-run — proceed) / taken by another claimant / our name present at a
+   *different* row / insert present but row absent / anchor missing. Refuse everything but the
+   first two, with the diagnosis and the remedy spelled out.
+2. **One `ed` invocation per edit, `$?` checked.** Never pair an insert and an address-searched
+   change in one body — that pairing *is* the half-patch generator.
+3. **Post-verify the row, in the file.** Read it back and confirm the expected content sits
+   *inside the intended table's span* — a row can land in the wrong table with rc 0.
+4. **Repair or refuse half states.** Insert-present-row-absent gets repaired, or refused with the
+   exact remedy — never absorbed into "already patched".
+5. **Propagate refusal through every layer**, so the calling builder actually stops instead of
+   shipping the kernel anyway.
+6. **Prove it with no box.** Run the same script over fixtures cut from the real stock files and
+   reproduce each failure mode first; a selftest that lifts the expected row out of the real patch
+   script fails on drift instead of rotting quietly.
+
+This is the scripted-edit companion to the registry's manual rule — match the row by its tag and
+refuse anything but the free filler
+([conventions](../reference/major-number-registry.md#7-conventions-for-adding-a-driver)) — and to
+the pre-POSIX shell warning in Step 2. One-line checklist entry:
+[quirk 28](../how-it-works/quirks.md#28-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file).
+
 ## See also
 
 - [Driver model overview](driver-model.md) — what `cdevsw`/`bdevsw`, majors/minors, and the
@@ -5586,6 +5775,15 @@ partition) was reliable 🟡. Always identity-check *which* kernel actually boot
   `/stand/unix` 38553); copy `relocunix` to `/stand/unix` explicitly and rebuild the bootpart, then
   re-check `sum -r /stand/unix`. Real A4000 + Z3660, 2026-07-12 ✅. Same brief also confirms SVR4
   `grep` has no `\|` alternation (already noted above under build-script gotchas).
+- The **amix-kerntools** cdevsw free-row gate + 2026-07-31 half-patch audit fix packets
+  (`2b23808`, `1c6a57e`, `a81d7c9`, `f0c517c`, `f90756b`, `f025444`, `dac78a0`) and the
+  **amix-z3660net** patch-script hardening (`603c719`), 2026-07-30/31 ✅ — the `ed`
+  miss-then-write half-patch and the bare-tag wrong-row overwrite measured host-side with GNU
+  `ed` over the real stock `kernel.c` layout; the wrapping-search wrong-table landing and the
+  discarded-exit-status mode measured on the `filesys.c` arm; the renumber-skew shape found live
+  in pre-renumber integrated trees; and the fail-closed pre-probe / one-edit-per-run /
+  post-verify-the-row / repair-half-states pattern, each failure mode first reproduced and then
+  pinned by the repos' no-box selftests.
 
 
 ================================================================================
@@ -7317,6 +7515,69 @@ known, and the third was the most consequential ✅:
    [kernel build](kernel-build.md) for the blast-radius map and
    [package management](../how-it-works/package-management.md) for the crash this solved.
 
+### The SGS/SVR4 assembler dialect: `&` is the immediate prefix — and `#` is a comment ✅
+
+The toolchain's GNU `as` (binutils 2.8.1) is configured for the **SVR4/SGS m68k target**, not the
+plain-ELF/MIT dialect that `m68k-elf-as` and most modern m68k references speak. Two characters carry
+the whole difference ✅:
+
+| | SGS/SVR4 (`m68k-cbm-sysv4` `as`) | plain-ELF (`m68k-elf-as`) |
+|---|---|---|
+| Immediate prefix | **`&`** | `#` |
+| `#` means | **start of a comment** | immediate prefix |
+
+This is the dialect gcc 2.7.2.3's own output speaks (`moveq &0,%d0`, `link.w %fp,&0`) — and why the
+wrapper's `.swbeg &N` fixup above is spelled with `&`. It bites when you feed the toolchain
+**assembly written for a plain-ELF assembler** (a reference listing, another retro port, a modern
+m68k codebase): every `#` immediate starts a comment, the rest of the operand field vanishes before
+parsing, and gas rejects the line with ✅
+
+```text
+operands mismatch -- statement `movew ' ignored
+```
+
+**Note the empty operand field — that is the signature.** The diagnostic never names the cause: the
+operands were not wrong, they were *eaten as a comment* before the parser saw them. A wall of
+`operands mismatch … ignored` errors with blank operands on imported m68k assembly means exactly
+this, and the fix is the **one-character substitution `#` → `&`** on the code field of each affected
+line ✅.
+
+The rest of the MIT dialect largely assembles unchanged — MIT addressing syntax (`%a0@(8)`),
+joined-size mnemonics (`movel`, `moveal`), branch size suffixes (`bras`, `beql`), bitfield ops
+(`bfffo`), and the FPU/PMMU instructions (`fsave`, `fmovemx`, `pmove`, `pflusha`) were probed
+individually and pass as-is ✅. In practice the dialect wall is the immediate/comment characters.
+
+### The wrapper's `-c foo.s` with no `-o` silently destroys the source ✅
+
+A destructive trap in the cross **wrapper's** `.s` path (present in the shipped wrapper as of
+2026-07; a wrapper fix is queued in the `gcc-cross-amix` repo ✅):
+
+```sh
+m68k-cbm-sysv4-gcc -c foo.s     # no -o — DO NOT: this destroys foo.s
+```
+
+**silently overwrites `foo.s` with a 441-byte empty relocatable object and exits 0** — the source is
+gone, there is no diagnostic, and the build looks green ✅. The chain: the wrapper classifies only
+`*.c` arguments as sources, so a bare `.s` falls through as an "object" and the wrapper's compile
+output name stays empty; it execs the real gcc with a zero-length `-o` argument; gcc 2.7.2.3's `.s`
+spec drops that zero-length argument when it builds the `as` command line, so `as` is left holding
+`-o foo.s` and **no input file** — it assembles empty stdin and writes the result over your source ✅
+(the same 441-byte object falls out of `as -m68020 -o t.s </dev/null` directly). The wrapper's own
+refusing-to-overwrite guard compares the input against the (empty) output name, so it never fires.
+
+Where you meet it: **`.s.o` Makefile rules in the old SVR4 idiom — `$(CC) $(CFLAGS) -c $<` with no
+`-o`** — under the wrapper such a rule eats its own source ✅. Until the fixed wrapper ships, the
+defence is one line:
+
+```make
+.s.o:
+	$(CC) $(CFLAGS) -c $< -o $@
+```
+
+With an explicit `-o` the wrapper's `.s` path is correct ✅. `.c` compiles are not exposed — the
+wrapper's compile path always names its output ✅. Keep assembly sources under version control
+regardless: a trap that exits 0 is only ever caught after the fact.
+
 ### The stock shared-libc `getpwnam()` first-call SIGSEGV — and the static-link sidestep ✅
 
 A separate porting hazard lives in the stock **shared `libc.so.1`**, not in the toolchain: the **first `getpwnam()` call** of a process crashes inside libc's passwd-record handling (a record expand routed through the `_libc_malloc` allocator-redirect pointers), while the symmetric group path (`getgrnam`) survives — the asymmetry is entirely inside libc and not debuggable off-box. Interposition was ruled out (libc calls its internal helpers via non-preemptible `bsrl`). The **working sidestep**, used in every binary of the ported pkg toolchain: link them **statically** and let the executable *define* `getpwnam`/`getpwuid`/`getgrnam`/`getgrgid` as small direct `/etc/passwd`/`/etc/group` parsers — an executable's own global symbols win over shared-library exports at static link time, so every internal caller is preempted uniformly. Two consequences worth knowing: this only protects code you can relink (it cannot reach the stock **dynamically-linked** daemons — which were never the victims of this particular defect anyway; a daemon crashing at boot is far more likely the [colon-less-`TZ` bug](../how-it-works/quirks.md)), and it is one more reason the install-media engine ships static.
@@ -7395,6 +7656,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - amigaunix.com — *downloads* page (AmixBP, Michael Parson) and *more_software* / *tips-tricks*: <https://www.amigaunix.com/doku.php/home>
 - SVR4 packaging tools (`pkgproto`, `pkgmk`, `pkgtrans`, `pkgadd`) — standard AT&T System V Release 4 documentation.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- First-party cross-toolchain findings (2026-07-27): SGS-dialect probes of the installed `m68k-cbm-sysv4` binutils-2.8.1 `as` (the `#`-as-comment failure reproduced; per-construct MIT-syntax compatibility probes) and the wrapper `-c foo.s` source-destruction defect (minimally reproduced three times; cause chain pinned by tracing the wrapper; empty-stdin control via `as -m68020 -o t.s </dev/null`).
 
 
 ================================================================================
@@ -10001,6 +10263,15 @@ The two `/bin/sh` scripts at `0x35000`/`0x35400` are the **install driver** — 
 
 The `tar` member at **0x17180** is a POSIX (`ustar`) archive; carve it with `unpack-root.sh` (it stops at the archive's own end-of-archive marker) for offline inspection. ✅
 
+### The install script is `/etc/profile`
+
+The install driver is not an anonymous blob you have to carve out of the image — inside the miniroot's s5 filesystem it lives at the path **`/etc/profile`** ✅ (first-party, 2026-07-31: read out of the stock root floppy by path with an s5-aware filesystem reader). The placement *is* the launch mechanism: a Bourne login shell reads `/etc/profile` at startup, so the miniroot needs no separate installer hook — the install kernel mounts the floppy, spawns the shell, and sourcing the profile starts the installer. Practically, this means you no longer need the offset-carve above to study the installer: any tool that can walk the s5 filesystem inside the ADF (see the 2026-07-05 s5 correction at the top of this page) extracts the script byte-exact by its path. And it makes `/etc/profile` the **authority for every `/etc/rdb`, `mkfs`, and partition-arithmetic question** — it is the code every stock install actually runs. Its exact command lines, and the unit conventions they prove, are dissected on the [filesystems & disks page](../how-it-works/filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units).
+
+Two identity facts to pin while the image is open ✅ (first-party, 2026-07-31):
+
+- `/etc/rdb` on this floppy is **18,416 bytes, md5 `6cacf95f738abea7cfddc6bb9ebf28e7`**.
+- A rebuilt install miniroot (the Installer-NG media) carries a **byte-identical** copy of that binary — so `rdb` behaviour proven against the rebuilt media is the stock binary's behaviour, and vice versa. That identity is what transfers the bench-proven unit conventions on the filesystems page to the stock installer.
+
 ## The install / partition logic
 
 The install script computes a default partition layout, lets you override it, then writes the [Rigid Disk Block](../how-it-works/filesystems-and-disks.md) and creates filesystems. The tunables at the top of the script are exact: ✅ (root.adf script text)
@@ -10178,6 +10449,7 @@ Both require `binwalk`/`strings`; `inspect-adf.sh` additionally uses `xdftool` (
 - Master research brief, §9 (installation flow) and §10 (root.adf anatomy); §2 (SCSI ids — tape hard-coded at 4, disk 6 by convention; RAM ceiling); §13 gap #8 (RDB partition type IDs).
 - SHA-256 cross-check: `sources/CHECKSUMS.txt`.
 - Disk image (not redistributed here): [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org Amiga UNIX](https://archive.org/details/commodore-amiga-operating-systems-amix).
+- The **Installer-NG** author-path proof (amix-installng, 2026-07-31) ✅ — the stock root floppy's install script read by path (`/etc/profile`) with an s5 filesystem reader, matching the carved script text above; `/etc/rdb` md5 `6cacf95f738abea7cfddc6bb9ebf28e7` (18,416 B), byte-identical between the stock floppy and the rebuilt install miniroot.
 
 
 ================================================================================

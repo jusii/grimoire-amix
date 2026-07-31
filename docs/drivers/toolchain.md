@@ -157,6 +157,69 @@ known, and the third was the most consequential ✅:
    [kernel build](kernel-build.md) for the blast-radius map and
    [package management](../how-it-works/package-management.md) for the crash this solved.
 
+### The SGS/SVR4 assembler dialect: `&` is the immediate prefix — and `#` is a comment ✅
+
+The toolchain's GNU `as` (binutils 2.8.1) is configured for the **SVR4/SGS m68k target**, not the
+plain-ELF/MIT dialect that `m68k-elf-as` and most modern m68k references speak. Two characters carry
+the whole difference ✅:
+
+| | SGS/SVR4 (`m68k-cbm-sysv4` `as`) | plain-ELF (`m68k-elf-as`) |
+|---|---|---|
+| Immediate prefix | **`&`** | `#` |
+| `#` means | **start of a comment** | immediate prefix |
+
+This is the dialect gcc 2.7.2.3's own output speaks (`moveq &0,%d0`, `link.w %fp,&0`) — and why the
+wrapper's `.swbeg &N` fixup above is spelled with `&`. It bites when you feed the toolchain
+**assembly written for a plain-ELF assembler** (a reference listing, another retro port, a modern
+m68k codebase): every `#` immediate starts a comment, the rest of the operand field vanishes before
+parsing, and gas rejects the line with ✅
+
+```text
+operands mismatch -- statement `movew ' ignored
+```
+
+**Note the empty operand field — that is the signature.** The diagnostic never names the cause: the
+operands were not wrong, they were *eaten as a comment* before the parser saw them. A wall of
+`operands mismatch … ignored` errors with blank operands on imported m68k assembly means exactly
+this, and the fix is the **one-character substitution `#` → `&`** on the code field of each affected
+line ✅.
+
+The rest of the MIT dialect largely assembles unchanged — MIT addressing syntax (`%a0@(8)`),
+joined-size mnemonics (`movel`, `moveal`), branch size suffixes (`bras`, `beql`), bitfield ops
+(`bfffo`), and the FPU/PMMU instructions (`fsave`, `fmovemx`, `pmove`, `pflusha`) were probed
+individually and pass as-is ✅. In practice the dialect wall is the immediate/comment characters.
+
+### The wrapper's `-c foo.s` with no `-o` silently destroys the source ✅
+
+A destructive trap in the cross **wrapper's** `.s` path (present in the shipped wrapper as of
+2026-07; a wrapper fix is queued in the `gcc-cross-amix` repo ✅):
+
+```sh
+m68k-cbm-sysv4-gcc -c foo.s     # no -o — DO NOT: this destroys foo.s
+```
+
+**silently overwrites `foo.s` with a 441-byte empty relocatable object and exits 0** — the source is
+gone, there is no diagnostic, and the build looks green ✅. The chain: the wrapper classifies only
+`*.c` arguments as sources, so a bare `.s` falls through as an "object" and the wrapper's compile
+output name stays empty; it execs the real gcc with a zero-length `-o` argument; gcc 2.7.2.3's `.s`
+spec drops that zero-length argument when it builds the `as` command line, so `as` is left holding
+`-o foo.s` and **no input file** — it assembles empty stdin and writes the result over your source ✅
+(the same 441-byte object falls out of `as -m68020 -o t.s </dev/null` directly). The wrapper's own
+refusing-to-overwrite guard compares the input against the (empty) output name, so it never fires.
+
+Where you meet it: **`.s.o` Makefile rules in the old SVR4 idiom — `$(CC) $(CFLAGS) -c $<` with no
+`-o`** — under the wrapper such a rule eats its own source ✅. Until the fixed wrapper ships, the
+defence is one line:
+
+```make
+.s.o:
+	$(CC) $(CFLAGS) -c $< -o $@
+```
+
+With an explicit `-o` the wrapper's `.s` path is correct ✅. `.c` compiles are not exposed — the
+wrapper's compile path always names its output ✅. Keep assembly sources under version control
+regardless: a trap that exits 0 is only ever caught after the fact.
+
 ### The stock shared-libc `getpwnam()` first-call SIGSEGV — and the static-link sidestep ✅
 
 A separate porting hazard lives in the stock **shared `libc.so.1`**, not in the toolchain: the **first `getpwnam()` call** of a process crashes inside libc's passwd-record handling (a record expand routed through the `_libc_malloc` allocator-redirect pointers), while the symmetric group path (`getgrnam`) survives — the asymmetry is entirely inside libc and not debuggable off-box. Interposition was ruled out (libc calls its internal helpers via non-preemptible `bsrl`). The **working sidestep**, used in every binary of the ported pkg toolchain: link them **statically** and let the executable *define* `getpwnam`/`getpwuid`/`getgrnam`/`getgrgid` as small direct `/etc/passwd`/`/etc/group` parsers — an executable's own global symbols win over shared-library exports at static link time, so every internal caller is preempted uniformly. Two consequences worth knowing: this only protects code you can relink (it cannot reach the stock **dynamically-linked** daemons — which were never the victims of this particular defect anyway; a daemon crashing at boot is far more likely the [colon-less-`TZ` bug](../how-it-works/quirks.md)), and it is one more reason the install-media engine ships static.
@@ -235,3 +298,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - amigaunix.com — *downloads* page (AmixBP, Michael Parson) and *more_software* / *tips-tricks*: <https://www.amigaunix.com/doku.php/home>
 - SVR4 packaging tools (`pkgproto`, `pkgmk`, `pkgtrans`, `pkgadd`) — standard AT&T System V Release 4 documentation.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- First-party cross-toolchain findings (2026-07-27): SGS-dialect probes of the installed `m68k-cbm-sysv4` binutils-2.8.1 `as` (the `#`-as-comment failure reproduced; per-construct MIT-syntax compatibility probes) and the wrapper `-c foo.s` source-destruction defect (minimally reproduced three times; cause chain pinned by tracing the wrapper; empty-stdin control via `as -m68020 -o t.s </dev/null`).

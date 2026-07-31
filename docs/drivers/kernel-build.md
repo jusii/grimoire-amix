@@ -613,6 +613,86 @@ multiuser on the **old** kernel — while **cold boot** (Amiberry down/up, which
 partition) was reliable 🟡. Always identity-check *which* kernel actually booted (a version marker, or
 `sysfs(GETFSIND, …)`) before trusting a test result.
 
+## Scripting the `kernel.c` edits with `ed` — the half-patch trap ✅
+
+Sooner or later everyone automates Step 2: a script pushes an `ed` heredoc that inserts the
+`extern` declarations, address-searches the target `cdevsw[]` row, changes it, and writes the
+file. This section is uniformly first-party ✅ — every failure mode below was reproduced with GNU
+`ed` over fixture copies of the real stock file layouts (2026-07-30/31), and the fail-closed
+pattern at the end is what this family's own build tooling now enforces. It applies to any stock
+file you patch in place — `master.d/kernel.c`, `master.d/filesys.c` (`vfssw[]`), the subdir
+Makefiles — and, in general, to anyone patching SVR4 sources with `ed`.
+
+**A missed address search is not a no-op.** `ed` prints its famous `?` — but the commands that
+already ran stay applied to the buffer, and the trailing `w` still writes the file. In the
+canonical two-edit body that means the `extern` insert lands, the row change silently never
+happens, and `kernel.c` is now **half-patched**: the driver links into the kernel while its
+`cdevsw[]` slot still holds the stock filler. Nothing fails to build, nothing panics; the only
+symptom is a device that never answers.
+
+```text
+/ANCHOR-A/a         <- edit 1, the insert: applies
+  (new extern line)
+.
+/ANCHOR-B/c         <- edit 2, the row change: on a miss, ed prints ? ...
+  (replacement row)
+.
+w                   <- ... and the write still happens: a half-patched file
+```
+
+**A name-wide idempotency guard then makes it permanent.** The natural wrapper guard — "the
+driver's name is already somewhere in the file, skip" — is satisfied by the surviving `extern`
+insert alone, so every later run reports already-patched and skips the repair, forever. The
+half-patch is invisible to the very tooling that created it.
+
+Three measured variants of the same trap ✅:
+
+- **The wrong-row overwrite.** An address that searches for the row's `/*N*/` comment tag changes
+  whatever line carries that tag. A claimant that kept the bare tag (community trees do — see
+  [the registry's collision notes](../reference/major-number-registry.md#2-the-two-live-collisions))
+  is **overwritten outright, with no error**.
+- **The renumber skew.** After a driver changes major number, a name-wide guard running on a tree
+  integrated *before* the renumber sees the old claim and no-ops — while rebuilt `/dev` nodes open
+  the new major. Kernel on the old slot, nodes on the new one, every build and every symbol check
+  green; the only runtime evidence is a dead device. This exact shape was produced by this
+  family's own tooling when `z3660eth` moved 48 → 51, and is now mechanically refused (a
+  "name found at a *different* row" probe outranks every other verdict).
+- **The wrapping search.** `ed`'s `/re/` address search **wraps around the buffer**, so an address
+  computed as "the first TAB-indented `};` after the anchor" can resolve inside a *different*
+  switch table once the file drifts. Measured: a `vfssw[]` row landed inside `fmodsw[]` — exit
+  status 0, no message.
+
+**Exit status is a weak oracle.** Check `$?` on every `ed` invocation, but never let it be the
+only gate: behaviour across `?` errors is not something to build on — the two `ed`s in play (GNU
+host-side, SVR4 on the box) do not agree, wrappers habitually print "patched" unconditionally, and
+a remote-shell transport that swallows the on-box exit status turns every other guard silent ✅.
+**The reliable mechanism is verification in the file itself, before and after the write.**
+
+The fail-closed pattern the family's builders converged on ✅:
+
+1. **Pre-probe before any write** (verify-then-apply). Probe every anchor the script depends on,
+   **row-scoped, not name-wide**, and classify the file: target row free / already exactly ours
+   (an idempotent re-run — proceed) / taken by another claimant / our name present at a
+   *different* row / insert present but row absent / anchor missing. Refuse everything but the
+   first two, with the diagnosis and the remedy spelled out.
+2. **One `ed` invocation per edit, `$?` checked.** Never pair an insert and an address-searched
+   change in one body — that pairing *is* the half-patch generator.
+3. **Post-verify the row, in the file.** Read it back and confirm the expected content sits
+   *inside the intended table's span* — a row can land in the wrong table with rc 0.
+4. **Repair or refuse half states.** Insert-present-row-absent gets repaired, or refused with the
+   exact remedy — never absorbed into "already patched".
+5. **Propagate refusal through every layer**, so the calling builder actually stops instead of
+   shipping the kernel anyway.
+6. **Prove it with no box.** Run the same script over fixtures cut from the real stock files and
+   reproduce each failure mode first; a selftest that lifts the expected row out of the real patch
+   script fails on drift instead of rotting quietly.
+
+This is the scripted-edit companion to the registry's manual rule — match the row by its tag and
+refuse anything but the free filler
+([conventions](../reference/major-number-registry.md#7-conventions-for-adding-a-driver)) — and to
+the pre-POSIX shell warning in Step 2. One-line checklist entry:
+[quirk 28](../how-it-works/quirks.md#28-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file).
+
 ## See also
 
 - [Driver model overview](driver-model.md) — what `cdevsw`/`bdevsw`, majors/minors, and the
@@ -687,3 +767,12 @@ partition) was reliable 🟡. Always identity-check *which* kernel actually boot
   `/stand/unix` 38553); copy `relocunix` to `/stand/unix` explicitly and rebuild the bootpart, then
   re-check `sum -r /stand/unix`. Real A4000 + Z3660, 2026-07-12 ✅. Same brief also confirms SVR4
   `grep` has no `\|` alternation (already noted above under build-script gotchas).
+- The **amix-kerntools** cdevsw free-row gate + 2026-07-31 half-patch audit fix packets
+  (`2b23808`, `1c6a57e`, `a81d7c9`, `f0c517c`, `f90756b`, `f025444`, `dac78a0`) and the
+  **amix-z3660net** patch-script hardening (`603c719`), 2026-07-30/31 ✅ — the `ed`
+  miss-then-write half-patch and the bare-tag wrong-row overwrite measured host-side with GNU
+  `ed` over the real stock `kernel.c` layout; the wrapping-search wrong-table landing and the
+  discarded-exit-status mode measured on the `filesys.c` arm; the renumber-skew shape found live
+  in pre-renumber integrated trees; and the fail-closed pre-probe / one-edit-per-run /
+  post-verify-the-row / repair-half-states pattern, each failure mode first reproduced and then
+  pinned by the repos' no-box selftests.
