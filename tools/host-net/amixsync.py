@@ -78,11 +78,28 @@ def push_dir(f, localdir, remotedir):
 
 
 def remote_size(f, remote):
-    """Remote byte size via SIZE (binary mode), or None if unsupported."""
+    """Remote byte size via SIZE, falling back to parsing LIST.
+
+    Amix 2.1's 1991 ftpd predates the SIZE extension (RFC 3659), so on a real
+    box the SIZE path always fails -- without the LIST fallback the truncation
+    gate in pull_file was silently vacuous, and FTP pulls that dropped bytes
+    were accepted as complete. Returns None only if LIST is unparsable too.
+    """
     try:
         return f.size(remote)
     except (ftplib.error_perm, ftplib.error_reply, OSError):
+        pass
+    lines = []
+    try:
+        f.retrlines("LIST " + remote, lines.append)
+    except (ftplib.error_perm, ftplib.error_reply, OSError):
         return None
+    for ln in lines:
+        parts = ln.split()
+        # standard ls -l shape: perms links owner group SIZE month day time name
+        if len(parts) >= 9 and parts[4].isdigit():
+            return int(parts[4])
+    return None
 
 
 def pull_file(f, remote, local, retries=3):
