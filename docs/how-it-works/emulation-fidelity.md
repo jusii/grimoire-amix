@@ -50,6 +50,10 @@ Amix's **A3000-mainboard SCSI** bootstrap is interrupt-driven on Amiga **INT2** 
 
 This behaviour is exposed by a firmware knob, **`service_cadence N`** ✅:
 
+> Disambiguation: `service_cadence` is a **software** poll-cadence knob of the firmware's device
+> emulation. The Z3660's *hardware* clock generation — CPLD timing rows, VCO/PCLK/phase — is a
+> different layer with different failure modes, covered on [Z3660 board timings](z3660-timings.md).
+
 - `N` = the number of emulated instructions run between calls to the emulator's interrupt-service poll (`check_uae_int_request()`), i.e. the emulator batches `N` instructions between the poll that detects the Amiga IPL/INT2 line. **Default 1** (poll every instruction); values below 1 are clamped to 1. ✅
 - It is settable at boot in `z3660cfg.txt` and per-preset config (Z3660 commit **`e0e17d5`**), and cyclable at runtime `1→2→…→64→1` from the serial `SERV` console (commit `f7bbdb0`). ✅
 - Raising it trades interrupt latency for CPU throughput — measured on a real A4000 + Z3660 (Amix 2.1, Dhrystone 2.1) at up to ~**1.3× CPU** from cadence 1→64, with disk I/O essentially flat and a knee around 8. ✅
@@ -198,6 +202,25 @@ Two boundaries on this finding, stated so nobody over-reads it:
   established *that* it does (10 boots, same image and same kernel throughout, including the run that
   added `cycle_exact=false` and nothing else and reached multiuser), not *why*. Treat "the cycle-exact
   68030 core is not an Amix-capable core" as a measured operational fact, not an explained one.
+
+## The FP-disabled frame's Next PC: a metric a UAE-family bed cannot fail ✅
+
+UAE-derived cores (Amiberry included) **decode the whole instruction — immediate operand included —
+before raising the F-line exception**, and stack the emulated PC as it stands after that decode. The
+stacked "Next PC" in the 68060-style FP-disabled frame is therefore *faulting PC + true length* by
+construction, for every addressing mode. Real silicon does not promise that: the field is
+software-maintained, and for immediate operands the hardware cannot know the length (see
+[quirks §33–34](quirks.md#68060-cpu-quirks)).
+
+Consequence: an instrument that asks "does my decoded instruction length agree with the CPU's
+stacked next-PC?" reduces, on this bed, to "do two decoders agree?" — a disagreement is **not
+constructible**. A zero from that instrument on the bench is true and carries no information about
+silicon; the metric is metal-only. This is not an emulator bug — a fully decoded Next PC is a
+legitimate value for a field the vendor's own software fills in — but it is a fidelity gap of the
+useful kind: one located line of behaviour that fully explains a metal-versus-bench divergence.
+
+**The general rule:** before registering a bench number as a pass, ask whether the bed *can* produce
+a failure. A metric a bed cannot fail is not a test.
 
 ## Where this was discovered
 

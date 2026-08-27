@@ -44,6 +44,12 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 28 | **The partitioning tools' units are all 512-byte blocks, and `rdb`'s usage text omits the flags that matter** — `rdb -c` requires a `-d disksize` its usage block never mentions; `rdb -p` wants a 1-based partition *number* (a device path `atoi()`s to 0 and is refused); `mkfs_s5`'s size operand is 512-byte blocks (pass a pre-converted 1 KB count and the filesystem covers half the slice) | ✅ | [Filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units) |
 | 29 | **The stock kernel writes motherboard register `0xde0002` at every boot and at reboot/halt** — on the A3000 that is the SuperKickstart re-kick bit; on an A4000 the same address is Fat Gary's coldreboot latch, which nothing consumes, so the write is benign. Don't chase it in bus traces or emulator logs; decode-and-ignore is the correct model for an A4000 target | ✅ | [Quirks §29](#29-the-kernel-pokes-the-a3000-re-kick-register-0xde0002-at-every-boot-and-reboot) |
 | 30 | **A scripted `ed` edit that misses its address search still writes the file** — earlier inserts in the same body stay applied, and a name-wide `grep` guard then reports "already patched" forever: a permanent, invisible half-patch. Pre-probe the target row, one `ed` run per edit, post-verify the row — never trust `ed`'s exit status alone | ✅ | [Quirks §30](#30-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file), [Kernel build](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap) |
+| 31 | **On an FPU-less part, floating point dies as SIGSYS ("Bad System Call", exit 140)**, not SIGILL/SIGFPE — and it dies in *libc*: `_doprnt` carries FP on its `%e`/`%f`/`%g` paths, so any program that **prints** a float dies even if its own code is FP-free (`df -k`, `uptime`). `__fpstart` is FP-safe, so everything else runs. Triage rule: *does it print a float?* | ✅ | [Quirks §31](#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call-), [040/060 status](68040-68060-status.md) |
+| 32 | **`awk` is always a floating-point program** — it holds every number as a C `double`, so on an FPU-less part it dies even on `1+1`. An awk failure on integer arithmetic is not evidence of a second defect | ✅ | [Quirks §32](#32-awk-is-always-a-floating-point-program-) |
+| 33 | **68060: the FP-disabled frame's stacked "Next PC" is software-maintained** — Motorola's own support package recomputes it from its own decode and treats the faulted-PC slot as the authority. A handler must resume on a PC it computed itself | 🟡 | [Quirks §33](#33-68060-the-fp-disabled-frames-next-pc-is-software-maintained-) |
+| 34 | **68060: immediate `#<data>` is the one F-line operand the hardware cannot size** — its length lives in the FP command word a disabled FPU has no reason to decode, so the stacked next-PC can be short by the operand's width | 🟡 | [Quirks §34](#34-68060-immediate-data-is-the-one-f-line-operand-the-hardware-cannot-size-) |
+| 35 | **A zero from a counter behind a gate is not evidence the gate was reached** — every never-engage counter needs a pre-gate denominator census, and the regression bar must name which counters are exempt | ✅ | [Quirks §35](#35-a-zero-behind-a-gate-needs-a-pre-gate-denominator-) |
+| 36 | **An optimised probe that reports "no fault" must be disassembled before it is believed** — the compiler may have constant-folded the faulting instruction away entirely, so the negative is the compiler's answer, not the silicon's | ✅ | [Quirks §36](#36-an-optimised-probe-reporting-no-fault-must-be-disassembled-first-) |
 
 The rest of this page expands each item.
 
@@ -178,6 +184,47 @@ A gotcha for **driver authors**, learned bringing up the [Z3660 ethernet driver]
 
 **Fix:** disable the board/firmware interrupt and **poll** the receive path instead — `z3660eth` writes the firmware's `ZZ_CONFIG_DISABLE` so INT6 is never raised, and drains RX from a clock-level `timeout()` callout ✅. Interrupt-driven RX would need a level-6 hook the firmware's model doesn't safely give Amix. The general lesson: when adding a driver, don't enable an interrupt source Amix can't service — confirm there's a handler (and an ack path) for that level, or run polled. Full story on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
 
+## FPU & floating-point quirks
+
+### 31. On an FPU-less part, floating point dies as SIGSYS ("Bad System Call") ✅
+
+The F-line trap's stock mapping is **SIGSYS**, so an FP instruction on a part with no FPU exits 140
+with `Bad System Call - core dumped` — a label that points a debugger at the syscall interface,
+which is not involved. Anything grepping crash reports for illegal-instruction traps misses every
+one of these. The reach is wider than "programs that compute with floats": libc's `_doprnt` carries
+FP instructions on its `%e`/`%f`/`%g` conversion paths, so **any program that prints a float dies
+inside libc** — `df -k` and `uptime` die in the print call, not in their own arithmetic. `__fpstart`
+does not touch FP hardware, which is why everything else runs normally and the failure set is
+exactly the float-printers. Because the whole class funnels through one libc path, one fix covers
+all of it. Triage rule: *"program dies with SIGSYS in a print call" means FP-in-libc, not a syscall
+bug* — ask "does it print a float?" before investigating anything else.
+
+### 32. `awk` is always a floating-point program ✅
+
+`awk 'BEGIN{print 1+1}'` dying on an FPU-less part looks like proof of a second, non-FP defect. It
+is the opposite: awk holds every number as a C `double`, so it prints a float even for pure-integer
+expressions. An awk failure on integer arithmetic is the *same* FP defect, not a new one.
+
+## 68060 CPU quirks
+
+### 33. 68060: the FP-disabled frame's "Next PC" is software-maintained 🟡
+
+In the 68060's eight-word FPU-disabled exception frame, the stacked "Next PC" is **not** an
+architectural guarantee that the CPU sized the faulting instruction: Motorola's own 68060 support
+package builds and rewrites that field itself, from its own decode, and treats the
+PC-of-faulted-instruction slot as the authority. Any handler for this frame should resume on a PC it
+computed from its own decode and treat the stacked Next PC as advisory. (Tag stays 🟡: read from the
+vendor package's source behaviour, not verified against the MC68060 User's Manual.)
+
+### 34. 68060: immediate `#<data>` is the one F-line operand the hardware cannot size 🟡
+
+For every F-line addressing mode except immediate data, instruction length follows from the
+operation word alone. For `#<data>` the operand's byte count lives in the **FP command word's**
+source-specifier field — precisely the field a *disabled* FPU has no reason to decode — so the
+stacked next-PC can be short by the operand's width (an IEEE double immediate is 8 bytes the frame
+never accounted for). This is the structural reason quirk 33's field cannot be trusted, and it names
+the one instruction class where the discrepancy occurs.
+
 ## Diagnostics & logging quirks
 
 ### 24. `syslogd` is present, correct, and deliberately switched off ✅
@@ -224,6 +271,22 @@ command timeout of about **20 minutes**, not the usual seconds ✅. This matters
 for patience: the first attempt at such a read was recorded as a **failure** purely because it hit a
 300-second cap ✅. **Never score a timeout on a deep `cdfs` read as a read failure** — re-run it with
 a real timeout before concluding anything.
+
+### 35. A zero behind a gate needs a pre-gate denominator ✅
+
+A lane that must never run on most rigs gets an entry counter that must read 0 — but a counter
+placed *behind* the decline gate reads 0 both when the lane correctly declined and when the event
+never arrived at all. The fix is a pre-gate census: count and classify every event ahead of the
+arming test, so a zero on the behavioural counter is provably a *declined* path, not an *unreached*
+one. The census counters are then expected to move everywhere — so the regression bar must exempt
+them **by name**. *A zero from a counter behind a gate is not evidence the gate was reached.*
+
+### 36. An optimised probe reporting "no fault" must be disassembled first ✅
+
+A divide-by-zero probe built at `-O` reported "no trap" — because the binary contained no divide at
+all; the compiler had constant-folded it. The negative was the compiler's answer, not the silicon's.
+When any probe reports that *nothing happened*, prove the instruction exists in the binary before
+believing the hardware. Build probes at `-O0`.
 
 ## Driver-authoring quirks
 
