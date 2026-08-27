@@ -184,10 +184,47 @@ operands were not wrong, they were *eaten as a comment* before the parser saw th
 this, and the fix is the **one-character substitution `#` → `&`** on the code field of each affected
 line ✅.
 
+**The mechanism, and why the scrub reaches end of line** ✅: `#` is in gas's `line_comment_chars` for
+this target (`gas/config/tc-m68k.c`), and the comment scrubber runs **before** the m68k operand
+parser — so the operand is not misparsed, it is *gone*, together with everything after it on the
+line: a second operand, a trailing comment, all of it.
+
+**The carrier is inline asm in C, not just imported `.s` files** ✅: gcc 2.7.2.3 copies an `__asm__`
+template into its output **verbatim**, so Motorola-syntax immediates inside a `.c` file reach the
+assembler unchanged and hit the scrub exactly as an imported `.s` file would. A project with no `.s`
+files is not exempt.
+
+**And the failure can be silent** ✅ — this is the dangerous half, and the diagnostic above is the
+*lucky* outcome. If what survives the scrub is itself a valid instruction, gas assembles **that**,
+with no diagnostic of any kind: `nop #junk here` assembles to a bare `nop` (`4e71`), exit 0. What
+you wrote is not what ran. This is the same silence class as the `tdivs` mis-encode above — the
+toolchain has a *family* of silent mis-encodes, and the rule that covers all of them is: **verify
+the encoding (`objdump -d`), never the exit status.**
+
 The rest of the MIT dialect largely assembles unchanged — MIT addressing syntax (`%a0@(8)`),
-joined-size mnemonics (`movel`, `moveal`), branch size suffixes (`bras`, `beql`), bitfield ops
-(`bfffo`), and the FPU/PMMU instructions (`fsave`, `fmovemx`, `pmove`, `pflusha`) were probed
-individually and pass as-is ✅. In practice the dialect wall is the immediate/comment characters.
+joined-size mnemonics (`movel`, `moveal`), branch size suffixes (`bras`, `beql`), and the FPU/PMMU
+instructions (`fsave`, `fmovemx`, `pmove`, `pflusha`) were probed individually and pass as-is ✅. In
+practice the dialect wall is the immediate/comment characters.
+
+**Bit-field operands are the documented exception** ✅ (this narrows an earlier version of this
+section, which listed `bfffo` among the pass-as-is constructs — true of the *mnemonic* and the
+register operand form, not of the Motorola-immediate operand form):
+
+| Written | Result |
+|---|---|
+| `bfffo %d3{#0:#32},%d2` | destroyed — comment scrub (`Missing operand` + `operands mismatch`) |
+| `{0:32}` — bare literals | assembles correctly |
+| `{BOFF:WID}` — bare symbols | `Bad expression` / `parse error` |
+| `{&0:&32}` / `{&BOFF:&WID}` | assembles correctly, literals **and** symbols |
+
+`&` is the only universally-correct repair — bare numbers work for literals and fail for symbolic
+offsets/widths. As of `gcc-cross-amix` `d0a4045` the wrapper's `fix_asm` auto-repairs `#` → `&`
+**inside bit-field braces** for all eight bit-field mnemonics, gated on the *encoding* by
+`make test-bitfield` (offset/width read back out of the extension word). The repair is deliberately
+narrow: `#APP`/`#NO_APP` and every other `#` on the line are untouched, so **all other hand-written
+immediates remain the author's responsibility** — `moveq #1,%d0` in an `__asm__` block is still
+silently eaten. When importing any third-party m68k asm or inline asm: grep the code fields for `#`,
+rewrite to `&`, and verify the encoding, not the build's exit status ✅.
 
 ### The wrapper's `-c foo.s` with no `-o` silently destroys the source ✅
 

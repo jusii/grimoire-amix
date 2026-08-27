@@ -51,6 +51,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 35 | **A zero from a counter behind a gate is not evidence the gate was reached** — every never-engage counter needs a pre-gate denominator census, and the regression bar must name which counters are exempt | ✅ | [Quirks §35](#35-a-zero-behind-a-gate-needs-a-pre-gate-denominator-) |
 | 36 | **An optimised probe that reports "no fault" must be disassembled before it is believed** — the compiler may have constant-folded the faulting instruction away entirely, so the negative is the compiler's answer, not the silicon's | ✅ | [Quirks §36](#36-an-optimised-probe-reporting-no-fault-must-be-disassembled-first-) |
 | 37 | **A one-byte binary diff is not understood until the byte is decoded** — two kernels differed by one byte and that byte was a table row-count *bound*, gating a driver that sat outside the compared window; "the code is identical, so it's the environment" was wrong. Decode what the byte does before concluding | ✅ | [Quirks §37](#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded-), [Kernel composition](../drivers/kernel-composition.md) |
+| 38 | **`uptime` and `w` do not report the machine's load** — the reader resolves a COMMON kernel symbol to a non-address without an error (flat `0.00` and absurd millions are the SAME defect), and even the kernel's own count reads exactly N−1 (the on-CPU process is never counted). Read the truth with `adb -k <running-kernel> /dev/mem`, `avenrun/3X`, ÷256 | ✅ | [Load averages](load-averages.md) |
 
 The rest of this page expands each item.
 
@@ -296,6 +297,14 @@ and a window-compare around the faulting driver concluded "driver identical, so 
 the variable". Both halves true, conclusion wrong: the byte was the controller registry's row-count
 **bound**, and the driver it gates sat outside the compared window. When a byte-compare turns up
 exactly one difference, decode what that byte *does* before concluding anything.
+
+### 38. `uptime` and `w` do not report the machine's load ✅
+
+Two independent stock defects: `nlist(3)` cannot resolve `avenrun` (a COMMON symbol in the `ET_REL`
+kernel) and *succeeds anyway* with the alignment as the value — so the printed number is whatever
+sits at a bogus address, flat `0.00` and six-digit garbage being the same defect; and the kernel's
+own load count omits the on-CPU process, reading exactly N−1 even when read correctly. Full story,
+measurements and the working read recipe: [load averages](load-averages.md).
 
 ## Driver-authoring quirks
 

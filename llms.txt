@@ -23,6 +23,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [The Amix Package Repository Format](docs/how-it-works/package-repository.md): the static repo tree, the pipe-delimited catalog v1 grammar, md5+size integrity, the apkg client's three sources (HTTP / mounted medium / raw slice), and the fail-closed publish gates.
 - [Quirks & Gotchas](docs/how-it-works/quirks.md): the Amiga-port surprises.
 - [Z3660 board timings](docs/how-it-works/z3660-timings.md): CPLD clock rows are per-unit and per-clock — the laws, the 25.000 MHz edge, and the config-vs-failing-card diagnostic.
+- [Load averages](docs/how-it-works/load-averages.md): why uptime and w print garbage (two independent stock defects) and how to read the real value.
 - [Emulation Fidelity](docs/how-it-works/emulation-fidelity.md): what a 68030/MMU/interrupt emulator must implement — format-$B bus-error frames, SCSI INT2 latency — or Amix's demand-paging boot fails, sometimes silently.
 - [Glossary](docs/how-it-works/glossary.md): terms used across the docs.
 

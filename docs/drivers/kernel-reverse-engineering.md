@@ -123,11 +123,21 @@ This was proven by zeroing a driver's static log counter mid-session and watchin
 the next I/O ✅.
 
 **The trap — `adb`'s symbol addresses are FILE-relative, so you must add the kernel's load bias.** ✅
+**Scope: this fix applies to *defined* symbols only** (`.text`, `.data`, `.bss`). A `SHN_COMMON`
+symbol — every bare C tentative definition in the kernel — is a **different trap the bias cannot
+fix**: its file value is an *alignment*, not an offset (see the next section) ✅.
 The reason the earlier `adb -k /stand/unix /dev/kmem` invocation
 [reads garbage](#step-3-read-a-running-kernel-from-a-savestate) is the same one that bites here: given a
 **namelist** (`adb /stand/unix /dev/kmem`), `adb` resolves a symbol to the address recorded in the
 **kernel file**, which on this **relocated** kernel is only an *offset* — reading it directly returns
 garbage (`freemem` read back as `0xFFFFFFFF`). Drop the namelist and address by **runtime VA** instead:
+
+> 🟡 **Two open re-checks on this example** (flagged 2026-08-27, one measurement each, not yet run):
+> first-party `strstat.py` classifies `freemem` as a **COMMON** symbol — in which case the
+> `0xFFFFFFFF` above is an instance of the *COMMON* trap, and the bias would not have fixed it; and
+> the working combination measured for kernel-mode reads is `-k` with **`/dev/mem`**, whereas the
+> failing invocation above used `/dev/kmem` — device-versus-bias was not isolated. Until re-run,
+> treat this paragraph's example (not its rule) as provisional.
 
 ```
 runtime VA = (nm/adb symbol value) + kernel_load_base
@@ -142,6 +152,53 @@ known symbol before trusting any poke.)
 **For a `static`-scoped variable with no global symbol:** disassemble the function that touches it, read
 the operand address straight out of the **live instruction stream**, then poke *that* address — the same
 trick that recovers file-scoped statics from the `exp` objects, applied to the running image ✅.
+
+## The COMMON-symbol trap: `nlist` succeeds and lies ✅
+
+The second, distinct reason a symbol lookup against `/stand/unix` hands you a bad address — and the
+load-bias fix above cannot touch it. `/stand/unix` is an **`ET_REL`** relocatable object, and every
+bare C tentative definition in the kernel is **`SHN_COMMON`** in it: such a symbol **has no address
+in the file at all**. Its `n_value` is the **alignment requirement**, and `nlist(3)` returns
+**success** anyway — no error, no zeroed entry. The caller then reads `/dev/kmem` at a small integer
+and prints whatever lives there. The address genuinely cannot be recovered from the file: the boot
+loader's `elf2brel` conversion **allocates COMMON itself at boot and discards the symbol tables**,
+so the placement exists only inside the loaded image ✅.
+
+**How to tell in ten seconds** ✅: `nm` shows `COMMON` in the section column; `nlist` returns
+`n_scnum = -14`; the value is an implausibly small, suspiciously round number. *If a "kernel
+address" comes back as a single-digit number, it is an alignment — nothing lives at 4.*
+
+| Trap | Applies to | Symptom | Fix |
+|---|---|---|---|
+| **Load bias** (previous section) | *defined* symbols | value is a real but file-relative offset | add the kernel load base |
+| **COMMON placement** (this section) | `SHN_COMMON` symbols | value is an **alignment**; no address exists in the file | resolve against the **running image** |
+
+**What works** ✅: `adb -k <kernel> /dev/mem` — the `-k` kernel mode with the physical-memory device —
+because `adb -k` **reproduces the boot loader's COMMON placement** instead of trusting the file's
+symbol value. Two load-bearing conditions:
+
+1. **The namelist must be the kernel actually running.** A different kernel's namelist resolves to a
+   different, *plausible-looking* address — measured: the stock `2.1_unix` namelist on a relinked
+   running kernel returned convincing zeros ✅.
+2. **When the running kernel exists in no file at all** (a kernel loaded from a raw slice rather
+   than `/stand`), there is no namelist to hand `adb`, and pointing it at `/stand/unix` fails
+   *silently* with plausible values — the same trap class this section warns about. The recovery is
+   to **replay the loader's COMMON allocation host-side against the running artifact** (first-party
+   `amix-kerntools/tools/comaddr.py`), then read the computed address; validated on real hardware by
+   an independent clock-tick cross-check ✅.
+
+`crash(1M)` is not an alternative — it fails on this kernel with `process slot out of bounds` ✅. And
+where `adb` is unavailable, the instruction-stream bootstrap already described above (read the
+operand address of a function that touches the variable, cross-check a second site) resolves COMMON
+symbols too — that is precisely how `strstat.py` finds `strst` ✅.
+
+**The checklist, for any kernel variable on Amix** ✅: never trust `nlist(3)` (success is not
+evidence); classify the symbol first (`nm` — COMMON or defined); COMMON → running image (`adb -k`
+with the running kernel, or replay the allocation); defined → `nm` value + load base, base confirmed
+against a known text symbol; and always sanity-check by moving the machine — a value that never
+moves with load is a wrong address wearing a convincing disguise. The worked consequence of this
+whole section is the load-average story: see
+[load averages](../how-it-works/load-averages.md).
 
 ## Worked example — how `mount(2)` and fstype registration actually work
 
