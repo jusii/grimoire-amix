@@ -50,6 +50,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 34 | **68060: immediate `#<data>` is the one F-line operand the hardware cannot size** — its length lives in the FP command word a disabled FPU has no reason to decode, so the stacked next-PC can be short by the operand's width | 🟡 | [Quirks §34](#34-68060-immediate-data-is-the-one-f-line-operand-the-hardware-cannot-size-) |
 | 35 | **A zero from a counter behind a gate is not evidence the gate was reached** — every never-engage counter needs a pre-gate denominator census, and the regression bar must name which counters are exempt | ✅ | [Quirks §35](#35-a-zero-behind-a-gate-needs-a-pre-gate-denominator-) |
 | 36 | **An optimised probe that reports "no fault" must be disassembled before it is believed** — the compiler may have constant-folded the faulting instruction away entirely, so the negative is the compiler's answer, not the silicon's | ✅ | [Quirks §36](#36-an-optimised-probe-reporting-no-fault-must-be-disassembled-first-) |
+| 37 | **A one-byte binary diff is not understood until the byte is decoded** — two kernels differed by one byte and that byte was a table row-count *bound*, gating a driver that sat outside the compared window; "the code is identical, so it's the environment" was wrong. Decode what the byte does before concluding | ✅ | [Quirks §37](#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded-), [Kernel composition](../drivers/kernel-composition.md) |
 
 The rest of this page expands each item.
 
@@ -287,6 +288,14 @@ A divide-by-zero probe built at `-O` reported "no trap" — because the binary c
 all; the compiler had constant-folded it. The negative was the compiler's answer, not the silicon's.
 When any probe reports that *nothing happened*, prove the instruction exists in the binary before
 believing the hardware. Build probes at `-O0`.
+
+### 37. A one-byte binary diff is not understood until the byte is decoded ✅
+
+A failing and a working kernel compared byte-identical across a megabyte of text except one byte —
+and a window-compare around the faulting driver concluded "driver identical, so the environment is
+the variable". Both halves true, conclusion wrong: the byte was the controller registry's row-count
+**bound**, and the driver it gates sat outside the compared window. When a byte-compare turns up
+exactly one difference, decode what that byte *does* before concluding anything.
 
 ## Driver-authoring quirks
 

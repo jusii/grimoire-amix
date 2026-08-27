@@ -94,8 +94,13 @@ if (index==0 && (pc==0x0202F003)) {                 /* A3000 internal SCSI: not 
     if ((((int)vposr >> 8) & 0x7F) < 0x22) {        /* ECS/OCS Agnus (<0x22) = A3000-class; AGA Alice (>=0x22) = A4000 */
         volatile unsigned char *sasr = (unsigned char *)0xDD0041;  /* WD33C93 SASR */
         volatile unsigned char *scmd = (unsigned char *)0xDD0043;  /* WD33C93 SCMD */
-        *sasr = 0x02; *scmd = 0x55;  *sasr = 0x02;                 /* write/readback Timeout-Period reg */
-        if (*scmd == 0x55) { *sasr = 0x02; *scmd = 0xAA; *sasr = 0x02; if (*scmd == 0xAA) a3kscsi = 1; }
+        *sasr = 0x02; *scmd = 0x55;                                /* reg 0x02 <- 0x55 */
+        *sasr = 0x03; *scmd = 0xAA;                                /* reg 0x03 <- 0xAA, same data port */
+        *sasr = 0x02;                                              /* re-select reg 0x02 */
+        if (*scmd == 0x55) {           /* open bus would alias this read to the LAST write, 0xAA */
+            *sasr = 0x03;
+            if (*scmd == 0xAA) a3kscsi = 1;   /* both registers distinct => a real WD33C93 */
+        }
     }
     if (a3kscsi) { *bp = 0xdd0000; return 1; }       /* present -> register */
     /* absent -> fall through; autocon returns 0; sd.c never registers it */
@@ -105,9 +110,19 @@ if (index==0 && (pc==0x0202F003)) {                 /* A3000 internal SCSI: not 
 How the two steps work ✅:
 
 - **Chipset gate (the safety mechanism).** Read **VPOSR (`0xDFF004`)** — a custom-chip register that is *always* present and bus-safe to read on any Amiga. The identification field is **bits 8–14** (mask the toggling LOF bit at bit 15, i.e. `(vposr >> 8) & 0x7F`): **< 0x22 = ECS/OCS Agnus** (A3000-class), **≥ 0x22 = AGA Alice** (A4000). On AGA the whole block is **skipped**, so the kernel *never reads* `0xDD0000` — eliminating any bus-fault at an address that does not decode on an A4000.
-- **WD33C93 probe (on A3000-class only).** Write `0x55` then `0xAA` to the WD33C93 Timeout-Period register (indirectly, via its `SASR`/`SCMD` ports at `0xDD0041` / `0xDD0043`) and read each back. The board at `0xDD0000` is registered only if the chip **echoes** both values.
+- **WD33C93 probe (on A3000-class only).** A **two-register anti-alias** write/readback through the
+  chip's indirect `SASR`/`SCMD` ports (`0xDD0041`/`0xDD0043`): write `0x55` into register `0x02` and
+  `0xAA` into register `0x03` — both through the *same* data port — then read both back. Open bus
+  that echoes the last write would return `0xAA` for the register-`0x02` read, so the probe only
+  passes when two genuinely distinct registers hold their own values: a real WD33C93. The board at
+  `0xDD0000` is registered only then.
 
-🟡 **Emulation caveat (carry honestly).** Amiberry's *open bus* at `0xDD0000` echoes writes, so the write/readback **false-positives** when `scsi_a3000=false` — in emulation "ECS always registers" even with no WD33C93 attached. This is harmless for the real targets (a physical A3000 *always* has the WD33C93, and a real A2500's empty bus would correctly fail the probe). The **chipset gate** is what makes the **A4000 / AGA** case correct and safe; the WD33C93 readback can only be *fully* trusted on real hardware.
+🟡 **Emulation caveat (carry honestly).** An earlier **single-register** form of this probe
+false-positived on Amiberry: its *open bus* at `0xDD0000` echoes writes, so a write/readback against
+one register succeeds with no WD33C93 attached (`scsi_a3000=false`). The current two-register form
+above was designed to defeat exactly that aliasing — an echo-last-write bus fails the register-`0x02`
+readback ✅ (by construction). Whether it has been re-measured against Amiberry's open bus is not
+recorded 🟡; the **chipset gate** remains what makes the A4000/AGA case correct and safe regardless.
 
 ## The Zorro II ID nibble encoding
 
@@ -177,6 +192,39 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 ## See also
 
 - [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board brought up over the TT gap with `sptalloc()`; the auto-detection consumer of `autocon()`.
+## The phantom on a real A4000: a fabricated entry whose every I/O is fatal ✅
+
+On real A4000 metal the fabricated card-0 entry is worse than a mis-ordering. Nothing decodes
+`0xDD0000` on an A4000, so nothing drives DSACK, and the first register access takes a **bus error
+inside the stock driver's initialisation** — that routine is shaped as *"panic unless a board was
+found at exactly the A3000 built-in address"* followed by a register write, and it establishes no
+mapping, so on this machine it is fatal **whenever it is called** ✅ (first-party, observed and
+decoded on metal, 2026-08). The only defence is never to issue I/O to that card: a kernel whose
+compiled-in root device names card 1 never enters the routine at all, which is why the same kernel
+can be fully green on a bench (where something answers *and decodes* at `0xDD0000`) and structurally
+unbootable on this metal ✅.
+
+**Card ordering is fragile in both directions.** On an uncured kernel the Z3660-class second
+controller is card 1 *only because* the phantom holds card 0 ✅. Suppress the phantom — this page's
+cure, or any config in which `autocon()` stops fabricating the entry — and the second controller
+**renumbers to card 0**, so every root/swap stamp naming card 1 stops resolving. This is measured,
+not hypothetical: on the same physical A4000, a kernel carrying the cure roots through **card 0**
+while an uncured one must be stamped to **card 1** ✅. Adopting the cure into an existing kernel
+lineage is therefore a **migration** (re-stamp every image's root/swap), not a drop-in patch.
+
+**Which kernels carry the cure** ✅ (audited 2026-08-27): the A4091 project (its origin), the
+install-media builder (unconditionally, with build gates), and the on-box kernel builders. A kernel
+produced by **relinking a stock binary** structurally cannot take it — the cure is a source patch,
+and no C source is in that path — so such kernels avoid card 0 by stamping root/swap to card 1
+instead, with a link-time gate that decodes the artifact's compiled-in root family and refuses a
+mismatch for the target rig. The state is coherent: the cure where source is compiled, the stamp
+plus gate where it is not.
+
+**A method note from the metal root-cause** ✅: the failing and the working kernel differed by *one
+byte* in a megabyte of text — the controller registry's row-count bound — plus an appended driver
+and a two-byte root restamp. A byte-compare that finds exactly one difference has not told you what
+that byte does; **decode the byte before concluding anything** (see [quirks §37](../how-it-works/quirks.md#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded-)).
+
 - [The boot process](../how-it-works/boot-process.md) — how the phantom-A3000 mis-ordering produced the root-mount panic, and the fixed card numbering.
 - [The Amix device-driver model](driver-model.md) — switch tables, major/minor, and where `autocon()` sits in the API surface.
 - [Case study: lszorro userspace Zorro scanner](case-studies/lszorro.md) — the full worked implementation.

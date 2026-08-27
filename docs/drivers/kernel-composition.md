@@ -102,6 +102,20 @@ instructions, and configuration** (the va2000/hydra/zz9000 pattern). A "universa
 medium" is therefore impossible on licensing grounds alone; the publishable artifact is the
 **recipe**, and each licensed Amix owner links their own kernel.
 
+### The root card and the linked driver set are ONE decision ✅
+
+A card stamp cannot rescue a kernel that does not have the matching driver linked: restamping root
+to card 1 in a kernel whose controller registry holds only the stock rows indexes an **empty** slot,
+and adding the driver without widening the registry's row-count bound leaves the added row never
+scanned — the bound and the table it names are locked together ✅. And a relink pass that takes a
+base kernel as an argument **inherits that base's root-storage family silently** — so the check
+belongs at link time, reading **the artifact, never the build recipe**: decode the compiled-in root
+device, resolve the registry and its row bound through the relocations that name them, assert
+coherence, and let a build that knows its target rig declare what it requires (this queue function,
+this card), failing closed on a base of the wrong family ✅. A build log that records what an
+artifact hashes to, but not which controller it will mount root through, has not recorded the thing
+a deploy decision turns on.
+
 ## The family-kernel convention
 
 The convention this project settled on (a project decision, recorded here as practice, not a fact
