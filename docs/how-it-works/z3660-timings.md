@@ -70,6 +70,73 @@ VCO itself — a separately ratified class of edit, not a continuation of the sa
 tuning is a physical fact about that unit; if the SD is lost or reflashed, an unrecorded row is gone
 and the validation must be redone from scratch.
 
+## A measured clock envelope: one A4000D card, 80 MHz the only stable rung ✅
+
+The per-unit law above is abstract until you sweep one card. This section is that sweep — a specific
+Z3660 in an **A4000D**, socketed **MC68LC060 rev 4** (no FPU), in real-CPU mode. **Every result
+below is a fact about this one board's silicon at each clock, not a property of every Z3660** — the
+same caveat the first two laws make in general.
+
+**Descending from the card's working 80 MHz row, none of the lower `cpufreq` presets is usable** ✅:
+
+| Preset | Outcome on this card | Failure mode |
+|---|---|---|
+| **80 MHz** | boots to multiuser SVR4 login on **every** cold power-on across both sessions | — (the working row) |
+| **70 MHz** | marginal — **1 boot in 3** reached multiuser | the other two: **kernel-image checksum mismatch** reported by the Amix boot loader itself (it detected corrupt data, did not merely hang) |
+| **60 MHz** | dead — **0 of 3** | the 68LC060 never begins executing: black video console, no Kickstart, nothing |
+| **50 MHz** | dead — **0 of 11** across both sessions | scattered early: device-not-found, corrupted boot-partition read, one console reaching the full kernel banner before its telnet daemon failed to stay up; after a targeted timing fix, a repeating **"User BUS ERROR" in `/sbin/init` (PID 1)** |
+
+### The failure tracks the realised bus clock, not the nominal "CPU MHz" label ✅
+
+The firmware prints its realised clock tree on every boot, and reading the values off that printout
+(not the preset label) is what makes the pattern legible ✅. The structural fact: the **bus-facing
+clock runs at the same 25.00 MHz at both the 50 MHz preset and the 80 MHz preset** — the two presets
+that differ most in nominal "CPU MHz" share an *identical* realised bus clock — and that line only
+drops below 25 MHz at the presets in between (roughly the 55–75 MHz band, stepping to values like
+17.50 and 15.00 MHz). This is the axis the failures follow: 60 MHz (bus 15.00 MHz, furthest from
+25.00) is deadest; 70 MHz (17.50 MHz) is marginal; 50 MHz shares 80 MHz's own 25.00 MHz bus clock and
+*still* fails, downstream of the boot loader, for a different reason. The nominal MHz a preset
+advertises is not the variable that predicts stability — the realised bus-side clock tree is. (This
+is the [motherboard-25 MHz edge](#the-derived-clock-law-and-the-one-hard-edge) seen from the failure
+side: hitting 25.00 exactly is necessary, not sufficient.)
+
+### 50 MHz corrupts the kernel's own read path even after the phase difference is fixed ✅
+
+Because 50 MHz shares 80 MHz's 25.00 MHz bus clock, the two rows differ only in phase-alignment
+parameters. Transplanting the single largest such phase difference from the working 80 MHz row onto
+the 50 MHz row (a one-parameter, same-frequency edit) measurably **narrowed** the failure — from
+three scattered break points across four boots to **one reproducible break point (4 of 4)** — but did
+not close it ✅. With that adjustment the boot loader reliably reads and validates the kernel image,
+the kernel starts and prints a correct memory-size banner, and *then* the **first disk read the
+running kernel performs on its own** (as opposed to the boot loader's reads) returns corrupted data —
+traced to `/sbin/init` receiving garbage code/data and bus-error-faulting in an infinite loop. A
+disk-activity trace left running ten minutes (rather than cut off early) showed the I/O pattern of a
+genuinely wedged read path — long silent gaps, a handful of requests total — not a slow-but-
+progressing one, ruling out "50 MHz just needs more time" ✅. Four further phase/CPU-clock candidates
+were tried (five configurations total); **0 successes**, one a clear regression to a dead
+black-screen boot. The card's storage media was independently exonerated three ways across two
+sessions: a corrupted read returns a *different* wrong value on each attempt (a live corrupting
+transfer, where damaged media would return the same bytes every time), and a full re-verification at
+the known-good 80 MHz between every failing-clock experiment found every file byte-identical ✅.
+
+### The ARM co-processor runs 27% over its printed rating — but is not the cause ✅
+
+Independent of the 68060-side clock: the accelerator's onboard **ARM co-processor** (which runs the
+firmware, the SD-card I/O and the emulated storage mailbox the 68060 talks to) is configured at
+**1100 MHz**, while the firmware's own boot printout states this chip's silicon is rated for a
+maximum of **866.667 MHz** — the applied clock is **~27% above the card's own stated maximum**, and
+has been throughout this investigation (not a side effect of the CPU-clock experiments) ✅. Bringing
+the ARM clock down to the firmware's in-spec default (666.667 MHz), tested with the 50 MHz CPU clock
+both alone and combined with the phase fix, **changed nothing** — still 0 successful boots ✅. So the
+out-of-spec ARM clock is a real, independently worth-fixing reliability concern for this card, but it
+is **not** what causes the 50 MHz CPU-clock failure.
+
+**The envelope, stated as a fact about this card:** the clock-frequency axis alone does not yield a
+stable sub-80 MHz operating point here — every rung between the working preset and the next-lower
+stable one fails, for at least two structurally different reasons (a dead CPU core at 60 MHz vs. a
+corrupting kernel-era disk read path at 50 MHz), and the most promising single-parameter fix narrows
+but does not close the 50 MHz failure ✅.
+
 ## Diagnosing "config mismatch or failing card" — the cheapest decisive test ✅
 
 Boot the suspect card at **its own previously-proven operating point**:
@@ -99,3 +166,19 @@ timings file without a named unit is an unlabelled key.**
 - [Emulation fidelity](emulation-fidelity.md) — the *software* cadence knob this page is not about,
   and the frame-level behaviours an emulator must honour.
 - [Hardware](hardware.md) — the base machine's CPU/MMU/FPU rules.
+- [Amix on 68040/68060](68040-68060-status.md) — why this card runs a 68LC060 at all, and the
+  software-float lane it depends on.
+
+## Sources
+
+- First-party **Z3660 clock-envelope sweep** — two back-to-back real-hardware sessions on one
+  specific Z3660 in an **A4000D**, socketed **MC68LC060 rev 4**, real-CPU mode (2026-08) ✅: the
+  80/70/60/50 MHz `cpufreq` ladder against the working 80 MHz baseline (per-preset console evidence —
+  kernel-checksum mismatch at 70, black-screen at 60, the insert-disk / `IBLK`-read-failure /
+  `/sbin/init` bus-error signatures at 50), the realised clock-tree printout read at every preset
+  (the 25.00 MHz bus clock shared by 50 and 80, the 17.50/15.00 MHz dip between), the targeted 50 MHz
+  phase-adjustment follow-up with its ten-minute disk-activity trace, the three-way media-integrity
+  cross-check, and the in-spec-ARM-clock control experiment. Hardware/firmware facts only — clock
+  frequencies, boot outcomes, and register/serial signatures; no lab-infrastructure detail. **One
+  card**: the results describe this board's silicon at each clock, not a guaranteed property of every
+  Z3660.

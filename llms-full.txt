@@ -587,7 +587,12 @@ deliberately records only what can be stated publicly and shown.
 - **The FPU.** Amix requires a hardware FPU and ships **no soft-float build** ✅. A 68040 or 68060
   has an on-chip FPU, but the context-save model differs from the 68881/68882 the kernel expects, so
   FPU handling is kernel-side work too 🟡. The **68LC060** has no FPU at all — so even a working
-  060 kernel would additionally need software floating point before it could run stock userland 🟡.
+  060 kernel would additionally need software floating point before it could run stock userland 🟡. What running *without* it looks like is now measured on an FPU-less 68k
+  part: the F-line trap's stock mapping delivers **SIGSYS** ("Bad System Call", exit 140) — not
+  SIGILL, not SIGFPE — and the failing set is *any program that prints a float*, because libc's
+  `_doprnt` itself carries FP instructions on its `%e`/`%f`/`%g` paths (`df -k` and `uptime` die in
+  the print call; `awk` dies even on `1+1`, since it holds every number as a C double) ✅. See
+  [quirks §31–32](quirks.md#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call-).
 - **Exception handling.** Bus-error and other exception stack frames differ by CPU family, and the
   kernel's fault paths are written for the frames a 68030 produces 🟡. (For how load-bearing exact
   frame behaviour is on this platform, see [emulation fidelity](emulation-fidelity.md), where a
@@ -597,6 +602,20 @@ None of the three is exotic in isolation; together they are a kernel port, and t
 **source-free** for most of the code involved — see
 [reverse-engineering the kernel](../drivers/kernel-reverse-engineering.md) for what working on it
 without source actually costs.
+
+### What a soft-FPU port would require
+
+Stated as requirements, without any claim about existing work: an FPU-less 68060 (68LC060) needs the
+F-line vector to fan out **three** ways — FPSP040 for a 68040 with an FPU, FPSP060 for a 68060 with
+one, and a software FP emulator for a part with none — chosen on a **boot-time probe** of whether FP
+silicon exists, not on CPU type, because on an FPU-less 68060 every F-line event arrives as the
+"FP disabled" frame 🟡. A genuinely illegal F-line word must keep taking the stock path: handing it
+to an emulator would change the signal every bad F-line word in the system delivers, a user-visible
+ABI change 🟡. And the emulation path cannot let the stock trap arm deliver its signal — on an
+FPU-less part that arm says SIGSYS (see the FPU bullet above), so the emulator must construct the
+signal-info itself from what the emulation actually determined 🟡. Two 68060 frame-level facts any
+such port trips over — the software-maintained "Next PC" field and the immediate-operand length
+ambiguity — are on the [quirks page](quirks.md#68060-cpu-quirks) as CPU properties.
 
 ## What is being worked on
 
@@ -610,8 +629,101 @@ without source actually costs.
   integration work plus an exception-frame debugging campaign; none of the 030 campaign's
   frame-level results transfer 🟡. Note what this lane does and does not buy: it would let an *040
   kernel* be **exercised** on the accelerator, but it does not by itself make one exist.
-- **A software-FPU investigation is contingent, not scheduled** 🟡 — it is triggered only if a
-  booting 040/060 kernel appears, and its goal is a real 68LC060 (no hardware FPU).
+- **The software-FPU (FPE) lane now exists and has run on real silicon** ✅ — an FPU-less 68060
+  (68LC060) kernel that serves floating point through a software emulator boots on real hardware.
+  What that took, and the one 68060 exception subtlety it turned on, are in
+  [the FPU-less 68060 lane](#the-fpu-less-68060-lane-software-floating-point-on-real-silicon) below.
+  This does not change the "no *published* 060 kernel" status above — grimoire records the measured
+  behaviour, not the source.
+
+## The FPU-less 68060 lane: software floating point on real silicon
+
+Separate from the [Z3660 software-030 route](#if-you-have-an-040060-machine-today) — where the 060
+executes a *software* 68030 and Amix never runs as native 060 code — a second line of work targets
+the 68060 **directly**: a kernel that executes as native 68060 code and supplies the missing floating
+point in software. On an FPU-less part (the **68LC060**) this is the only option, since there is no
+FPU to context-switch at all. The finding worth recording is that it works — **an FPU-less 68060
+Amix kernel has been booted on real 68LC060 silicon with floating point served entirely by a software
+emulator (an "FPE" lane)** ✅. This does not create a *published, downloadable* 060 kernel (there
+still isn't one, and this page states nothing about one); grimoire carries the measured behaviour,
+and the behaviour below is measured on real hardware, not projected.
+
+Getting there turns on one 68060 exception-handling subtlety that is easy to miss and, before it was
+handled, killed exactly this instruction class silently. It is a *different* vector from the ordinary
+FPU-disabled trap, with a different frame — do not conflate it with the vector-11 Next-PC and
+immediate-length subtleties on [quirks §33–34](quirks.md#68060-cpu-quirks), which concern the
+format-$4 frame.
+
+### The unimplemented-effective-address class traps to vector 60, not vector 11 ✅
+
+On a 68060, most floating-point instructions that reach an FPU-disabled CPU (no FPU present, or the
+FPU switched off) take the ordinary F-line "unimplemented instruction" path — the **format-$4 frame
+at vector 11** — and are emulated from there. **Four instruction forms are different**: the 68060's
+integer unit cannot decode their addressing mode and traps them separately, to **vector 60
+("unimplemented effective address")**, with its own frame shape ✅. The four forms are:
+
+- an FP instruction with an **extended-precision immediate** operand (`fmove.x #<ext>,FPn`);
+- an FP instruction with a **packed-decimal immediate** operand (`fmove.p #<packed>,FPn`);
+- **`fmovem.x`** with a **dynamic** (register-specified) register list;
+- **`fmovem.l`** with an immediate source loading **two or three** FP control registers
+  (`fpcr`/`fpsr`/`fpiar`).
+
+All four were exercised individually on real 68LC060 silicon and each confirmed to route through the
+vector-60 arm rather than vector 11 ✅.
+
+### The vector-60 frame is leaner than vector 11's, and carries no length ✅
+
+The 68060 stacks the **short format-$0 frame** at vector 60 — four words (SR, PC, and the
+format/vector word) — architecturally leaner than the format-$4 frame vector 11 uses. Two properties
+bite a handler ✅:
+
+- **Its PC field names the faulting instruction itself**, not an advisory "next instruction" pointer
+  of the kind the format-$4 frame's software-maintained field carries. A real-hardware trace recorded
+  `vector 0xF0` (= 60 × 4) with the stacked PC disassembling to the exact faulting FP instruction,
+  not the one after it.
+- **No field of the frame carries the instruction's length.** For the two immediate-operand forms
+  the whole instruction is **16 bytes** (2-byte opword + 2-byte FP command word + 12-byte immediate
+  operand), and a handler that wants to resume past it must compute that length itself, by decoding
+  the FP command word's own source-specifier bits — the same field a full FP emulator has to read
+  anyway to know how many operand bytes to consume. Two independent decoders and a from-scratch
+  host-side harness agree on the 16-byte figure ✅.
+
+### On a 68LC060, all four forms take this path — every time ✅
+
+The practical headline: it is **not** the case that an FPU-less 68060 routes all floating-point work
+through the vector-11 F-line path with vector 60 as a theoretical corner case. Measured on real
+68LC060 silicon, **all four unimplemented-effective-address forms trap through vector 60 regardless
+of whether an FPU is present anywhere in the system** ✅. (An earlier, narrower read had suggested
+vector 60 might be "structurally dead" on an FPU-less part, because a whole boot's idle traffic
+showed its counter at zero — that was a **denominator** artefact, not a fact about the vector:
+nothing had executed one of the four forms yet. A dedicated workload settled it — the same
+[zero-behind-a-gate trap](quirks.md#35-a-zero-behind-a-gate-needs-a-pre-gate-denominator) the quirks
+page warns about.)
+
+### Before it was handled, this class died as a silent SIGSYS ✅
+
+On a first-cut FPE kernel with no vector-60 handler, executing one of the four forms on a 68LC060
+produced a bare **`SIGSYS`** ("Bad System Call") with **no counter anywhere in the FP-emulation
+instrumentation moving** to record that a process had just died on a floating-point instruction — the
+event never reached the emulator's accounting, because a downstream FPU-disabled arm inside the
+vendor support package correctly declined (it recognises it cannot serve a part with no FPU) and fell
+through to the kernel's default unhandled-vector path, which SIGSYS's an F-line trap ✅. This is the
+same SIGSYS-not-SIGILL/SIGFPE signature the [FPU bullet above](#what-the-wall-actually-is) describes,
+reached by a different route; the death was reproduced before the fix and absent after it, A/B on the
+same rig ✅.
+
+### The rule for anyone emulating or targeting a 68060
+
+Software that emulates an FPU-less 68060 must raise **vector 60**, not just vector 11, for these four
+forms — the two are architecturally distinct exception classes with different frame shapes, and
+treating them as interchangeable produces a bench that cannot reproduce this silent-death class ✅.
+Conversely, code *generating* 68060 instructions (a compiler, a hand-patch) that emits any of the
+four forms must expect vector 60 on real hardware, with the frame and length properties above, and
+must not assume the format-$4 "advisory next PC" convention applies ✅. As a general statement about
+"any 68060 emulator" this is 🟡 — verified against exactly one emulator's codebase (found unable to
+raise vector 60 at all for an FPU-less configuration, until a narrowed guard closed the gap — see
+[the vector-60 bench gap](emulation-fidelity.md#the-vector-60-gap-a-bench-that-could-not-raise-it-at-all)),
+not a survey of emulators.
 
 ## What this page does not claim
 
@@ -638,6 +750,11 @@ Uniformly ✅.
 | A3000 with an 040/060 card | Amix on the machine's own 68030, with the accelerator disabled — the kernel must execute on a 68020/68030 with a real MMU. |
 | A 68060 accelerator with a software-68030 mode | This is the route the [Z3660](../drivers/z3660-scsi-driver.md) takes: the Amix guest executes on a **software 68030 with MMU**, and Amix boots to multiuser on real hardware. The 060 runs the emulator, not Amix. |
 
+The table's last row is the *software-030* route. There is also a distinct *060-direct* route, where
+the 060 executes Amix as native code with floating point in software — measured on real 68LC060
+silicon; see [the FPU-less 68060 lane](#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)
+above. Both are real; they are different lanes.
+
 ## See also
 
 - [Hardware and requirements](hardware.md) — the CPU/MMU/FPU rules and the A4000 consequence, in
@@ -662,6 +779,17 @@ Uniformly ✅.
 - The existence of third-party community work toward 040/060 support 🟡 — reported, with **no
   public, verifiable, bootable artifact** at the time of writing; deliberately documented without
   further detail.
+- First-party **68040/68060 port campaign** — the FPU-less-060 (68LC060) software-FPE lane, measured
+  on **real 68LC060 silicon** across independent metal sessions (2026-08) ✅: the four
+  unimplemented-effective-address instruction forms and their vector-60 routing; the format-$0
+  four-word frame whose PC names the faulting instruction and which carries no length field (the
+  16-byte immediate-operand forms, cross-checked by two independent decoders and a host-side
+  harness); all four forms taking vector 60 on an FPU-less part; the pre-fix silent-`SIGSYS` class
+  and its A/B disappearance after the vector-60 handler was added. Findings only — no vendor
+  MC68060 / FPSP text and no port source is reproduced (paraphrase of measured behaviour), and no
+  *published* 060 kernel is claimed. The bench-fidelity counterpart (an emulator that could not raise
+  vector 60 for an FPU-less configuration) is on
+  [emulation fidelity](emulation-fidelity.md#the-vector-60-gap-a-bench-that-could-not-raise-it-at-all).
 
 
 ================================================================================
@@ -2404,6 +2532,16 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 28 | **The partitioning tools' units are all 512-byte blocks, and `rdb`'s usage text omits the flags that matter** — `rdb -c` requires a `-d disksize` its usage block never mentions; `rdb -p` wants a 1-based partition *number* (a device path `atoi()`s to 0 and is refused); `mkfs_s5`'s size operand is 512-byte blocks (pass a pre-converted 1 KB count and the filesystem covers half the slice) | ✅ | [Filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units) |
 | 29 | **The stock kernel writes motherboard register `0xde0002` at every boot and at reboot/halt** — on the A3000 that is the SuperKickstart re-kick bit; on an A4000 the same address is Fat Gary's coldreboot latch, which nothing consumes, so the write is benign. Don't chase it in bus traces or emulator logs; decode-and-ignore is the correct model for an A4000 target | ✅ | [Quirks §29](#29-the-kernel-pokes-the-a3000-re-kick-register-0xde0002-at-every-boot-and-reboot) |
 | 30 | **A scripted `ed` edit that misses its address search still writes the file** — earlier inserts in the same body stay applied, and a name-wide `grep` guard then reports "already patched" forever: a permanent, invisible half-patch. Pre-probe the target row, one `ed` run per edit, post-verify the row — never trust `ed`'s exit status alone | ✅ | [Quirks §30](#30-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file), [Kernel build](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap) |
+| 31 | **On an FPU-less part, floating point dies as SIGSYS ("Bad System Call", exit 140)**, not SIGILL/SIGFPE — and it dies in *libc*: `_doprnt` carries FP on its `%e`/`%f`/`%g` paths, so any program that **prints** a float dies even if its own code is FP-free (`df -k`, `uptime`). `__fpstart` is FP-safe, so everything else runs. Triage rule: *does it print a float?* | ✅ | [Quirks §31](#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call-), [040/060 status](68040-68060-status.md) |
+| 32 | **`awk` is always a floating-point program** — it holds every number as a C `double`, so on an FPU-less part it dies even on `1+1`. An awk failure on integer arithmetic is not evidence of a second defect | ✅ | [Quirks §32](#32-awk-is-always-a-floating-point-program-) |
+| 33 | **68060: the FP-disabled frame's stacked "Next PC" is software-maintained** — Motorola's own support package recomputes it from its own decode and treats the faulted-PC slot as the authority. A handler must resume on a PC it computed itself | 🟡 | [Quirks §33](#33-68060-the-fp-disabled-frames-next-pc-is-software-maintained-) |
+| 34 | **68060: immediate `#<data>` is the one F-line operand the hardware cannot size** — its length lives in the FP command word a disabled FPU has no reason to decode, so the stacked next-PC can be short by the operand's width | 🟡 | [Quirks §34](#34-68060-immediate-data-is-the-one-f-line-operand-the-hardware-cannot-size-) |
+| 35 | **A zero from a counter behind a gate is not evidence the gate was reached** — every never-engage counter needs a pre-gate denominator census, and the regression bar must name which counters are exempt | ✅ | [Quirks §35](#35-a-zero-behind-a-gate-needs-a-pre-gate-denominator-) |
+| 36 | **An optimised probe that reports "no fault" must be disassembled before it is believed** — the compiler may have constant-folded the faulting instruction away entirely, so the negative is the compiler's answer, not the silicon's | ✅ | [Quirks §36](#36-an-optimised-probe-reporting-no-fault-must-be-disassembled-first-) |
+| 37 | **A one-byte binary diff is not understood until the byte is decoded** — two kernels differed by one byte and that byte was a table row-count *bound*, gating a driver that sat outside the compared window; "the code is identical, so it's the environment" was wrong. Decode what the byte does before concluding | ✅ | [Quirks §37](#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded-), [Kernel composition](../drivers/kernel-composition.md) |
+| 38 | **`uptime` and `w` do not report the machine's load** — the reader resolves a COMMON kernel symbol to a non-address without an error (flat `0.00` and absurd millions are the SAME defect), and even the kernel's own count reads exactly N−1 (the on-CPU process is never counted). Read the truth with `adb -k <running-kernel> /dev/mem`, `avenrun/3X`, ÷256 | ✅ | [Load averages](load-averages.md) |
+| 39 | **A bare trailing `&` in a command sent to the box's telnet transport silently never runs** — the transport appends `; echo DONE_$?` for completion detection, so `<cmd> &` arrives as `<cmd> &; echo …` and `&;` is a Bourne syntax error: the job never starts, the retries re-login into the [inetd throttle](#23-inetd-disables-a-service-after-40-connections-in-60-seconds), and any poller waiting on it spins forever. Parenthesise the background launch: `(… &)` | ✅ | [Quirks §39](#39-transport-ampersand-law) |
+| 40 | **Amix keeps no persistent boot log** — no `dmesg` at all, `wtmp` has never recorded a reboot, and boot `fsck` writes only to the console (a delta to quirk 24, independent of `syslogd`). The console is the only record — and it still holds the whole boot transcript at a fresh `login:` prompt. Plan an HDMI capture; there is no log to read | ✅ | [Quirks §40](#40-no-persistent-boot-logging) |
 
 The rest of this page expands each item.
 
@@ -2538,6 +2676,47 @@ A gotcha for **driver authors**, learned bringing up the [Z3660 ethernet driver]
 
 **Fix:** disable the board/firmware interrupt and **poll** the receive path instead — `z3660eth` writes the firmware's `ZZ_CONFIG_DISABLE` so INT6 is never raised, and drains RX from a clock-level `timeout()` callout ✅. Interrupt-driven RX would need a level-6 hook the firmware's model doesn't safely give Amix. The general lesson: when adding a driver, don't enable an interrupt source Amix can't service — confirm there's a handler (and an ack path) for that level, or run polled. Full story on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
 
+## FPU & floating-point quirks
+
+### 31. On an FPU-less part, floating point dies as SIGSYS ("Bad System Call") ✅
+
+The F-line trap's stock mapping is **SIGSYS**, so an FP instruction on a part with no FPU exits 140
+with `Bad System Call - core dumped` — a label that points a debugger at the syscall interface,
+which is not involved. Anything grepping crash reports for illegal-instruction traps misses every
+one of these. The reach is wider than "programs that compute with floats": libc's `_doprnt` carries
+FP instructions on its `%e`/`%f`/`%g` conversion paths, so **any program that prints a float dies
+inside libc** — `df -k` and `uptime` die in the print call, not in their own arithmetic. `__fpstart`
+does not touch FP hardware, which is why everything else runs normally and the failure set is
+exactly the float-printers. Because the whole class funnels through one libc path, one fix covers
+all of it. Triage rule: *"program dies with SIGSYS in a print call" means FP-in-libc, not a syscall
+bug* — ask "does it print a float?" before investigating anything else.
+
+### 32. `awk` is always a floating-point program ✅
+
+`awk 'BEGIN{print 1+1}'` dying on an FPU-less part looks like proof of a second, non-FP defect. It
+is the opposite: awk holds every number as a C `double`, so it prints a float even for pure-integer
+expressions. An awk failure on integer arithmetic is the *same* FP defect, not a new one.
+
+## 68060 CPU quirks
+
+### 33. 68060: the FP-disabled frame's "Next PC" is software-maintained 🟡
+
+In the 68060's eight-word FPU-disabled exception frame, the stacked "Next PC" is **not** an
+architectural guarantee that the CPU sized the faulting instruction: Motorola's own 68060 support
+package builds and rewrites that field itself, from its own decode, and treats the
+PC-of-faulted-instruction slot as the authority. Any handler for this frame should resume on a PC it
+computed from its own decode and treat the stacked Next PC as advisory. (Tag stays 🟡: read from the
+vendor package's source behaviour, not verified against the MC68060 User's Manual.)
+
+### 34. 68060: immediate `#<data>` is the one F-line operand the hardware cannot size 🟡
+
+For every F-line addressing mode except immediate data, instruction length follows from the
+operation word alone. For `#<data>` the operand's byte count lives in the **FP command word's**
+source-specifier field — precisely the field a *disabled* FPU has no reason to decode — so the
+stacked next-PC can be short by the operand's width (an IEEE double immediate is 8 bytes the frame
+never accounted for). This is the structural reason quirk 33's field cannot be trusted, and it names
+the one instruction class where the discrepancy occurs.
+
 ## Diagnostics & logging quirks
 
 ### 24. `syslogd` is present, correct, and deliberately switched off ✅
@@ -2559,6 +2738,38 @@ Enabling it is one commented-out line and needs **no** `/etc/syslog.conf` change
 > 🔗 **Edit it with `cp` in place, never `mv`.** `/etc/init.d/syslogd` and `/etc/rc2.d/S70syslogd` are
 > the **same inode** (3 hard links). `mv` replaces the file and silently breaks the `rc2.d` hook, so
 > the fix works once and never again after a reboot ✅ — the same hazard as `S69inet`/`inetinit`.
+
+### 40. Amix keeps no persistent boot log — the console is the only record ✅ {#40-no-persistent-boot-logging}
+
+Quirk 24 is about `syslogd` shipping switched off. This is the **broader, orthogonal** fact it sits
+inside: **Amix has no persistent boot logging at all, whether or not `syslogd` is ever turned on** ✅.
+Three independent subsystems each drop their boot-time output on the floor, so "what happened when
+this box last booted?" has no on-disk answer:
+
+- **There is no `dmesg` on Amix** ✅. Unlike Linux or BSD, there is no kernel ring buffer to dump
+  after the fact — the command and the facility simply do not exist. (Confirmed on a real box, and by
+  zero `dmesg` hits anywhere in this corpus.)
+- **`wtmp` has never recorded a single reboot — on any boot, ever** ✅. SVR4's login-accounting file,
+  which `last`/`last reboot` read for boot history, holds **zero** reboot records across its whole
+  life: its own header timestamp is *Mar 24 1992* and `last reboot` returns nothing. This is
+  **independent of the syslogd question** — `wtmp` is a separate, always-on accounting mechanism, and
+  it is still empty of boot history.
+- **The boot-time root `fsck` leaves no on-disk trace by design** ✅. `/sbin/bcheckrc` discards its
+  pre-check verdict to `/dev/null` and sends the real repair pass's output to the **console only** —
+  no `tee`, no log file — so even a root-fsck repair, had one run, would leave zero evidence it
+  happened.
+
+The practical consequence: **for any "what happened at boot" question — a hang, a fsck repair, a
+kernel's boot banner — plan for a passive HDMI console capture, because there is no log to read** ✅.
+Turning `syslogd` on (quirk 24) does not fill this gap: it starts capturing *future* daemon/kernel
+`syslog(3)` messages, a narrower channel than the raw console boot transcript. The one channel that
+*does* survive is the physical console — and at a fresh login prompt the console has **not scrolled
+past the boot transcript**: the visible frame still holds the first kernel line through to `login:`,
+so a single passive HDMI capture at the prompt recovers the whole boot sequence with no login and no
+keystroke ✅ (used exactly this way to answer a "did fsck run?" question with no other evidence
+source). See [quirk 24](#24-syslogd-is-present-correct-and-deliberately-switched-off) for the
+syslogd half and [networking](networking.md#why-it-is-silent-syslogd-ships-deliberately-disabled)
+for its config.
 
 ### 26. Three diagnostic tools that lie or do not work ✅
 
@@ -2584,6 +2795,38 @@ command timeout of about **20 minutes**, not the usual seconds ✅. This matters
 for patience: the first attempt at such a read was recorded as a **failure** purely because it hit a
 300-second cap ✅. **Never score a timeout on a deep `cdfs` read as a read failure** — re-run it with
 a real timeout before concluding anything.
+
+### 35. A zero behind a gate needs a pre-gate denominator ✅
+
+A lane that must never run on most rigs gets an entry counter that must read 0 — but a counter
+placed *behind* the decline gate reads 0 both when the lane correctly declined and when the event
+never arrived at all. The fix is a pre-gate census: count and classify every event ahead of the
+arming test, so a zero on the behavioural counter is provably a *declined* path, not an *unreached*
+one. The census counters are then expected to move everywhere — so the regression bar must exempt
+them **by name**. *A zero from a counter behind a gate is not evidence the gate was reached.*
+
+### 36. An optimised probe reporting "no fault" must be disassembled first ✅
+
+A divide-by-zero probe built at `-O` reported "no trap" — because the binary contained no divide at
+all; the compiler had constant-folded it. The negative was the compiler's answer, not the silicon's.
+When any probe reports that *nothing happened*, prove the instruction exists in the binary before
+believing the hardware. Build probes at `-O0`.
+
+### 37. A one-byte binary diff is not understood until the byte is decoded ✅
+
+A failing and a working kernel compared byte-identical across a megabyte of text except one byte —
+and a window-compare around the faulting driver concluded "driver identical, so the environment is
+the variable". Both halves true, conclusion wrong: the byte was the controller registry's row-count
+**bound**, and the driver it gates sat outside the compared window. When a byte-compare turns up
+exactly one difference, decode what that byte *does* before concluding anything.
+
+### 38. `uptime` and `w` do not report the machine's load ✅
+
+Two independent stock defects: `nlist(3)` cannot resolve `avenrun` (a COMMON symbol in the `ET_REL`
+kernel) and *succeeds anyway* with the alignment as the value — so the printed number is whatever
+sits at a bogus address, flat `0.00` and six-digit garbage being the same defect; and the kernel's
+own load count omits the on-CPU process, reading exactly N−1 even when read correctly. Full story,
+measurements and the working read recipe: [load averages](load-averages.md).
 
 ## Driver-authoring quirks
 
@@ -2700,6 +2943,36 @@ survived config load — grep for it before blaming the guest ✅. Why the cycle
 has not been root-caused; that it does is measured. Full mechanism on
 [emulation fidelity](emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive);
 config keys on [Amix on Amiberry](../getting-started/emulation-amiberry.md).
+
+### 39. A bare trailing `&` sent to the box's transport silently never runs ✅ {#39-transport-ampersand-law}
+
+Every caller of the Amix command transport (`amixrun.py`, and grimoire's own
+`tools/host-net/amixsh.py` — same wire protocol) sends a command over telnet as
+**`<cmd>; echo DONE_$?`**, because a completion marker echoed back over the stream is the *only* way
+the host side can tell a command has finished — there is no separate exit-status channel ✅. So a
+command whose text **ends in a bare, unparenthesised `&`** (the shell background operator) arrives on
+the box as **`<cmd> &; echo DONE_$?`** — and **`&;` is a syntax error in the SVR4 Bourne shell** the
+box runs. The failure is silent on the host side: the marker never comes back, the transport's retry
+logic fires up to three times — each retry a **fresh telnet login**, which counts against the
+[inetd throttle](#23-inetd-disables-a-service-after-40-connections-in-60-seconds) — and **the job the
+caller wanted backgrounded never starts at all** ✅. Any poll loop waiting on that job's output then
+spins forever against a box where nothing is running.
+
+This is not hypothetical — it was found as a **real defect twice, in two different repos, one day
+apart** ✅: a soak harness's launch line ended in `&` and silently launched nothing (the harness then
+read the idle box as healthy), and a *reboot*-soak's `/etc/shutdown -y -i6 -g0 … &` had the identical
+defect in another repo, turning an entire reboot test into a scored-green no-op (the box never
+rebooted; a weak "port 23 answers" check let the false pass through).
+
+**The fix is to parenthesise the background launch** so the string ends in `)`, which composes fine
+with the appended `; echo DONE_$?`: `"(nohup sh $REMOTE > /soak.out 2>&1 &)"` ✅. This is a property
+of the **transport itself**, not of any one script — every caller, present and future, in every repo
+that drives the box this way must wrap a backgrounded command in parentheses (or otherwise end it in
+a token other than a bare `&`). Note the shapes that are **not** this defect and must not be
+"fixed": a `&` inside an on-box script's own text or a pushed heredoc (the marker is appended per
+*transport call*, never injected into file contents); **host-side** backgrounding of the
+`amixrun.py`/`amixsh.py` invocation itself (that `&` never crosses the wire); and a **non-final** `&`
+such as `& echo launched-$!` (the marker still lands after a `;`-safe token) ✅.
 
 ## Time & Y2K quirks
 
@@ -2871,6 +3144,19 @@ Append these bullets to the page's `## Sources` list (after the amiberry cycle-e
   stock file layouts, its name-wide-grep permanence, the wrong-row-overwrite and wrapping-search
   variants, and the pre-probe / one-run-per-edit / post-verify-the-row pattern. See
   [building a kernel](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap).
+- The **amix-kerntools** transport lint (`amix-transport-lint.py` @ `2de5264`) and the two live
+  defects it generalises from — `amix-kerntools` and **Z3660** (`d40ce94`/`0fe57b4`) CHANGELOG entries,
+  both 2026-08-27 ✅ — quirk 39: the transport's appended `; echo DONE_$?` turning a bare trailing `&`
+  into the Bourne syntax error `&;`, the two independent repo instances found a day apart (a soak
+  launch line and a `shutdown -i6` reboot soak), the parenthesise-the-launch fix, and the four
+  superficially-similar shapes that are safe and must not be flagged (the linter's `--self-test`
+  exercises all four plus the unsafe one).
+- First-party **read-only metal session**, real A4000 + Z3660, 2026-08-27 ✅ — quirk 40: `dmesg` not
+  present on the system; `wtmp`'s header dated *Mar 24 1992* with zero reboot records and `last reboot`
+  returning nothing; `/sbin/bcheckrc` read verbatim (pre-check verdict discarded to `/dev/null`, repair
+  pass to the console with no redirection); and the passive HDMI capture at a fresh `login:` prompt
+  recovering the full boot transcript, used in the same session to answer a "did fsck run?" question.
+  A delta to quirk 24, orthogonal to the syslogd state.
 
 
 ================================================================================
@@ -2928,6 +3214,10 @@ Any emulator running Amix's demand-paging boot must implement 68030 **format-`$B
 Amix's **A3000-mainboard SCSI** bootstrap is interrupt-driven on Amiga **INT2** (level 2) during the earliest kernel startup, *before* the banner. An emulator that, for throughput, executes several guest instructions between checks of the incoming interrupt line raises the worst-case **INT2-detection latency** to roughly that batch size — and if the batch is too coarse, the SCSI bootstrap is starved of timely service and **hangs before the banner**. 🟡 (This is a pre-banner bootstrap stall, distinct from the [demand-paging faults above](#68030-bus-error-frame-semantics-demand-paging).)
 
 This behaviour is exposed by a firmware knob, **`service_cadence N`** ✅:
+
+> Disambiguation: `service_cadence` is a **software** poll-cadence knob of the firmware's device
+> emulation. The Z3660's *hardware* clock generation — CPLD timing rows, VCO/PCLK/phase — is a
+> different layer with different failure modes, covered on [Z3660 board timings](z3660-timings.md).
 
 - `N` = the number of emulated instructions run between calls to the emulator's interrupt-service poll (`check_uae_int_request()`), i.e. the emulator batches `N` instructions between the poll that detects the Amiga IPL/INT2 line. **Default 1** (poll every instruction); values below 1 are clamped to 1. ✅
 - It is settable at boot in `z3660cfg.txt` and per-preset config (Z3660 commit **`e0e17d5`**), and cyclable at runtime `1→2→…→64→1` from the serial `SERV` console (commit `f7bbdb0`). ✅
@@ -3078,6 +3368,41 @@ Two boundaries on this finding, stated so nobody over-reads it:
   added `cycle_exact=false` and nothing else and reached multiuser), not *why*. Treat "the cycle-exact
   68030 core is not an Amix-capable core" as a measured operational fact, not an explained one.
 
+## The FP-disabled frame's Next PC: a metric a UAE-family bed cannot fail ✅
+
+UAE-derived cores (Amiberry included) **decode the whole instruction — immediate operand included —
+before raising the F-line exception**, and stack the emulated PC as it stands after that decode. The
+stacked "Next PC" in the 68060-style FP-disabled frame is therefore *faulting PC + true length* by
+construction, for every addressing mode. Real silicon does not promise that: the field is
+software-maintained, and for immediate operands the hardware cannot know the length (see
+[quirks §33–34](quirks.md#68060-cpu-quirks)).
+
+Consequence: an instrument that asks "does my decoded instruction length agree with the CPU's
+stacked next-PC?" reduces, on this bed, to "do two decoders agree?" — a disagreement is **not
+constructible**. A zero from that instrument on the bench is true and carries no information about
+silicon; the metric is metal-only. This is not an emulator bug — a fully decoded Next PC is a
+legitimate value for a field the vendor's own software fills in — but it is a fidelity gap of the
+useful kind: one located line of behaviour that fully explains a metal-versus-bench divergence.
+
+**The general rule:** before registering a bench number as a pass, ask whether the bed *can* produce
+a failure. A metric a bed cannot fail is not a test.
+
+### The vector-60 gap: a bench that could not raise it at all ✅
+
+The Next-PC field above is a fidelity gap the bed silently *passes*; the neighbouring one is a fidelity
+gap the bed silently *cannot exercise*. On a 68060 the four
+[unimplemented-effective-address FP forms](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)
+(extended- and packed-decimal immediates, dynamic `fmovem.x`, and `fmovem.l` immediate loads to two
+or more control registers) trap not to the ordinary F-line vector 11 but to **vector 60**, with a
+distinct format-$0 frame — and real 68LC060 silicon raises it for those forms every time. One
+UAE-family bench emulator was found **unable to raise vector 60 at all** for an FPU-less 68060
+configuration: a single boolean term in its exception-raising guard suppressed it, so a kernel's
+vector-60 handler could never be exercised on that bed even though the same code path fired on every
+metal boot ✅. Like the Next-PC case this is not a modelling *choice* — it is one located line of
+behaviour that fully explains a metal-versus-bench divergence — and it was closed with a narrowed
+guard, verified byte-for-byte not to touch any other configuration ✅. The general "any 68060
+emulator" statement is 🟡 (one codebase, not a survey); the metal behaviour and this bench's gap are ✅.
+
 ## Where this was discovered
 
 These findings come from running Amix on the **Z3660**, a Zorro III **68030/68060-class accelerator** built around a Xilinx **Zynq-7000** SoC, whose firmware emulates the 68k with a **UAE-4.4.0-derived software CPU (with MMU)** running on the Zynq's ARM cores. So a real **A4000 + Z3660** executes Amix on that software 68030 emulator — which is exactly why the emulator-core fidelity above is load-bearing on *real hardware*, and was verified there: Amix 2.1 cold-boots to a **multiuser root login** (confirmed on the HDMI console and over telnet, `uname -a` → `UNIX_System_V … 2.1c … m68k`), reproduced on a real A4000 + Z3660 (2026-06). ✅
@@ -3111,6 +3436,7 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   - SCSI INT2 / poll-cadence: `f7bbdb0` (the run-loop consumer + runtime `SERV`/`PERF`; `check_uae_int_request()` throttled to every `service_cadence` instructions in `src/uae/newcpu.cpp`, `do_specialties()` kept per-instruction) and `e0e17d5` ("emu perf: service_cadence config option (z3660cfg + per-preset)"; `Z3660/src/config_file.{c,h}`, default sentinel → clamp `<1 → 1`). ✅ (knob mechanics) The 4-boots / 8-hangs boundary and the INT2-latency attribution are from the firmware's `docs/AMIX.md` and shipped `z3660cfg.txt`, an author hardware sweep — 🟡.
   - Two-core DMA cache coherence (branch `amix-main`, source_commit `51038f3`): `e37bb43` (SD-controller producer-side `Xil_DCacheInvalidateRange`/`Xil_DCacheFlushRange` before direct read/write) ✅; `0a4c064` (consumer-side core1 `Xil_L1DCacheInvalidateRange` after the completion spin, READ-only — a parked Cortex-A9 still speculatively refills L1D over the DMA target) ✅. The "both endpoints must maintain their own caches" general rule generalizes those two fixes, carried 🟡. Baseline was **2/2 failures** on the unfixed firmware (kmem wild-pointer bus error at `0x4AFC000C`; then a silent root-FS `ufs_readdir` corruption); post-fix a full CD read suite came back **byte-identical, 7/7** `cmp`-verified host-side (T2.P3, real A4000 + Z3660, 2026-07-10 → 07-12). ✅
 - **Live result** (first-party, ✅): Amix 2.1 cold-boots to a multiuser root login from the piscsi disk on a real A4000 + Z3660 (2026-06) — HDMI console ("The system is ready") and telnet (`uname -a` → `UNIX_System_V … 2.1c … m68k`); a 27-reboot multi-hour soak under fork/exec load ran clean (Z3660 `docs/AMIX.md`). One rare bus-error-frame `SR`-flip under extreme sustained paging load remains tracked (did not recur across the soak) — 🟡.
+- First-party **68040/68060 port campaign**, FPU-less-060 software-FPE lane, real 68LC060 metal (2026-08) ✅ — the vector-60 bench-fidelity gap: a UAE-family emulator whose exception-raising guard suppressed vector 60 for an FPU-less 68060 configuration (so a kernel's vector-60 handler could not be exercised on that bed), closed by a narrowed guard verified byte-for-byte against every other configuration. The "any 68060 emulator" generalization is 🟡 (one codebase). The 68060 vector-60 architecture and instruction class are grounded on [the 040/060 status page](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon). No vendor MC68060 / FPSP text and no port source reproduced — measured behaviour paraphrased.
 
 
 ================================================================================
@@ -5894,6 +6220,20 @@ instructions, and configuration** (the va2000/hydra/zz9000 pattern). A "universa
 medium" is therefore impossible on licensing grounds alone; the publishable artifact is the
 **recipe**, and each licensed Amix owner links their own kernel.
 
+### The root card and the linked driver set are ONE decision ✅
+
+A card stamp cannot rescue a kernel that does not have the matching driver linked: restamping root
+to card 1 in a kernel whose controller registry holds only the stock rows indexes an **empty** slot,
+and adding the driver without widening the registry's row-count bound leaves the added row never
+scanned — the bound and the table it names are locked together ✅. And a relink pass that takes a
+base kernel as an argument **inherits that base's root-storage family silently** — so the check
+belongs at link time, reading **the artifact, never the build recipe**: decode the compiled-in root
+device, resolve the registry and its row bound through the relocations that name them, assert
+coherence, and let a build that knows its target rig declare what it requires (this queue function,
+this card), failing closed on a base of the wrong family ✅. A build log that records what an
+artifact hashes to, but not which controller it will mount root through, has not recorded the thing
+a deploy decision turns on.
+
 ## The family-kernel convention
 
 The convention this project settled on (a project decision, recorded here as practice, not a fact
@@ -6123,11 +6463,21 @@ This was proven by zeroing a driver's static log counter mid-session and watchin
 the next I/O ✅.
 
 **The trap — `adb`'s symbol addresses are FILE-relative, so you must add the kernel's load bias.** ✅
+**Scope: this fix applies to *defined* symbols only** (`.text`, `.data`, `.bss`). A `SHN_COMMON`
+symbol — every bare C tentative definition in the kernel — is a **different trap the bias cannot
+fix**: its file value is an *alignment*, not an offset (see the next section) ✅.
 The reason the earlier `adb -k /stand/unix /dev/kmem` invocation
 [reads garbage](#step-3-read-a-running-kernel-from-a-savestate) is the same one that bites here: given a
 **namelist** (`adb /stand/unix /dev/kmem`), `adb` resolves a symbol to the address recorded in the
 **kernel file**, which on this **relocated** kernel is only an *offset* — reading it directly returns
 garbage (`freemem` read back as `0xFFFFFFFF`). Drop the namelist and address by **runtime VA** instead:
+
+> 🟡 **Two open re-checks on this example** (flagged 2026-08-27, one measurement each, not yet run):
+> first-party `strstat.py` classifies `freemem` as a **COMMON** symbol — in which case the
+> `0xFFFFFFFF` above is an instance of the *COMMON* trap, and the bias would not have fixed it; and
+> the working combination measured for kernel-mode reads is `-k` with **`/dev/mem`**, whereas the
+> failing invocation above used `/dev/kmem` — device-versus-bias was not isolated. Until re-run,
+> treat this paragraph's example (not its rule) as provisional.
 
 ```
 runtime VA = (nm/adb symbol value) + kernel_load_base
@@ -6142,6 +6492,53 @@ known symbol before trusting any poke.)
 **For a `static`-scoped variable with no global symbol:** disassemble the function that touches it, read
 the operand address straight out of the **live instruction stream**, then poke *that* address — the same
 trick that recovers file-scoped statics from the `exp` objects, applied to the running image ✅.
+
+## The COMMON-symbol trap: `nlist` succeeds and lies ✅
+
+The second, distinct reason a symbol lookup against `/stand/unix` hands you a bad address — and the
+load-bias fix above cannot touch it. `/stand/unix` is an **`ET_REL`** relocatable object, and every
+bare C tentative definition in the kernel is **`SHN_COMMON`** in it: such a symbol **has no address
+in the file at all**. Its `n_value` is the **alignment requirement**, and `nlist(3)` returns
+**success** anyway — no error, no zeroed entry. The caller then reads `/dev/kmem` at a small integer
+and prints whatever lives there. The address genuinely cannot be recovered from the file: the boot
+loader's `elf2brel` conversion **allocates COMMON itself at boot and discards the symbol tables**,
+so the placement exists only inside the loaded image ✅.
+
+**How to tell in ten seconds** ✅: `nm` shows `COMMON` in the section column; `nlist` returns
+`n_scnum = -14`; the value is an implausibly small, suspiciously round number. *If a "kernel
+address" comes back as a single-digit number, it is an alignment — nothing lives at 4.*
+
+| Trap | Applies to | Symptom | Fix |
+|---|---|---|---|
+| **Load bias** (previous section) | *defined* symbols | value is a real but file-relative offset | add the kernel load base |
+| **COMMON placement** (this section) | `SHN_COMMON` symbols | value is an **alignment**; no address exists in the file | resolve against the **running image** |
+
+**What works** ✅: `adb -k <kernel> /dev/mem` — the `-k` kernel mode with the physical-memory device —
+because `adb -k` **reproduces the boot loader's COMMON placement** instead of trusting the file's
+symbol value. Two load-bearing conditions:
+
+1. **The namelist must be the kernel actually running.** A different kernel's namelist resolves to a
+   different, *plausible-looking* address — measured: the stock `2.1_unix` namelist on a relinked
+   running kernel returned convincing zeros ✅.
+2. **When the running kernel exists in no file at all** (a kernel loaded from a raw slice rather
+   than `/stand`), there is no namelist to hand `adb`, and pointing it at `/stand/unix` fails
+   *silently* with plausible values — the same trap class this section warns about. The recovery is
+   to **replay the loader's COMMON allocation host-side against the running artifact** (first-party
+   `amix-kerntools/tools/comaddr.py`), then read the computed address; validated on real hardware by
+   an independent clock-tick cross-check ✅.
+
+`crash(1M)` is not an alternative — it fails on this kernel with `process slot out of bounds` ✅. And
+where `adb` is unavailable, the instruction-stream bootstrap already described above (read the
+operand address of a function that touches the variable, cross-check a second site) resolves COMMON
+symbols too — that is precisely how `strstat.py` finds `strst` ✅.
+
+**The checklist, for any kernel variable on Amix** ✅: never trust `nlist(3)` (success is not
+evidence); classify the symbol first (`nm` — COMMON or defined); COMMON → running image (`adb -k`
+with the running kernel, or replay the allocation); defined → `nm` value + load base, base confirmed
+against a known text symbol; and always sanity-check by moving the machine — a value that never
+moves with load is a wrong address wearing a convincing disguise. The worked consequence of this
+whole section is the load-average story: see
+[load averages](../how-it-works/load-averages.md).
 
 ## Worked example — how `mount(2)` and fstype registration actually work
 
@@ -7008,8 +7405,13 @@ if (index==0 && (pc==0x0202F003)) {                 /* A3000 internal SCSI: not 
     if ((((int)vposr >> 8) & 0x7F) < 0x22) {        /* ECS/OCS Agnus (<0x22) = A3000-class; AGA Alice (>=0x22) = A4000 */
         volatile unsigned char *sasr = (unsigned char *)0xDD0041;  /* WD33C93 SASR */
         volatile unsigned char *scmd = (unsigned char *)0xDD0043;  /* WD33C93 SCMD */
-        *sasr = 0x02; *scmd = 0x55;  *sasr = 0x02;                 /* write/readback Timeout-Period reg */
-        if (*scmd == 0x55) { *sasr = 0x02; *scmd = 0xAA; *sasr = 0x02; if (*scmd == 0xAA) a3kscsi = 1; }
+        *sasr = 0x02; *scmd = 0x55;                                /* reg 0x02 <- 0x55 */
+        *sasr = 0x03; *scmd = 0xAA;                                /* reg 0x03 <- 0xAA, same data port */
+        *sasr = 0x02;                                              /* re-select reg 0x02 */
+        if (*scmd == 0x55) {           /* open bus would alias this read to the LAST write, 0xAA */
+            *sasr = 0x03;
+            if (*scmd == 0xAA) a3kscsi = 1;   /* both registers distinct => a real WD33C93 */
+        }
     }
     if (a3kscsi) { *bp = 0xdd0000; return 1; }       /* present -> register */
     /* absent -> fall through; autocon returns 0; sd.c never registers it */
@@ -7019,9 +7421,19 @@ if (index==0 && (pc==0x0202F003)) {                 /* A3000 internal SCSI: not 
 How the two steps work ✅:
 
 - **Chipset gate (the safety mechanism).** Read **VPOSR (`0xDFF004`)** — a custom-chip register that is *always* present and bus-safe to read on any Amiga. The identification field is **bits 8–14** (mask the toggling LOF bit at bit 15, i.e. `(vposr >> 8) & 0x7F`): **< 0x22 = ECS/OCS Agnus** (A3000-class), **≥ 0x22 = AGA Alice** (A4000). On AGA the whole block is **skipped**, so the kernel *never reads* `0xDD0000` — eliminating any bus-fault at an address that does not decode on an A4000.
-- **WD33C93 probe (on A3000-class only).** Write `0x55` then `0xAA` to the WD33C93 Timeout-Period register (indirectly, via its `SASR`/`SCMD` ports at `0xDD0041` / `0xDD0043`) and read each back. The board at `0xDD0000` is registered only if the chip **echoes** both values.
+- **WD33C93 probe (on A3000-class only).** A **two-register anti-alias** write/readback through the
+  chip's indirect `SASR`/`SCMD` ports (`0xDD0041`/`0xDD0043`): write `0x55` into register `0x02` and
+  `0xAA` into register `0x03` — both through the *same* data port — then read both back. Open bus
+  that echoes the last write would return `0xAA` for the register-`0x02` read, so the probe only
+  passes when two genuinely distinct registers hold their own values: a real WD33C93. The board at
+  `0xDD0000` is registered only then.
 
-🟡 **Emulation caveat (carry honestly).** Amiberry's *open bus* at `0xDD0000` echoes writes, so the write/readback **false-positives** when `scsi_a3000=false` — in emulation "ECS always registers" even with no WD33C93 attached. This is harmless for the real targets (a physical A3000 *always* has the WD33C93, and a real A2500's empty bus would correctly fail the probe). The **chipset gate** is what makes the **A4000 / AGA** case correct and safe; the WD33C93 readback can only be *fully* trusted on real hardware.
+🟡 **Emulation caveat (carry honestly).** An earlier **single-register** form of this probe
+false-positived on Amiberry: its *open bus* at `0xDD0000` echoes writes, so a write/readback against
+one register succeeds with no WD33C93 attached (`scsi_a3000=false`). The current two-register form
+above was designed to defeat exactly that aliasing — an echo-last-write bus fails the register-`0x02`
+readback ✅ (by construction). Whether it has been re-measured against Amiberry's open bus is not
+recorded 🟡; the **chipset gate** remains what makes the A4000/AGA case correct and safe regardless.
 
 ## The Zorro II ID nibble encoding
 
@@ -7091,6 +7503,39 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 ## See also
 
 - [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board brought up over the TT gap with `sptalloc()`; the auto-detection consumer of `autocon()`.
+## The phantom on a real A4000: a fabricated entry whose every I/O is fatal ✅
+
+On real A4000 metal the fabricated card-0 entry is worse than a mis-ordering. Nothing decodes
+`0xDD0000` on an A4000, so nothing drives DSACK, and the first register access takes a **bus error
+inside the stock driver's initialisation** — that routine is shaped as *"panic unless a board was
+found at exactly the A3000 built-in address"* followed by a register write, and it establishes no
+mapping, so on this machine it is fatal **whenever it is called** ✅ (first-party, observed and
+decoded on metal, 2026-08). The only defence is never to issue I/O to that card: a kernel whose
+compiled-in root device names card 1 never enters the routine at all, which is why the same kernel
+can be fully green on a bench (where something answers *and decodes* at `0xDD0000`) and structurally
+unbootable on this metal ✅.
+
+**Card ordering is fragile in both directions.** On an uncured kernel the Z3660-class second
+controller is card 1 *only because* the phantom holds card 0 ✅. Suppress the phantom — this page's
+cure, or any config in which `autocon()` stops fabricating the entry — and the second controller
+**renumbers to card 0**, so every root/swap stamp naming card 1 stops resolving. This is measured,
+not hypothetical: on the same physical A4000, a kernel carrying the cure roots through **card 0**
+while an uncured one must be stamped to **card 1** ✅. Adopting the cure into an existing kernel
+lineage is therefore a **migration** (re-stamp every image's root/swap), not a drop-in patch.
+
+**Which kernels carry the cure** ✅ (audited 2026-08-27): the A4091 project (its origin), the
+install-media builder (unconditionally, with build gates), and the on-box kernel builders. A kernel
+produced by **relinking a stock binary** structurally cannot take it — the cure is a source patch,
+and no C source is in that path — so such kernels avoid card 0 by stamping root/swap to card 1
+instead, with a link-time gate that decodes the artifact's compiled-in root family and refuses a
+mismatch for the target rig. The state is coherent: the cure where source is compiled, the stamp
+plus gate where it is not.
+
+**A method note from the metal root-cause** ✅: the failing and the working kernel differed by *one
+byte* in a megabyte of text — the controller registry's row-count bound — plus an appended driver
+and a two-byte root restamp. A byte-compare that finds exactly one difference has not told you what
+that byte does; **decode the byte before concluding anything** (see [quirks §37](../how-it-works/quirks.md#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded-)).
+
 - [The boot process](../how-it-works/boot-process.md) — how the phantom-A3000 mis-ordering produced the root-mount panic, and the fixed card numbering.
 - [The Amix device-driver model](driver-model.md) — switch tables, major/minor, and where `autocon()` sits in the API surface.
 - [Case study: lszorro userspace Zorro scanner](case-studies/lszorro.md) — the full worked implementation.
@@ -7515,6 +7960,23 @@ known, and the third was the most consequential ✅:
    [kernel build](kernel-build.md) for the blast-radius map and
    [package management](../how-it-works/package-management.md) for the crash this solved.
 
+**`fix_asm` runs only when you compile *through* the wrapper — `-S` bypasses every repair** ✅.
+`m68k-cbm-sysv4-gcc` is a shell wrapper: it runs the real `gcc.real -S`, post-processes the emitted
+SGS-syntax assembly through `fix_asm`, and only then assembles. That post-process happens **only when
+the wrapper reaches the assembly stage internally**. If a caller passes **`-S`** to the wrapper, it
+is detected and the wrapper `exec`s straight to `gcc.real` with **zero fixups applied** — silently
+losing all of the repairs above. The most dangerous one to lose is the **`fcmp` FP-compare
+operand-order reversal** (`SGS_CMP_ORDER`): for an FP-register-vs-FP-register comparison this does not
+fail to assemble — it assembles to a *different, valid* encoding with the **operands swapped**, so
+`a > b` between two doubles silently evaluates as `b > a`, with no diagnostic at any stage ✅. This is
+not hypothetical: it shipped once in this family's own tooling, producing a benchmark whose numeric
+guard (`secs > 0.0`) was silently always false. The `fcmp` defect itself is fixed and gated
+(`make test-fcmp`), but the **general bypass property remains true of the wrapper as designed**: any
+build system that compiles to `.s` and assembles separately, resolves to `gcc.real` directly, or
+drives `as` itself inherits none of the wrapper's repairs ✅. This is the same silent-mis-encode
+family as the `#`-as-comment scrub and the `tdivs` bug below, and the rule that covers all of them is
+the same: **verify the encoding (`objdump -d`), never the exit status** ✅.
+
 ### The SGS/SVR4 assembler dialect: `&` is the immediate prefix — and `#` is a comment ✅
 
 The toolchain's GNU `as` (binutils 2.8.1) is configured for the **SVR4/SGS m68k target**, not the
@@ -7542,10 +8004,47 @@ operands were not wrong, they were *eaten as a comment* before the parser saw th
 this, and the fix is the **one-character substitution `#` → `&`** on the code field of each affected
 line ✅.
 
+**The mechanism, and why the scrub reaches end of line** ✅: `#` is in gas's `line_comment_chars` for
+this target (`gas/config/tc-m68k.c`), and the comment scrubber runs **before** the m68k operand
+parser — so the operand is not misparsed, it is *gone*, together with everything after it on the
+line: a second operand, a trailing comment, all of it.
+
+**The carrier is inline asm in C, not just imported `.s` files** ✅: gcc 2.7.2.3 copies an `__asm__`
+template into its output **verbatim**, so Motorola-syntax immediates inside a `.c` file reach the
+assembler unchanged and hit the scrub exactly as an imported `.s` file would. A project with no `.s`
+files is not exempt.
+
+**And the failure can be silent** ✅ — this is the dangerous half, and the diagnostic above is the
+*lucky* outcome. If what survives the scrub is itself a valid instruction, gas assembles **that**,
+with no diagnostic of any kind: `nop #junk here` assembles to a bare `nop` (`4e71`), exit 0. What
+you wrote is not what ran. This is the same silence class as the `tdivs` mis-encode above — the
+toolchain has a *family* of silent mis-encodes, and the rule that covers all of them is: **verify
+the encoding (`objdump -d`), never the exit status.**
+
 The rest of the MIT dialect largely assembles unchanged — MIT addressing syntax (`%a0@(8)`),
-joined-size mnemonics (`movel`, `moveal`), branch size suffixes (`bras`, `beql`), bitfield ops
-(`bfffo`), and the FPU/PMMU instructions (`fsave`, `fmovemx`, `pmove`, `pflusha`) were probed
-individually and pass as-is ✅. In practice the dialect wall is the immediate/comment characters.
+joined-size mnemonics (`movel`, `moveal`), branch size suffixes (`bras`, `beql`), and the FPU/PMMU
+instructions (`fsave`, `fmovemx`, `pmove`, `pflusha`) were probed individually and pass as-is ✅. In
+practice the dialect wall is the immediate/comment characters.
+
+**Bit-field operands are the documented exception** ✅ (this narrows an earlier version of this
+section, which listed `bfffo` among the pass-as-is constructs — true of the *mnemonic* and the
+register operand form, not of the Motorola-immediate operand form):
+
+| Written | Result |
+|---|---|
+| `bfffo %d3{#0:#32},%d2` | destroyed — comment scrub (`Missing operand` + `operands mismatch`) |
+| `{0:32}` — bare literals | assembles correctly |
+| `{BOFF:WID}` — bare symbols | `Bad expression` / `parse error` |
+| `{&0:&32}` / `{&BOFF:&WID}` | assembles correctly, literals **and** symbols |
+
+`&` is the only universally-correct repair — bare numbers work for literals and fail for symbolic
+offsets/widths. As of `gcc-cross-amix` `d0a4045` the wrapper's `fix_asm` auto-repairs `#` → `&`
+**inside bit-field braces** for all eight bit-field mnemonics, gated on the *encoding* by
+`make test-bitfield` (offset/width read back out of the extension word). The repair is deliberately
+narrow: `#APP`/`#NO_APP` and every other `#` on the line are untouched, so **all other hand-written
+immediates remain the author's responsibility** — `moveq #1,%d0` in an `__asm__` block is still
+silently eaten. When importing any third-party m68k asm or inline asm: grep the code fields for `#`,
+rewrite to `&`, and verify the encoding, not the build's exit status ✅.
 
 ### The wrapper's `-c foo.s` with no `-o` silently destroys the source ✅
 
@@ -7581,6 +8080,81 @@ regardless: a trap that exits 0 is only ever caught after the fact.
 ### The stock shared-libc `getpwnam()` first-call SIGSEGV — and the static-link sidestep ✅
 
 A separate porting hazard lives in the stock **shared `libc.so.1`**, not in the toolchain: the **first `getpwnam()` call** of a process crashes inside libc's passwd-record handling (a record expand routed through the `_libc_malloc` allocator-redirect pointers), while the symmetric group path (`getgrnam`) survives — the asymmetry is entirely inside libc and not debuggable off-box. Interposition was ruled out (libc calls its internal helpers via non-preemptible `bsrl`). The **working sidestep**, used in every binary of the ported pkg toolchain: link them **statically** and let the executable *define* `getpwnam`/`getpwuid`/`getgrnam`/`getgrgid` as small direct `/etc/passwd`/`/etc/group` parsers — an executable's own global symbols win over shared-library exports at static link time, so every internal caller is preempted uniformly. Two consequences worth knowing: this only protects code you can relink (it cannot reach the stock **dynamically-linked** daemons — which were never the victims of this particular defect anyway; a daemon crashing at boot is far more likely the [colon-less-`TZ` bug](../how-it-works/quirks.md)), and it is one more reason the install-media engine ships static.
+
+## The porting surface: libc and library gaps modern C assumes ✅
+
+Getting a compiler to emit correct code (above) is only half of porting modern software to Amix; the
+other half is that **stock Amix's libc and system libraries are a 1990–1992 SVR4 surface**, and much
+of what current C takes for granted is simply absent. These are the measured gaps that most often
+block a port — all from direct sysroot inspection (file presence, `md5`, `nm` symbol resolution,
+header reads) ✅. They compound with the [implicit-declaration behaviour](#the-implicit-declaration-bomb)
+of GCC 2.7.2.3, which turns several of them from a build error into a silent runtime bomb.
+
+### curses = termcap = termlib is one archive, exposing both APIs — link `-lcurses` ✅
+
+In the Amix sysroot, `libcurses.a`, `libtermcap.a` and `libtermlib.a` are **byte-identical** (same
+`md5`) and export **both** the terminfo API (`setupterm`, `tigetstr`, `tparm`, `newterm`, …) **and**
+the full BSD termcap API (`tgetent`, `tgetnum`, `tgetflag`, `tgetstr`, `tgoto`, `tputs`) from the one
+archive — an intentional SVR4 design (`curs_termcap(3CURSES)`), not an accident of the install ✅.
+`libcurses` is a **static archive only** (no `libcurses.so`), and **no `*ncurses*` file exists
+anywhere in the sysroot** ✅. Practical policy: **link `-lcurses`** and that resolves the
+termcap/terminfo/curses dependency for `screen`, `less`, `vim`, a `top`-class monitor, and their
+kin at once — **no ncurses port is needed as a prerequisite** for that class of tool. The genuine
+gap is ncurses-*only* APIs (wide-char `cchar_t`, mouse support, `use_default_colors`): a tool that
+hard-requires those needs ncurses ported first, a separate and harder question ✅.
+
+### No POSIX `regcomp`/`regexec` anywhere on the box ✅
+
+Amix's libc and system libraries provide **no POSIX regular-expression API at all** — no
+`regcomp`/`regexec`/`regfree` ✅. What exists instead is the older SVR4 `<regexp.h>` interface
+(`compile`/`step`/`advance`) and the separate `libgen` `regcmp`/`regex`. This hard-blocks any tool
+whose portability story assumes POSIX regex is always present (e.g. GNU `file`, GNU `nano`) unless it
+bundles its own regex engine — which is, independently, the single strongest portability predictor on
+this platform ✅.
+
+### `strcasecmp` exists only in the networking libraries, declared in no header ✅
+
+`strcasecmp` is **not in libc** at all — it lives only inside the networking libraries
+(`libsocket.a`/`libnsl.a`/`libresolv.a`, varying by measurement pass), and **no header on the system
+declares it** ✅. A build that calls it gets an implicit K&R declaration (assumed `int`-returning),
+which is harmless *for this particular signature* but is exactly the trap class the next item shows is
+**not** always harmless. Treat it as absent and shim it ✅.
+
+### The implicit-declaration bomb: missing `snprintf`/`vsnprintf`/`getpagesize`, silently miscompiled {#the-implicit-declaration-bomb}
+
+None of `snprintf`, `vsnprintf` or `getpagesize` exist in Amix's shared libc (`libc.so.1`), and
+`snprintf` is not even **declared** in the sysroot's `stdio.h` ✅ — almost certainly the single most
+common blocker for modern C, since `snprintf` is ubiquitous. The danger is not "missing symbol, build
+fails": the cross compiler is **GCC 2.7.2.3**, whose K&R semantics treat an undeclared call as
+returning `int` and **compile it anyway with no error** — so a call to an absent, non-`int`-returning
+function (or one taking a `double`) silently produces **wrong values at runtime** rather than a
+link/compile failure ✅. Observed concretely: an undeclared `atof` call read the wrong argument value,
+because implicit-declaration rules mishandle parameter passing for a function assumed to return `int`.
+
+> **House rule:** build with `-Wall` and treat **every implicit-declaration warning as a hard
+> error** — on this toolchain it is a runtime-corruption warning, not a style nit ✅.
+
+The wider absent surface, corroborated by an independent build-matrix survey, also includes
+`setenv`, `mkstemp`, `usleep`, `nanosleep`, `getaddrinfo`, `random`/`srandom`, `daemon`, `getrusage`,
+`fnmatch`, `glob`, and header gaps for `stdint.h`/`inttypes.h`/`stdbool.h`/`strings.h`/`wchar.h` and
+`ssize_t` ✅. (The same-family stock-libc `getpwnam()` first-call crash and its static-link sidestep
+are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-link-sidestep).)
+
+### SVR4 `/proc` is 37 `PIOC*` ioctls, not Linux-style text files ✅
+
+Unlike Linux, Amix's `/proc/<pid>` is **a single file you `open()` and drive with `ioctl()`** — there
+is no `/proc/<pid>/stat`, no `/proc/meminfo`, nothing to text-parse ✅. The sysroot's `sys/procfs.h`
+defines **37 `PIOC*` ioctl codes** (`PIOCSTATUS`, `PIOCPSINFO` for `ps`-style info via `prpsinfo_t`,
+`PIOCNMAP`/`PIOCMAP` for memory mappings, `PIOCCRED`, …). Consequence: a tool like `htop`, whose
+entire data-collection layer is written against Linux `/proc` text files, is **not portable as
+written — it is a rewrite** against the `PIOCPSINFO`/`prpsinfo_t` structures, not a patch; prefer a
+small native tool over patching a large foreign one ✅. (A `top`-class monitor is tractable this way:
+`sys/procfs.h` + `nlist()`, no `libkvm`.)
+
+> **Corpus caution:** the `PIOC*` hits elsewhere in this grimoire are a **different, unrelated
+> device** — a parallel-port driver's private ioctl namespace (`PIOCSETCTL`/`PIOCGETCTL` for printer
+> handshake lines), which shares the `PIOC` prefix by convention only. Do not confuse it with the
+> procfs ioctl family here ✅.
 
 ## SVR4 packaging
 
@@ -7657,6 +8231,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - SVR4 packaging tools (`pkgproto`, `pkgmk`, `pkgtrans`, `pkgadd`) — standard AT&T System V Release 4 documentation.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 - First-party cross-toolchain findings (2026-07-27): SGS-dialect probes of the installed `m68k-cbm-sysv4` binutils-2.8.1 `as` (the `#`-as-comment failure reproduced; per-construct MIT-syntax compatibility probes) and the wrapper `-c foo.s` source-destruction defect (minimally reproduced three times; cause chain pinned by tracing the wrapper; empty-stdin control via `as -m68020 -o t.s </dev/null`).
+- The **amix-packages** porting campaign — `PORTING.md` and a corroborating ports-roadmap research pass (2026-08-28), all from direct Amix-sysroot inspection ✅: the byte-identical `libcurses.a`/`libtermcap.a`/`libtermlib.a` archive exporting both APIs and the "link `-lcurses`" policy (§3.4); no POSIX `regcomp`/`regexec`, only SVR4 `<regexp.h>` + libgen `regcmp`; `strcasecmp` present only in the networking libs and declared in no header (§3.1); `snprintf`/`vsnprintf`/`getpagesize` absent from `libc.so.1` (and `snprintf` undeclared in `stdio.h`) with the GCC 2.7.2.3 implicit-declaration miscompile (the reproduced `atof` case) and the wider absent-symbol list (§3.1); the SVR4 `/proc` 37-`PIOC*`-ioctl model vs. Linux text files, with the parallel-port-`PIOC*` disambiguation (§3.2); and the `fix_asm`-only-through-the-wrapper property — `-S` bypasses every fixup, including the silent `fcmp` operand-order reversal shipped once as `iobench kb_s=0.0` (§2.2). No proprietary SVR4 headers or source reproduced — symbol/header **presence and behaviour** observed live, paraphrased.
 
 
 ================================================================================
