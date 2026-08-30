@@ -157,6 +157,23 @@ known, and the third was the most consequential ✅:
    [kernel build](kernel-build.md) for the blast-radius map and
    [package management](../how-it-works/package-management.md) for the crash this solved.
 
+**`fix_asm` runs only when you compile *through* the wrapper — `-S` bypasses every repair** ✅.
+`m68k-cbm-sysv4-gcc` is a shell wrapper: it runs the real `gcc.real -S`, post-processes the emitted
+SGS-syntax assembly through `fix_asm`, and only then assembles. That post-process happens **only when
+the wrapper reaches the assembly stage internally**. If a caller passes **`-S`** to the wrapper, it
+is detected and the wrapper `exec`s straight to `gcc.real` with **zero fixups applied** — silently
+losing all of the repairs above. The most dangerous one to lose is the **`fcmp` FP-compare
+operand-order reversal** (`SGS_CMP_ORDER`): for an FP-register-vs-FP-register comparison this does not
+fail to assemble — it assembles to a *different, valid* encoding with the **operands swapped**, so
+`a > b` between two doubles silently evaluates as `b > a`, with no diagnostic at any stage ✅. This is
+not hypothetical: it shipped once in this family's own tooling, producing a benchmark whose numeric
+guard (`secs > 0.0`) was silently always false. The `fcmp` defect itself is fixed and gated
+(`make test-fcmp`), but the **general bypass property remains true of the wrapper as designed**: any
+build system that compiles to `.s` and assembles separately, resolves to `gcc.real` directly, or
+drives `as` itself inherits none of the wrapper's repairs ✅. This is the same silent-mis-encode
+family as the `#`-as-comment scrub and the `tdivs` bug below, and the rule that covers all of them is
+the same: **verify the encoding (`objdump -d`), never the exit status** ✅.
+
 ### The SGS/SVR4 assembler dialect: `&` is the immediate prefix — and `#` is a comment ✅
 
 The toolchain's GNU `as` (binutils 2.8.1) is configured for the **SVR4/SGS m68k target**, not the
@@ -261,6 +278,81 @@ regardless: a trap that exits 0 is only ever caught after the fact.
 
 A separate porting hazard lives in the stock **shared `libc.so.1`**, not in the toolchain: the **first `getpwnam()` call** of a process crashes inside libc's passwd-record handling (a record expand routed through the `_libc_malloc` allocator-redirect pointers), while the symmetric group path (`getgrnam`) survives — the asymmetry is entirely inside libc and not debuggable off-box. Interposition was ruled out (libc calls its internal helpers via non-preemptible `bsrl`). The **working sidestep**, used in every binary of the ported pkg toolchain: link them **statically** and let the executable *define* `getpwnam`/`getpwuid`/`getgrnam`/`getgrgid` as small direct `/etc/passwd`/`/etc/group` parsers — an executable's own global symbols win over shared-library exports at static link time, so every internal caller is preempted uniformly. Two consequences worth knowing: this only protects code you can relink (it cannot reach the stock **dynamically-linked** daemons — which were never the victims of this particular defect anyway; a daemon crashing at boot is far more likely the [colon-less-`TZ` bug](../how-it-works/quirks.md)), and it is one more reason the install-media engine ships static.
 
+## The porting surface: libc and library gaps modern C assumes ✅
+
+Getting a compiler to emit correct code (above) is only half of porting modern software to Amix; the
+other half is that **stock Amix's libc and system libraries are a 1990–1992 SVR4 surface**, and much
+of what current C takes for granted is simply absent. These are the measured gaps that most often
+block a port — all from direct sysroot inspection (file presence, `md5`, `nm` symbol resolution,
+header reads) ✅. They compound with the [implicit-declaration behaviour](#the-implicit-declaration-bomb)
+of GCC 2.7.2.3, which turns several of them from a build error into a silent runtime bomb.
+
+### curses = termcap = termlib is one archive, exposing both APIs — link `-lcurses` ✅
+
+In the Amix sysroot, `libcurses.a`, `libtermcap.a` and `libtermlib.a` are **byte-identical** (same
+`md5`) and export **both** the terminfo API (`setupterm`, `tigetstr`, `tparm`, `newterm`, …) **and**
+the full BSD termcap API (`tgetent`, `tgetnum`, `tgetflag`, `tgetstr`, `tgoto`, `tputs`) from the one
+archive — an intentional SVR4 design (`curs_termcap(3CURSES)`), not an accident of the install ✅.
+`libcurses` is a **static archive only** (no `libcurses.so`), and **no `*ncurses*` file exists
+anywhere in the sysroot** ✅. Practical policy: **link `-lcurses`** and that resolves the
+termcap/terminfo/curses dependency for `screen`, `less`, `vim`, a `top`-class monitor, and their
+kin at once — **no ncurses port is needed as a prerequisite** for that class of tool. The genuine
+gap is ncurses-*only* APIs (wide-char `cchar_t`, mouse support, `use_default_colors`): a tool that
+hard-requires those needs ncurses ported first, a separate and harder question ✅.
+
+### No POSIX `regcomp`/`regexec` anywhere on the box ✅
+
+Amix's libc and system libraries provide **no POSIX regular-expression API at all** — no
+`regcomp`/`regexec`/`regfree` ✅. What exists instead is the older SVR4 `<regexp.h>` interface
+(`compile`/`step`/`advance`) and the separate `libgen` `regcmp`/`regex`. This hard-blocks any tool
+whose portability story assumes POSIX regex is always present (e.g. GNU `file`, GNU `nano`) unless it
+bundles its own regex engine — which is, independently, the single strongest portability predictor on
+this platform ✅.
+
+### `strcasecmp` exists only in the networking libraries, declared in no header ✅
+
+`strcasecmp` is **not in libc** at all — it lives only inside the networking libraries
+(`libsocket.a`/`libnsl.a`/`libresolv.a`, varying by measurement pass), and **no header on the system
+declares it** ✅. A build that calls it gets an implicit K&R declaration (assumed `int`-returning),
+which is harmless *for this particular signature* but is exactly the trap class the next item shows is
+**not** always harmless. Treat it as absent and shim it ✅.
+
+### The implicit-declaration bomb: missing `snprintf`/`vsnprintf`/`getpagesize`, silently miscompiled {#the-implicit-declaration-bomb}
+
+None of `snprintf`, `vsnprintf` or `getpagesize` exist in Amix's shared libc (`libc.so.1`), and
+`snprintf` is not even **declared** in the sysroot's `stdio.h` ✅ — almost certainly the single most
+common blocker for modern C, since `snprintf` is ubiquitous. The danger is not "missing symbol, build
+fails": the cross compiler is **GCC 2.7.2.3**, whose K&R semantics treat an undeclared call as
+returning `int` and **compile it anyway with no error** — so a call to an absent, non-`int`-returning
+function (or one taking a `double`) silently produces **wrong values at runtime** rather than a
+link/compile failure ✅. Observed concretely: an undeclared `atof` call read the wrong argument value,
+because implicit-declaration rules mishandle parameter passing for a function assumed to return `int`.
+
+> **House rule:** build with `-Wall` and treat **every implicit-declaration warning as a hard
+> error** — on this toolchain it is a runtime-corruption warning, not a style nit ✅.
+
+The wider absent surface, corroborated by an independent build-matrix survey, also includes
+`setenv`, `mkstemp`, `usleep`, `nanosleep`, `getaddrinfo`, `random`/`srandom`, `daemon`, `getrusage`,
+`fnmatch`, `glob`, and header gaps for `stdint.h`/`inttypes.h`/`stdbool.h`/`strings.h`/`wchar.h` and
+`ssize_t` ✅. (The same-family stock-libc `getpwnam()` first-call crash and its static-link sidestep
+are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-link-sidestep).)
+
+### SVR4 `/proc` is 37 `PIOC*` ioctls, not Linux-style text files ✅
+
+Unlike Linux, Amix's `/proc/<pid>` is **a single file you `open()` and drive with `ioctl()`** — there
+is no `/proc/<pid>/stat`, no `/proc/meminfo`, nothing to text-parse ✅. The sysroot's `sys/procfs.h`
+defines **37 `PIOC*` ioctl codes** (`PIOCSTATUS`, `PIOCPSINFO` for `ps`-style info via `prpsinfo_t`,
+`PIOCNMAP`/`PIOCMAP` for memory mappings, `PIOCCRED`, …). Consequence: a tool like `htop`, whose
+entire data-collection layer is written against Linux `/proc` text files, is **not portable as
+written — it is a rewrite** against the `PIOCPSINFO`/`prpsinfo_t` structures, not a patch; prefer a
+small native tool over patching a large foreign one ✅. (A `top`-class monitor is tractable this way:
+`sys/procfs.h` + `nlist()`, no `libkvm`.)
+
+> **Corpus caution:** the `PIOC*` hits elsewhere in this grimoire are a **different, unrelated
+> device** — a parallel-port driver's private ioctl namespace (`PIOCSETCTL`/`PIOCGETCTL` for printer
+> handshake lines), which shares the `PIOC` prefix by convention only. Do not confuse it with the
+> procfs ioctl family here ✅.
+
 ## SVR4 packaging
 
 Amix uses the standard **SVR4 `pkgadd` packaging family** to bundle and install software ✅. The full lifecycle is: describe the payload with `pkgproto`, build a package with `pkgmk`, optionally bundle it into a single transferable datastream with `pkgtrans`, and install with `pkgadd` ✅.
@@ -336,3 +428,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - SVR4 packaging tools (`pkgproto`, `pkgmk`, `pkgtrans`, `pkgadd`) — standard AT&T System V Release 4 documentation.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 - First-party cross-toolchain findings (2026-07-27): SGS-dialect probes of the installed `m68k-cbm-sysv4` binutils-2.8.1 `as` (the `#`-as-comment failure reproduced; per-construct MIT-syntax compatibility probes) and the wrapper `-c foo.s` source-destruction defect (minimally reproduced three times; cause chain pinned by tracing the wrapper; empty-stdin control via `as -m68020 -o t.s </dev/null`).
+- The **amix-packages** porting campaign — `PORTING.md` and a corroborating ports-roadmap research pass (2026-08-28), all from direct Amix-sysroot inspection ✅: the byte-identical `libcurses.a`/`libtermcap.a`/`libtermlib.a` archive exporting both APIs and the "link `-lcurses`" policy (§3.4); no POSIX `regcomp`/`regexec`, only SVR4 `<regexp.h>` + libgen `regcmp`; `strcasecmp` present only in the networking libs and declared in no header (§3.1); `snprintf`/`vsnprintf`/`getpagesize` absent from `libc.so.1` (and `snprintf` undeclared in `stdio.h`) with the GCC 2.7.2.3 implicit-declaration miscompile (the reproduced `atof` case) and the wider absent-symbol list (§3.1); the SVR4 `/proc` 37-`PIOC*`-ioctl model vs. Linux text files, with the parallel-port-`PIOC*` disambiguation (§3.2); and the `fix_asm`-only-through-the-wrapper property — `-S` bypasses every fixup, including the silent `fcmp` operand-order reversal shipped once as `iobench kb_s=0.0` (§2.2). No proprietary SVR4 headers or source reproduced — symbol/header **presence and behaviour** observed live, paraphrased.
