@@ -52,6 +52,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 36 | **An optimised probe that reports "no fault" must be disassembled before it is believed** — the compiler may have constant-folded the faulting instruction away entirely, so the negative is the compiler's answer, not the silicon's | ✅ | [Quirks §36](#36-an-optimised-probe-reporting-no-fault-must-be-disassembled-first-) |
 | 37 | **A one-byte binary diff is not understood until the byte is decoded** — two kernels differed by one byte and that byte was a table row-count *bound*, gating a driver that sat outside the compared window; "the code is identical, so it's the environment" was wrong. Decode what the byte does before concluding | ✅ | [Quirks §37](#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded-), [Kernel composition](../drivers/kernel-composition.md) |
 | 38 | **`uptime` and `w` do not report the machine's load** — the reader resolves a COMMON kernel symbol to a non-address without an error (flat `0.00` and absurd millions are the SAME defect), and even the kernel's own count reads exactly N−1 (the on-CPU process is never counted). Read the truth with `adb -k <running-kernel> /dev/mem`, `avenrun/3X`, ÷256 | ✅ | [Load averages](load-averages.md) |
+| 39 | **A bare trailing `&` in a command sent to the box's telnet transport silently never runs** — the transport appends `; echo DONE_$?` for completion detection, so `<cmd> &` arrives as `<cmd> &; echo …` and `&;` is a Bourne syntax error: the job never starts, the retries re-login into the [inetd throttle](#23-inetd-disables-a-service-after-40-connections-in-60-seconds), and any poller waiting on it spins forever. Parenthesise the background launch: `(… &)` | ✅ | [Quirks §39](#39-transport-ampersand-law) |
+| 40 | **Amix keeps no persistent boot log** — no `dmesg` at all, `wtmp` has never recorded a reboot, and boot `fsck` writes only to the console (a delta to quirk 24, independent of `syslogd`). The console is the only record — and it still holds the whole boot transcript at a fresh `login:` prompt. Plan an HDMI capture; there is no log to read | ✅ | [Quirks §40](#40-no-persistent-boot-logging) |
 
 The rest of this page expands each item.
 
@@ -249,6 +251,38 @@ Enabling it is one commented-out line and needs **no** `/etc/syslog.conf` change
 > the **same inode** (3 hard links). `mv` replaces the file and silently breaks the `rc2.d` hook, so
 > the fix works once and never again after a reboot ✅ — the same hazard as `S69inet`/`inetinit`.
 
+### 40. Amix keeps no persistent boot log — the console is the only record ✅ {#40-no-persistent-boot-logging}
+
+Quirk 24 is about `syslogd` shipping switched off. This is the **broader, orthogonal** fact it sits
+inside: **Amix has no persistent boot logging at all, whether or not `syslogd` is ever turned on** ✅.
+Three independent subsystems each drop their boot-time output on the floor, so "what happened when
+this box last booted?" has no on-disk answer:
+
+- **There is no `dmesg` on Amix** ✅. Unlike Linux or BSD, there is no kernel ring buffer to dump
+  after the fact — the command and the facility simply do not exist. (Confirmed on a real box, and by
+  zero `dmesg` hits anywhere in this corpus.)
+- **`wtmp` has never recorded a single reboot — on any boot, ever** ✅. SVR4's login-accounting file,
+  which `last`/`last reboot` read for boot history, holds **zero** reboot records across its whole
+  life: its own header timestamp is *Mar 24 1992* and `last reboot` returns nothing. This is
+  **independent of the syslogd question** — `wtmp` is a separate, always-on accounting mechanism, and
+  it is still empty of boot history.
+- **The boot-time root `fsck` leaves no on-disk trace by design** ✅. `/sbin/bcheckrc` discards its
+  pre-check verdict to `/dev/null` and sends the real repair pass's output to the **console only** —
+  no `tee`, no log file — so even a root-fsck repair, had one run, would leave zero evidence it
+  happened.
+
+The practical consequence: **for any "what happened at boot" question — a hang, a fsck repair, a
+kernel's boot banner — plan for a passive HDMI console capture, because there is no log to read** ✅.
+Turning `syslogd` on (quirk 24) does not fill this gap: it starts capturing *future* daemon/kernel
+`syslog(3)` messages, a narrower channel than the raw console boot transcript. The one channel that
+*does* survive is the physical console — and at a fresh login prompt the console has **not scrolled
+past the boot transcript**: the visible frame still holds the first kernel line through to `login:`,
+so a single passive HDMI capture at the prompt recovers the whole boot sequence with no login and no
+keystroke ✅ (used exactly this way to answer a "did fsck run?" question with no other evidence
+source). See [quirk 24](#24-syslogd-is-present-correct-and-deliberately-switched-off) for the
+syslogd half and [networking](networking.md#why-it-is-silent-syslogd-ships-deliberately-disabled)
+for its config.
+
 ### 26. Three diagnostic tools that lie or do not work ✅
 
 Recorded so nobody re-chases them, and so nobody plans a capture around them:
@@ -422,6 +456,36 @@ has not been root-caused; that it does is measured. Full mechanism on
 [emulation fidelity](emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive);
 config keys on [Amix on Amiberry](../getting-started/emulation-amiberry.md).
 
+### 39. A bare trailing `&` sent to the box's transport silently never runs ✅ {#39-transport-ampersand-law}
+
+Every caller of the Amix command transport (`amixrun.py`, and grimoire's own
+`tools/host-net/amixsh.py` — same wire protocol) sends a command over telnet as
+**`<cmd>; echo DONE_$?`**, because a completion marker echoed back over the stream is the *only* way
+the host side can tell a command has finished — there is no separate exit-status channel ✅. So a
+command whose text **ends in a bare, unparenthesised `&`** (the shell background operator) arrives on
+the box as **`<cmd> &; echo DONE_$?`** — and **`&;` is a syntax error in the SVR4 Bourne shell** the
+box runs. The failure is silent on the host side: the marker never comes back, the transport's retry
+logic fires up to three times — each retry a **fresh telnet login**, which counts against the
+[inetd throttle](#23-inetd-disables-a-service-after-40-connections-in-60-seconds) — and **the job the
+caller wanted backgrounded never starts at all** ✅. Any poll loop waiting on that job's output then
+spins forever against a box where nothing is running.
+
+This is not hypothetical — it was found as a **real defect twice, in two different repos, one day
+apart** ✅: a soak harness's launch line ended in `&` and silently launched nothing (the harness then
+read the idle box as healthy), and a *reboot*-soak's `/etc/shutdown -y -i6 -g0 … &` had the identical
+defect in another repo, turning an entire reboot test into a scored-green no-op (the box never
+rebooted; a weak "port 23 answers" check let the false pass through).
+
+**The fix is to parenthesise the background launch** so the string ends in `)`, which composes fine
+with the appended `; echo DONE_$?`: `"(nohup sh $REMOTE > /soak.out 2>&1 &)"` ✅. This is a property
+of the **transport itself**, not of any one script — every caller, present and future, in every repo
+that drives the box this way must wrap a backgrounded command in parentheses (or otherwise end it in
+a token other than a bare `&`). Note the shapes that are **not** this defect and must not be
+"fixed": a `&` inside an on-box script's own text or a pushed heredoc (the marker is appended per
+*transport call*, never injected into file contents); **host-side** backgrounding of the
+`amixrun.py`/`amixsh.py` invocation itself (that `&` never crosses the wire); and a **non-final** `&`
+such as `& echo launched-$!` (the marker still lands after a `;`-safe token) ✅.
+
 ## Time & Y2K quirks
 
 ### 7. Y2K: `setclk` and the kernel's 1999 date cap ✅/🟡
@@ -592,3 +656,16 @@ Append these bullets to the page's `## Sources` list (after the amiberry cycle-e
   stock file layouts, its name-wide-grep permanence, the wrong-row-overwrite and wrapping-search
   variants, and the pre-probe / one-run-per-edit / post-verify-the-row pattern. See
   [building a kernel](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed--the-half-patch-trap).
+- The **amix-kerntools** transport lint (`amix-transport-lint.py` @ `2de5264`) and the two live
+  defects it generalises from — `amix-kerntools` and **Z3660** (`d40ce94`/`0fe57b4`) CHANGELOG entries,
+  both 2026-08-27 ✅ — quirk 39: the transport's appended `; echo DONE_$?` turning a bare trailing `&`
+  into the Bourne syntax error `&;`, the two independent repo instances found a day apart (a soak
+  launch line and a `shutdown -i6` reboot soak), the parenthesise-the-launch fix, and the four
+  superficially-similar shapes that are safe and must not be flagged (the linter's `--self-test`
+  exercises all four plus the unsafe one).
+- First-party **read-only metal session**, real A4000 + Z3660, 2026-08-27 ✅ — quirk 40: `dmesg` not
+  present on the system; `wtmp`'s header dated *Mar 24 1992* with zero reboot records and `last reboot`
+  returning nothing; `/sbin/bcheckrc` read verbatim (pre-check verdict discarded to `/dev/null`, repair
+  pass to the console with no redirection); and the passive HDMI capture at a fresh `login:` prompt
+  recovering the full boot transcript, used in the same session to answer a "did fsck run?" question.
+  A delta to quirk 24, orthogonal to the syslogd state.
