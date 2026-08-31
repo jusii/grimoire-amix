@@ -12,7 +12,8 @@ Higher is faster; `per-MHz` = Dhrystones/s ÷ CPU clock (clock-independent effic
 | Machine | CPU / config | clock | Dhrystones/s | per-MHz | source |
 |---|---|---|---|---|---|
 | A3000 (baseline) | 68030, stock | 25 MHz | 5,309.7 | 212 | reference |
-| **A4000D + Z3660 (ours)** | z3660 — *config to be confirmed* | — | 6,396.6 | — | ours ⚠ see note |
+| **A4000D + Z3660 (ours)** | **EMU 030 MMU** (Zynq-UAE soft-030) | emu | 6,396.6 | — | ours |
+| **A4000D + Z3660 (ours)** | **EMU 040 MMU** (Zynq-UAE soft-040) | emu | 8,100 | — | ours |
 | A3000 + Mercury | 68040, caches OFF | 33 MHz | 5,366.7 | 163 | Antti (Mercury) |
 | A3000 + Mercury | 68040, I-cache on, D-cache off | 33 MHz | 11,538.5 | 350 | Antti |
 | A3000 + Mercury | 68040, I-cache + prelim D-cache | 33 MHz | 18,292.7 | 554 | Antti |
@@ -20,13 +21,11 @@ Higher is faster; `per-MHz` = Dhrystones/s ÷ CPU clock (clock-independent effic
 | A3000 + Mercury | 68060, all caches + copyback | 66 MHz | 60,423.0 | 916 | Antti (Mercury) |
 | **A4000D + Z3660 (ours)** | real 68LC060, FPE, no FPU | 80 MHz | **70,257.6** | 878 | ours (FPE r13, 2026-08-26) |
 
-**Emulated (Zynq UAE soft-68k) reference, ours:** emulated 030 ≈ 4,615; emulated 040 ≈ **8,185** (final,
-after the 030-MMU / emulation-speed work — was 3,818 pre-optimization).
-
-> ⚠ **The 6,396.6 row:** this is our A4000D + Z3660, but its config isn't pinned yet. The value sits in
-> 68030 / emulated territory, far below our real-68LC060 figure (70,257.6 @ 80 MHz), so it is almost
-> certainly an *emulated-mode* or older measurement rather than the real-silicon FPE lane — to be confirmed
-> and relabelled.
+**Both EMU rows are the Zynq's ARM-hosted soft-68k** (UAE-derived) — ARM-bound, not 68k-clock-bound, so
+there's no meaningful per-MHz. Current figures: **EMU 030 MMU = 6,396.6, EMU 040 MMU = 8,100**. Earlier
+pre-optimization runs were lower (an 08-18 soft-030 ≈ 4,615, an 08-21 soft-040 ≈ 3,818); the 030-MMU /
+emulation-speed work brought them to the current numbers. The real-silicon FPE lane (70,257.6 @ 80 MHz) is
+~11× the emulated modes — that gap is real hardware vs emulation, not a 68k-generation difference.
 
 ### Reading the numbers
 - The Mercury 68040 @ 33 MHz cache progression (5,367 → 11,539 → 18,293 → 30,050) shows the caches are
