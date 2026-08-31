@@ -70,6 +70,7 @@ nav:
       - Package repository: how-it-works/package-repository.md
       - Quirks: how-it-works/quirks.md
       - Emulation fidelity: how-it-works/emulation-fidelity.md
+      - Performance benchmarks: how-it-works/performance-benchmarks.md
       - Glossary: how-it-works/glossary.md
   - Getting started:
       - Amix on WinUAE: getting-started/emulation-winuae.md
