@@ -1,4 +1,4 @@
-# Performance benchmarks — Dhrystone & disk I/O
+# Performance benchmarks — Dhrystone, disk I/O & thermals
 
 Living reference for Amix performance on real and emulated 68k. **Our reference machine is the
 A4000D + Z3660 accelerator** (real 68LC060, no FPU → software FPE); every row marked *ours* is that
@@ -80,7 +80,38 @@ a scratch *file* (never a raw device). Values in KB/s; repeats shown where taken
 - Measurement note: the *first* write into a freshly created file pays allocation/metadata cost (one
   early 100 MHz write read 851.9 KB/s and did not replicate — withdrawn; always repeat writes).
 
+## Thermals — real 68LC060 under load (A4000D + Z3660, 2026-08-31)
+
+First thermal characterisation of our 68LC060, read from the Z3660's own CPU thermistor
+(LTC2990 path; THERM calibration at firmware defaults 800.0/27.0, so absolute values are
+approximate but self-consistent across all runs quoted here). Cooler state: a new
+heatsink + fan **merely resting on the CPU — no thermal paste, not clamped**. Ambient 22 °C.
+Load = the sustained mixed Dhrystone + disk-I/O soak loop.
+
+| clock | idle | load plateau (mean) | band | Δ load−idle |
+|-------|------|---------------------|------|-------------|
+| 80 MHz  | 50.1 °C | **53.8 °C** | 52.4–54.9 | +3.7 |
+| 100 MHz | 52.9 °C | **57.5 °C** | 55.6–58.9 | +4.6 |
+
+- Peak ever observed **58.9 °C**, against a 70 °C abort threshold. The part reaches its load
+  band within ~5 min (80) / ≤4 min (100); the band oscillates ±0.9 °C with workload phase.
+- Slope for this cooler: load ≈ **0.19 °C/MHz**, idle ≈ 0.14 °C/MHz — two points, an
+  interpolation, not a demonstrated law.
+- **No thermal throttling on this part, demonstrated:** at 100 MHz, 56 of 176 Dhrystone runs
+  came in at or *above* the 87,976.5 reference (4 above it — a throttling part cannot beat
+  its own reference), and the slower timer-tick buckets split exactly evenly between the
+  first and second halves of the 38 min load at both clocks: OS scheduling noise, no thermal
+  trend.
+- Only prior data is the 2026-08-28 old-cooling record (53.2–56.4 °C at 80 MHz, still
+  climbing, lighter load, ambient unrecorded): the new cooler is better in direction, but the
+  comparison is uncontrolled. The controlled reference is this run vs the future
+  **properly-mounted** cooler re-run, whose protocol is pinned in the results file.
+
+Full write-up: workspace `tmp/2026-08-31-thermal/RESULTS-THERMAL-2026-08-31.md`.
+
 ## Open items
+- **Mounted-cooler thermal re-run** — repeat the pinned 80+100 soak protocol after the
+  cooler is pasted/clamped; THERM calibration must stay at 800.0/27.0 for comparability.
 - **70 MHz boot-reliability confound** — needs one designed experiment: `CCF 70` on a worked disk *after*
   a power-cycle, and on a pristine disk *without* one.
 - **60 MHz** — no working clock config found (2026-08-30 campaign, full negative matrix); untried lead:
