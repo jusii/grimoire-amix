@@ -82,9 +82,10 @@ On the firmware side (`rtg/rtg.c`) these dispatch to `REG_ZZ_CONFIG` (~line 1150
 
 The frame buffers are real DDR reached through the Zorro III window, at fixed board-relative offsets
 (from the firmware `memorymap.h`) ✅. Note the board base is `0x10000000`, so these windows land
-**inside the 68030's TT0 range** (< `0x40000000`) and are directly mappable — this is *not* the
-[A4091's unmapped TT-gap](a4091-53c710-driver.md) case; `sptalloc` here is simply a clean way to map
-the full 128 KB region:
+**inside the [identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map)** (< `0x40000000`) and
+are directly reachable — this is *not* the [A4091's above-the-identity-map](a4091-53c710-driver.md)
+case; `sptalloc` here was simply a clean way to map the full 128 KB region (and, on a large-memory
+machine, the wrong trade — see [the >80 MB `sptmap` exhaustion](#sptmap-exhaustion) below):
 
 - **RX backlog ring** — `0x07ED0000`, 32 slots × 2048 bytes = 64 KB.
 - **TX staging frame** — `0x07EE0000`, one frame.
@@ -221,7 +222,7 @@ it), so the **bounded poll/drain callout keeps working**. **No firmware change w
   — **not** `uchar`/`ulong`/`ushort`, which are `rico.h`-only (included by the SCSI driver, not this
   one). Both showed up only at kernel-link time, as undefined symbols.
 - **The 030 data-cache flush — turned out *not* to be needed.** ✅ The eth DDR windows are cacheable
-  (under TT0), so a stale-cache TX/RX coherency hazard was the scoping's stated *top* risk. The driver
+  (they sit inside the identity map), so a stale-cache TX/RX coherency hazard was the scoping's stated *top* risk. The driver
   has an **optional** line-granular flush (`Z3660ETH_CACHE_FLUSH`, `cpushl %dc` over the TX/RX
   windows), **default OFF**. On real hardware it was **not required** — TX and RX are byte-correct with
   the flush off, confirming the 030 data cache is effectively transparent to these windows here. Left
@@ -235,6 +236,29 @@ it), so the **bounded poll/drain callout keeps working**. **No firmware change w
   once: the box reached `login:` but `zen0` never came up; cause inferred from the working manual
   bring-up, which always ran a bare `slink` first — not independently traced). The boot script now
   runs a bare `slink` first, then **retries** `slink addaen` in a loop (below).
+
+## The ">80 MB board not found" — `sptmap` exhaustion, not a map clash ✅ {#sptmap-exhaustion}
+
+On a machine with **more than 80 MB** of RAM the driver stopped finding its board, and the obvious
+suspect was the firmware memory map: a clash between the board's Zorro III banks and the enlarged
+guest memory. That was falsified directly — the board's banks read **byte-identical at every window**,
+and the host DDR behind them was **empty** ✅.
+
+The cause is on the kernel side, and it is the same arena [the RAM ceiling](../how-it-works/ram-ceiling.md)
+is about. `page[]`, `sptalloc()` and the u-areas are all handed out of one **fixed 4 MiB kernel arena**
+through the `sptmap` resource map. With ~80 MB of RAM described, `page[]` has taken that arena, and
+this driver's **65 pages** of `sptalloc()` mappings have nothing left to allocate from — the mapping
+fails and the board simply is not there ✅.
+
+**The fix was to stop mapping.** The board's fixed base `0x10000000` sits below `VSECT1` — already
+inside [the identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map) — so the register window
+and the frame windows are directly usable. Direct-mapping whenever `base < VSECT1` takes the driver
+from **65 `sptmap` pages to 0** ✅: the >80 MB failure disappears, and the driver stops competing with
+the kernel for the frame array's arena.
+
+> The law worth carrying to any Amix driver: **a driver's mapping budget and the machine's RAM
+> ceiling are the same budget** ✅. `sptalloc()` is not free space — page-map only what you cannot
+> reach directly.
 
 ## Build & the `nm -u` clean-gate
 
@@ -395,6 +419,11 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   breadcrumbs (a temporary `rtg.c` build, since reverted).
 - **Kernel build tooling** (✅): the **amix-kerntools** project — `tools/build-clean-net-kernel.sh`
   (the `nm -u` clean-gate), `tools/build-net-kernel.sh` (consumes `driver.conf`).
+- **The 2026-08-12/14 RAM campaign** (workspace record): the ">80 MB board not found" root cause —
+  `sptmap` exhaustion against the fixed 4 MiB kernel arena, with the firmware-map-clash hypothesis
+  falsified (banks byte-identical at every window, host DDR empty) — and the `base < VSECT1`
+  direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅. Kernel-side context on
+  [the RAM ceiling](../how-it-works/ram-ceiling.md).
 - Magic numbers (✅): cdevsw major **48**; board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.168.2.39`; build box `192.168.2.38`; TFTP `192.168.2.29`; station MAC
   `00:80:51:01:02:03`.

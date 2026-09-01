@@ -172,10 +172,11 @@ window and the bounce buffer into kernel VA (`z3660.c:139-142`) — the **same `
 [A4091 driver](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution) uses** ✅. The
 meaningful difference from the A4091 is therefore **not** how the board is reached (both page-map their
 windows) but the bus protocol on the far side of the mapping — a synchronous register mailbox here, a
-53C710 SCRIPTS engine there. (The fixed base does fall inside the 68030's TT0 range documented for the
-[A4091's TT-gap analysis](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution),
+53C710 SCRIPTS engine there. (The fixed base does fall inside the
+[identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map) documented for the
+[A4091's addressing analysis](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution),
 so here the mapping is a clean convenience rather than being *forced* by the A4091's unmapped
-`0x40000000–0x7FFFFFFF` gap — but the board is mapped either way.)
+`0x40000000–0x7FFFFFFF` region — but the board is mapped either way.)
 
 > **The Z2 variant is unusable for Amix piscsi.** Its base is `0xE90000`; add the mandatory bounce
 > offset `0x80000` and you land at `0xF10000`, which the firmware/emulator decodes as **extended-ROM
@@ -361,8 +362,8 @@ reusable on any Amix bench, not just this one.
   combo board and firmware-mailbox model; the board, the Zynq SoC, and the `0x144B0001` identity are
   described there in full.
 - [A4091 / 53C710 SCSI driver](a4091-53c710-driver.md) — the *other* SCSI sibling and a true Zorro III
-  53C710 controller; contrast its SCRIPTS/DSA complexity and the `sptalloc` TT-gap mapping with this
-  driver's ~5-poke mailbox.
+  53C710 controller; contrast its SCRIPTS/DSA complexity and its `sptalloc` mapping across the
+  unmapped region above the identity map with this driver's ~5-poke mailbox.
 - [The Amix device-driver model](driver-model.md) — block vs char vs STREAMS; the `sd.c`/`scsicard[]`
   SCSI-stack path this driver registers into.
 - [Building & installing a kernel](kernel-build.md) — the `make` → `relocunix` → `make bootpart` flow

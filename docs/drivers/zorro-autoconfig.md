@@ -53,15 +53,15 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 🔴 **"Zorro II only" is imprecise about `autocon()` itself.** `autocon()` searches the same `bootinfo.autocon[NAUTO]` table for *any* AutoConfig board and returns the assigned base for a matched product id — **including Zorro III boards** ✅ (first-party, from the A4091-on-Amix project; `autocon()` in `amiga/kernel/support.c`). The match is purely on `(er_Manufacturer, er_Product)`; nothing in the table search rejects a Zorro III address. So a Zorro III board *does* AutoConfigure and `autocon()` *does* hand back its base.
 
-🔴 **The actual wall is the 68030 Transparent-Translation gap, not `autocon()`.** Amix maps physical space with two Transparent-Translation registers (`amiga/ml/ttrap.s`) ✅:
+🔴 **The actual wall is that Zorro III space falls outside the kernel's identity map, not `autocon()`.**
 
-| TT register | Value | Physical range it makes directly addressable |
-|---|---|---|
-| `tt0` | `0x003F0143` | `0x00000000`–`0x3FFFFFFF` |
-| `tt1` | `0x807F0143` | `0x80000000`–`0xFFFFFFFF` |
-| *(gap)* | — | `0x40000000`–`0x7FFFFFFF` **unmapped** |
+### How the low 1 GB is really mapped {#the-identity-map}
 
-A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside TT0, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped gap** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Widening TT0 is unsafe: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`.
+**AMIX does not use the 68030's Transparent-Translation registers at all** ✅. On a running kernel both TT registers read **E = 0 (disabled)** — the boot path zeroes them — and the identity mapping of the low **1 GB** (`0x00000000`–`0x3FFFFFFF`) is produced by the MMU instead: a **section-0 early-termination page descriptor in the root table**, which maps that whole span 1:1 without a second-level table ✅ (measured on a running kernel, 2026-08 RAM campaign). Everything at or below `0x3FFFFFFF` is therefore directly dereferenceable from kernel code; **`0x40000000`–`0x7FFFFFFF` is not mapped at all** ✅.
+
+> **Correction (2026-08-14).** This page — and roughly ten others across this site — previously attributed that identity map to `tt0 = 0x003F0143` / `tt1 = 0x807F0143`, values that do appear in `amiga/ml/ttrap.s`. The constants are in the source; the running kernel does not use them. **Every conclusion is unchanged** — a Zorro II board is still directly dereferenceable, a Zorro III board at `0x40000000` still is not, and `sptalloc()` is still the way across — only the mechanism differs ✅. Pages that discuss the boundary now say *"inside the identity-mapped low 1 GB"* and *"the unmapped region above the identity map"* and link here.
+
+A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`.
 
 The fix is the kernel primitive **`sptalloc(npages, prot, pfn, flag)`**, which page-table-maps physical pages into kernel VA ✅. A Zorro III driver takes the `autocon()` base and `sptalloc`-maps it before any register access:
 
@@ -191,7 +191,7 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 
 ## See also
 
-- [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board brought up over the TT gap with `sptalloc()`; the auto-detection consumer of `autocon()`.
+- [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board brought up over the unmapped region above the identity map with `sptalloc()`; the auto-detection consumer of `autocon()`.
 ## The phantom on a real A4000: a fabricated entry whose every I/O is fatal ✅
 
 On real A4000 metal the fabricated card-0 entry is worse than a mis-ordering. Nothing decodes
@@ -239,8 +239,9 @@ that byte does; **decode the byte before concluding anything** (see [quirks §37
 - `asokero/lszorro-amix` repo — `/dev/mem` `mmap()` scan, `0x80`-byte windows, I/O `0xE90000`–`0xEFFFFF` / mem `0x200000`–`0x9FFFFF`, AutoConfig nibble decode, 461-entry ID DB, register-only fingerprinting: <https://github.com/asokero/lszorro-amix>
 - `asokero/va2000-amix` repo — VA2000 AutoConfig mfr `0x6D6E` product `0x01`, 4 MB Zorro II window, `autocon()` usage: <https://github.com/asokero/va2000-amix>
 - `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x08490001` (2121/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
-- The A4091-on-Amix project — `NOTES.md` §2, §6, §7 (reproduced locally ✅; Zorro III + TT gap, `sptalloc()`, phantom-A3000, chipset-gated WD33C93 detection) and `src/`/`tools/`.
-- `src/kernel-patches/support.c` — the full `autocon()` with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (TT registers `tt0=0x003F0143` / `tt1=0x807F0143` from `amiga/ml/ttrap.s`; A4091 product id `0x02020054`).
+- The A4091-on-Amix project — `NOTES.md` §2, §6, §7 (reproduced locally ✅; Zorro III above the identity map, `sptalloc()`, phantom-A3000, chipset-gated WD33C93 detection) and `src/`/`tools/`.
+- `src/kernel-patches/support.c` — the full `autocon()` with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (A4091 product id `0x02020054`). The TT-register constants `tt0=0x003F0143` / `tt1=0x807F0143` also read from `amiga/ml/ttrap.s` there are **not** what the running kernel uses — see the 2026-08-14 correction above.
+- The **2026-08-12/14 RAM campaign** (workspace record): AMIX zeroes the 68030 TT registers (E = 0) and the low-1 GB identity map is a section-0 early-termination page descriptor in the MMU root table, measured on a running kernel ✅ — the correction to the TT0 mechanism carried across this site.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx` SCRIPTS assembler).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model and kernel API context (see [bibliography](../reference/bibliography.md)).
 - amigaunix.com — historical and hardware reference: <https://www.amigaunix.com/doku.php/home>

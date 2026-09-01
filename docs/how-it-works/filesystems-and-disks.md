@@ -6,7 +6,7 @@ status: draft
 
 # Filesystems & Disk Layout
 
-Amix stores everything on a single SCSI hard disk — **ID 6 by convention** (the installer prompts for the disk target; ID 6 is simply what every manual and emulator assumes, and it gets baked into the device names once installed — see the note below) 🟡, partitioned with the Amiga **Rigid Disk Block (RDB)** scheme ✅ — the same on-disk partition table AmigaOS uses, which is what lets the Superkickstart ROM find and boot the disk. The installer carves out four partitions by default (root, swap, a 2 MB boot/bootstrap partition, and data) ✅. You choose a filesystem at install time: **s5** (System V; the default but discouraged) or **UFS** (Berkeley Fast File System; recommended, and what the install scripts actually default to) ✅. Disk device names like `/dev/dsk/c0d0s1` are not arbitrary — the **minor number encodes the SCSI address, LUN, and partition**, and the **major number selects the driver** (block major **18** for the SCSI disk, block major **16** for the floppy) ✅.
+Amix stores everything on a single SCSI hard disk — **ID 6 by convention** (the installer prompts for the disk target; ID 6 is simply what every manual and emulator assumes, and it gets baked into the device names once installed — see the note below) 🟡, partitioned with the Amiga **Rigid Disk Block (RDB)** scheme ✅ — the same on-disk partition table AmigaOS uses, which is what lets the Superkickstart ROM find and boot the disk. The installer carves out four partitions by default (root, swap, a 2 MB boot/bootstrap partition, and data) ✅. You choose a filesystem at install time: **s5** (System V; what the install scripts actually default to) or **UFS** (Berkeley Fast File System; recommended, but you must type `ufs`) ✅. Disk device names like `/dev/dsk/c0d0s1` are not arbitrary — the **minor number encodes the SCSI address, LUN, and partition**, and the **major number selects the driver** (block major **18** for the SCSI disk, block major **16** for the floppy) ✅.
 
 If you just want the major/minor cheat sheet, jump to [Device name → SCSI address mapping](#device-name-scsi-address-mapping) or the [device list reference](../reference/device-list.md). For how the disk gets booted in the first place, see the [boot process](boot-process.md).
 
@@ -95,7 +95,7 @@ The UFS *recommendation* still stands on community consensus 🟡 — but it req
 
 Why does **s5** linger as a nominal default at all? 🟡 The most plausible explanation is **lineage**: Amix was a direct port of AT&T's **3B2 (WE32x00) SVR4 codebase** 🟡 (community-reported — amigaunix.com hedges "it appears that"), where the System V filesystem was the native default, and that default carried over even though UFS is the better choice on this hardware. The 3B2-lineage rationale is **community-reported, not primary-verified** 🟡 — see the [quirks page](quirks.md).
 
-**Recommendation:** choose **UFS** when the installer asks. UFS is also what the miniroot itself uses — the root floppy *is* a UFS filesystem (it carries `lost+found` and `fsck` strings) ✅, so the installer environment runs on UFS before your disk is even partitioned.
+**Recommendation:** choose **UFS** when the installer asks — and remember you have to *type* it. The miniroot you type it from is not UFS: the root floppy is an **s5** filesystem ✅ (its superblock sits at byte `0x200` with the s5 magic; the UFS magic in the image belongs to the bundled `mkfs_ufs`/`fsck_ufs` binaries, which is why a `lost+found`/`fsck` string heuristic mislabels it). See [the anatomy of the root floppy](../boot-disks/anatomy-root-adf.md) for the superblock evidence.
 
 ### Filesystem mechanics
 
@@ -103,7 +103,10 @@ Why does **s5** linger as a nominal default at all? 🟡 The most plausible expl
 - The standard SVR4 toolset is present: `fsck`, `dd`, and `cpio` all appear as m68k ELF binaries inside the root miniroot ✅, used during install and available afterward.
 - s5 is the older System V filesystem with smaller block sizes and weaker crash recovery than FFS; it is functional but offers no advantage here.
 - **s5 truncates filenames at 14 characters (`DIRSIZ=14`), silently** ✅ — no error, the name just shortens (e.g. a file written as `bootslice.manifest` reads back as `bootslice.mani`, and two long names can collide into one). This bites any s5-hosted tooling/payload tree — for example a custom install-payload slice — so keep every filename on an s5 volume ≤ 14 chars. UFS is unaffected.
-- **Host-side surgery on an installed disk image: the on-disk root is UFS, and it loop-mounts on Linux** ✅. An installed Amix root partition is SVR4 **big-endian** UFS, so a modern Linux host can read it directly, read-only, with `mount -t ufs -o ro,loop,offset=<partition-start-bytes>,ufstype=sun <image> <mnt>` (the `ufstype=sun` variant is the one that matches). This is how you extract or verify files from a captured `.hdf` without booting it — note the s5 reader used for *miniroot/floppy* media does **not** apply to an installed root.
+- **s5 has a hard ceiling of 65,535 inodes** ✅. Because `mkfs_s5` scales the inode count with the filesystem size, the knee lands at a root of roughly **288 MB** — past that the inode count saturates and the extra space buys files you have no inodes to name. If you are sizing an s5 root, size it for the inode ceiling, not for the bytes.
+- **An s5 device node stores its major and minor inside the inode's `di_addr` block list**, not in a separate field ✅. The first four three-byte slots read `L3[0] = minor`, `L3[1] = 1`, `L3[2] = major`, `L3[3] = minor`. Practical consequence: any tool that rewrites or normalises an s5 inode's block list — a naive image editor, a carve-and-repack pipeline — silently destroys every device node it touches, and the damage does not show up until something opens `/dev`.
+- **Host-side surgery on an installed disk image: an installed root is usually UFS, and it loop-mounts on Linux** ✅. An installed Amix root partition is SVR4 **big-endian** UFS, so a modern Linux host can read it directly, read-only, with `mount -t ufs -o ro,loop,offset=<partition-start-bytes>,ufstype=sun <image> <mnt>` (the `ufstype=sun` variant is the one that matches). This is how you extract or verify files from a captured `.hdf` without booting it — note the s5 reader used for *miniroot/floppy* media does **not** apply to an installed root. Check before you assume: the surviving 2.1 install lineage examined here is **UFS-rooted** ✅ (superblock fingerprint `-o free=2,opt=s`, 8192/8), but a root produced by accepting the installer's default is **s5**, and the two need different readers.
+- **What the kernel will accept as a UFS root at all** ✅: `mountfs` gates the superblock on **1380 ≤ `fs_bsize` ≤ 8192** and **`fs_frag` ≤ 8**. A filesystem made by a modern host `mkfs` with a larger block size is a perfectly good UFS that this kernel will simply refuse — check the two numbers before blaming the disk or the driver.
 
 ## Mounting a CD: the read-only `cdfs` optical filesystem
 
@@ -126,6 +129,21 @@ ls -la /cdrom
 ### Confirming `cdfs` is live in the booted kernel
 
 `mount -F cdfs` returning **`errno 22` (`EINVAL`)** almost always means `cdfs` is *not* in the running kernel — the classic SVR4 ghost: the kernel was patched on disk but never relinked-and-rebooted, or the wrong kernel is booted ✅. `cdfs` registers exactly like the built-in filesystems: a static `vfssw[]` row whose `cdfsinit` hook `vfsinit` calls automatically at boot, so injecting the row and relinking is sufficient to register it ✅. Confirm live registration with `sysfs(GETFSIND, "cdfs")` — **≥ 1** means registered (it is `12` on the bench kernel), **`-1`** means absent from this boot ✅. The disassembly-backed mechanism (why `22` is unambiguous here, `vfs_getvfssw`, the numeric-vs-string fstype dispatch) is documented on the [kernel reverse-engineering page](../drivers/kernel-reverse-engineering.md).
+
+> **The errno channel used to launder its own diagnostics — root-caused and fixed.** ✅ Before the
+> fix, `cdfs` collapsed four genuinely different failures — device absent (`ENXIO`), a wrong or
+> unrecognised device, a bad/unsupported format, and a real I/O error — into a single **`errno 5`** at
+> `mount(2)`. The design law generalises to any in-kernel filesystem: **a VFS whose only diagnostic
+> channel is `mount(2)`'s errno must not collapse device-absent, wrong-device, bad-format and I/O
+> into one value** ✅ — the caller has nothing else to read, so every value it *can* return has to
+> mean something.
+>
+> Consequence for anyone using the errno as a probe: the **negative** case is unchanged — `errno 22`
+> still reliably means "no `cdfs` in this kernel". The **positive** case is no longer a flat
+> `errno 5`; on a de-laundered kernel it depends on the media state. One live probe of a no-media
+> mount returned **`errno 25` (`ENOTTY`)** 🟡 (single observation; layer attribution between `cdfs`
+> and the `sd` target not yet pinned). For the liveness question use `sysfs(GETFSIND, "cdfs")`, which
+> is unambiguous in both directions.
 
 ### Kernel prerequisites
 
@@ -202,4 +220,13 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
   every kernel that roots through the A3000 onboard SCSI, not by a4091/cdfs kernels specifically, and
   the `s5mountroot VOP_OPEN error 6` panic is **not** size-triggered (four-kernel section-size table;
   a 652-byte-larger patched kernel boots).
+- The **2026-08-12/14 RAM campaign and its proof reports** (workspace record) ✅ — the s5 facts
+  (the 65,535-inode ceiling and its ~288 MB root knee; the `di_addr` device-major layout
+  `L3[0] = minor`, `L3[1] = 1`, `L3[2] = major`, `L3[3] = minor`); the `mountfs` superblock gates
+  (1380 ≤ `fs_bsize` ≤ 8192, `fs_frag` ≤ 8); the UFS-rooted 2.1 install lineage and its `-o free=2,opt=s`
+  / 8192-8 superblock fingerprint; the corrections to this page's lead (the install scripts default to
+  s5) and to the root-floppy claim (s5, not UFS); and the `cdfs` errno de-laundering (ENXIO /
+  bad-format / unsupported / I/O had all surfaced as `errno 5`) with its design law ✅. The 🟡
+  no-media `errno 25` observation is a single live probe from the 2026-08-14/15 golden-regeneration
+  event, carried unchanged.
 - The **Installer-NG** author-mode matrix proof (amix-installng, 2026-07-31) ✅ — the stock installer's `/etc/rdb -c`/`-a`/`-p` + `mkfs_s5` sequence run against a blank disk on the Amiberry bench and read back host-side: `-c` refuses without `-d` and `-d` is absent from the tool's usage text; the 512-byte-block unit proven by `rdb_Cylinders = 3200 = 204800 ÷ 64` (`rdb_Sectors = 64`, `rdb_Heads = 1`); the `-p` 1-based `atoi()` partition-number convention; `mkfs_s5`'s 512-byte-block operand (authored root `fsize=80896, type=2`, the full slice); the resulting disk cold-boots. Reference caller: the stock install script, `/etc/profile` on `amix_21_root.adf`, read by path with an s5 reader; `/etc/rdb` byte-identical stock ↔ rebuilt miniroot, md5 `6cacf95f738abea7cfddc6bb9ebf28e7`.

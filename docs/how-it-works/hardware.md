@@ -66,8 +66,10 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 In emulation this translates directly to "set Fast RAM to 16 MB (not less, not more)." See [the WinUAE config table](../getting-started/emulation-winuae.md).
 
-**A second, separate limit sits far above this one: total *describable* RAM.** ✅ Past a computed
-bound of roughly 128 MB, the kernel's **unchecked `rmalloc()` in `page_init()`** wild-writes a
+**A second, separate limit sits far above this one: total *describable* RAM.** ✅ Past roughly
+**64 MB** on a stock 68030 kernel — a bound set by a fixed 4 MiB kernel arena, not by an arithmetic
+accident, and reached at ≈128 MB only by a 4 KB-page 68060 kernel — the kernel's **unchecked
+`rmalloc()` in `page_init()`** wild-writes a
 60-byte stride from physical address 0 and the machine dies **silently, before any console output**
 — a completely different mechanism and symptom from this section's SCSI mis-mapping, reached by any
 route that hands the guest too much memory (debug/DDR windows, Zorro III RAM boards, accelerator
@@ -112,7 +114,7 @@ The Amix kernel **predates the 68040 MMU** and has no support for it (or the lat
 
 ### Zorro III — stock support is Zorro II only
 
-**Stock** Amix supports **Zorro II expansion only**; out of the box it has **no Zorro III support**. ✅ The stock drivers just dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside the 68030's TT0 window), and — because that kernel source was never shipped — the *stock* card set can't be patched in place. ✅ This is **not** a hard wall for a *purpose-written* driver, though: one that maps the board explicitly (the kernel's `sptalloc()` primitive, or a window that happens to fall inside TT0) **can** reach a Zorro III board — the [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do. For ordinary use, assume a card must work in (or fall back to) **Zorro II** address ranges.
+**Stock** Amix supports **Zorro II expansion only**; out of the box it has **no Zorro III support**. ✅ The stock drivers just dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)), and — because that kernel source was never shipped — the *stock* card set can't be patched in place. ✅ This is **not** a hard wall for a *purpose-written* driver, though: one that maps the board explicitly (the kernel's `sptalloc()` primitive, or a window that happens to fall inside the identity map) **can** reach a Zorro III board — the [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do. For ordinary use, assume a card must work in (or fall back to) **Zorro II** address ranges.
 
 Board addresses are assigned at reset by the Amiga **AUTOCONFIG** mechanism, which Amix reads through the kernel's `autocon()` interface — again, **Zorro II only**. ✅ See [the Zorro autoconfig driver page](../drivers/zorro-autoconfig.md) for how drivers consume this.
 

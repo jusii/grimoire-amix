@@ -158,7 +158,9 @@ The machine boots the kernel out of the raw **`UNI\0`** boot slice, **never `/st
 - The **flags-based `boot2.boot` has a fixed `sum -r` fingerprint of `14193`** — verify it before writing, because the name-based loader D245s (previous section).
 - After the `dd`, `sync` and read the slice back to confirm the write landed.
 
-**Telling which kernel is actually running** (there is no `uname` field for it): the SVR4 banner reads **`2.1c`** for a cdfs-carrying kernel vs `2.1` for one without, and `mount -F cdfs` returns **errno 5** when cdfs is in the kernel vs **errno 22** (the `GETFSIND` lookup fails) when it is not — a quick, non-destructive probe of the booted image's driver set.
+**Telling which kernel is actually running** (there is no `uname` field for it): the SVR4 banner reads **`2.1c`** for a cdfs-carrying kernel vs `2.1` for one without, and `mount -F cdfs` returns **errno 22** (the `GETFSIND` lookup fails) when cdfs is **not** in the kernel — reliable in that direction ✅.
+
+> **The positive half of that probe is stale.** ✅ It used to be "`errno 5` means cdfs is present", and that worked only because `cdfs` was **laundering four different failures into one errno**. That was root-caused and fixed, so on a current cdfs kernel the value depends on the media state instead — one live probe of a no-media mount returned **`errno 25`** 🟡 (single observation). Read the *negative* (`22` = absent), or ask directly with `sysfs(GETFSIND, "cdfs")`, which is unambiguous both ways. Full account on [filesystems and disks](filesystems-and-disks.md#confirming-cdfs-is-live-in-the-booted-kernel).
 
 ### First boot: the whole stock setup dialog hangs on one exec bit ✅
 
@@ -216,9 +218,19 @@ The compiled-in `rootdev = c6d0s1` decodes to `sdcard = 0`, so the kernel sent t
 
 ✅ **The fix.** The phantom is replaced by a **chipset-gated WD33C93 probe** that makes the A4091 card 0 when no real A3000 SCSI is present. With the A4091 at card 0, the compiled-in `rootdev = c6d0s1`, `swap = c6d0s2`, and `/etc/vfstab` all resolve to the A4091, and **Amix boots fully from the A4091** — root read/write, swap active, multi-user. ✅ See the detection logic on [the Zorro III autoconfig page](../drivers/zorro-autoconfig.md).
 
+### How the kernel picks the root filesystem — by probe, not by configuration {#how-the-kernel-picks-the-root-filesystem}
+
+**The Amiga port ships `rootfstype` as the empty string** ✅ — where AT&T's generic SVR4 configuration names `s5`, Amix names nothing and lets the kernel *try them all*. `vfs_mountroot` therefore walks the `vfssw[]` table in order, asking each filesystem in turn to mount the root device, and takes the first that succeeds ✅. `s5mountroot` declines politely with `EINVAL` when the device is not an s5 filesystem, so the walk continues rather than stopping ✅; `ufs` sits at **`vfssw[2]`** in every kernel examined here, install kernels included ✅.
+
+Three consequences worth carrying:
+
+- **You cannot tell a disk's filesystem from the kernel's configuration**, because the kernel does not know it either. A UFS-rooted disk and an s5-rooted disk boot the same kernel unchanged.
+- **`s5mountroot` appearing in a boot message says nothing about the disk.** It is simply the probe that ran first — see the panic below.
+- **A genuine device failure looks like "no filesystem matched"**, because every probe fails for the same reason and the walk runs off the end of the table.
+
 ### The mountroot fstype probe sequence
 
-The panic surfaces through `vfs_mountroot`'s filesystem-type probe, which tries `s5` then `nfs`. The full console sequence is ✅:
+The panic surfaces through that same probe walk. The full console sequence is ✅:
 
 ```
 s5mountroot VOP_OPEN error 5
@@ -279,4 +291,5 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - `amiga/config/unix.c` (`rootdev = ROOTDEV`, `-DROOTDEV`) and `amiga/config/c6s1unix.c` (`C6D0S1 = makedevice(18,22)`, swap `c6d0s2`); `amiga/alien/sd.h` (`SDCARDS`, `sdunit`/`sdcard`/`sdpart` macros).
 - `src/kernel-patches/support.c` — the `autocon()` phantom-A3000 fix replaced by the chipset-gated WD33C93 probe; `src/kernel-patches/sd.c` — the `0x02020054,&a4091queue` registry row; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
+- The **2026-08-12/14 RAM campaign proof reports** (workspace record) ✅ — root-filesystem selection is by probe, not by configuration: the Amiga port ships `rootfstype` **empty** (AT&T generic says `s5`), `vfs_mountroot` walks `vfssw[]`, `s5mountroot` returns `EINVAL` politely so the walk continues, and `ufs` sits at `vfssw[2]` in every kernel including the install kernels. Same source for the `cdfs` errno de-laundering that makes the old `errno 5` probe stale; the 🟡 no-media `errno 25` value is a single live probe from the 2026-08-14/15 golden-regeneration event, carried unchanged. Cross-checked against the `vfs_mountroot` disassembly recorded on [building a kernel](../drivers/kernel-build.md).
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).

@@ -15,8 +15,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | # | Quirk | Tag | Deeper coverage |
 |---|---|---|---|
 | 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
-| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive. A second, far-higher limit — total *describable* RAM, ~128 MB computed — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
-| 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside TT0) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
+| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive. A second, far-higher limit — total *describable* RAM, ≈64 MB on a stock 030 kernel, set by a fixed 4 MiB kernel arena — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
+| 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside the identity-mapped low 1 GB) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md), [040/060 status](68040-68060-status.md) |
 | 5 | **Superkickstart dual-boot** by holding the right mouse button at power-on | ✅ | [Boot process](boot-process.md) |
 | 6 | **DNS resolution is OFF by default** (`/etc/hosts` only) | ✅/🟡 | [Networking](networking.md) |
@@ -54,6 +54,11 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 38 | **`uptime` and `w` do not report the machine's load** — the reader resolves a COMMON kernel symbol to a non-address without an error (flat `0.00` and absurd millions are the SAME defect), and even the kernel's own count reads exactly N−1 (the on-CPU process is never counted). Read the truth with `adb -k <running-kernel> /dev/mem`, `avenrun/3X`, ÷256 | ✅ | [Load averages](load-averages.md) |
 | 39 | **A bare trailing `&` in a command sent to the box's telnet transport silently never runs** — the transport appends `; echo DONE_$?` for completion detection, so `<cmd> &` arrives as `<cmd> &; echo …` and `&;` is a Bourne syntax error: the job never starts, the retries re-login into the [inetd throttle](#23-inetd-disables-a-service-after-40-connections-in-60-seconds), and any poller waiting on it spins forever. Parenthesise the background launch: `(… &)` | ✅ | [Quirks §39](#39-transport-ampersand-law) |
 | 40 | **Amix keeps no persistent boot log** — no `dmesg` at all, `wtmp` has never recorded a reboot, and boot `fsck` writes only to the console (a delta to quirk 24, independent of `syslogd`). The console is the only record — and it still holds the whole boot transcript at a fresh `login:` prompt. Plan an HDMI capture; there is no log to read | ✅ | [Quirks §40](#40-no-persistent-boot-logging) |
+| 41 | **Stock `autocon()` decides whether the A3000 internal SCSI exists from the *RAM size*, not from the hardware** (`end > 0x07000000`) — wrong in both directions: it fabricates a phantom card 0 where there is no controller, and it silently drops the real one (root disk included) on a machine whose RAM does not reach the threshold, renumbering every remaining SCSI card | ✅ | [Quirks §41](#41-scsi-by-ram-size), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
+| 42 | **When you move a boundary, sweep the neighbours and ask what each one is sized by** — "what else assumes 4 MiB?" finds the constants derived from the thing you moved and misses the neighbour sized from somewhere else entirely | ✅ | [Quirks §42](#42-neighbour-sweep-law), [RAM ceiling](ram-ceiling.md) |
+| 43 | **`nm` plus relocation similarity is not enough to place a binary patch** — the disassembly diff is a mandatory third gate; locate every site by *instruction context*, never by a remembered offset | ✅ | [Quirks §43](#43-disassembly-diff-gate) |
+| 44 | **On-box `adb -k` needs a namelist that still has a symbol table** — `elf2brel` discards symtabs, so `/stand/unix` is useless as a namelist and `adb` reports nonsense instead of failing | ✅ | [Quirks §44](#44-adb-namelist) |
+| 45 | **Heavy raw `dd` to the boot slice can spontaneously reboot the box** — the session dies mid-write and looks like a failure. Trust the verify line the job wrote *to disk*, not the session that vanished | ✅ | [Quirks §45](#45-boot-slice-dd) |
 
 The rest of this page expands each item.
 
@@ -71,7 +76,7 @@ The kernel hard-codes a Fast RAM ceiling of **16 MB** (minimum 4 MB) ✅. Going 
 
 ### 3. Zorro III — stock drivers are Zorro II only ✅
 
-**Stock** Amix is **Zorro II only** ✅: its stock drivers simply dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside the 68030's TT0 window), and that kernel source was never shipped so the *stock* card set can't be patched in place. This is **not** absolute for a *purpose-written* driver, though: one that maps the board explicitly — the kernel's `sptalloc()` primitive, or (when the board's window happens to fall inside TT0) a direct mapping — **can** reach a Zorro III board. The [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do exactly this. For ordinary expansion, still assume a card must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
+**Stock** Amix is **Zorro II only** ✅: its stock drivers simply dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)), and that kernel source was never shipped so the *stock* card set can't be patched in place. This is **not** absolute for a *purpose-written* driver, though: one that maps the board explicitly — the kernel's `sptalloc()` primitive, or (when the board's window happens to fall inside the identity map) a direct mapping — **can** reach a Zorro III board. The [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do exactly this. For ordinary expansion, still assume a card must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
 
 ### 4. No 68040/68060 — the A4000 is out ✅
 
@@ -115,6 +120,35 @@ and bus-bridge authors the only requirement is to *tolerate* the access (decode-
 correct for an A4000 target; only an A3000 SuperKickstart model needs to honour the bit). And don't
 confuse this motherboard address with the similar-looking AutoConfig product code `0xc0de0002` in
 [the major-number registry](../reference/major-number-registry.md) — they are unrelated.
+
+### 41. The stock kernel infers the A3000 SCSI from the RAM size ✅ {#41-scsi-by-ram-size}
+
+Stock `autocon()` (`amiga/kernel/support.c`) decides whether the A3000 internal SCSI controller
+exists by testing **how far RAM extends** — `end > 0x07000000` — and not by touching the hardware ✅.
+The A3000 controller is not an AutoConfig board, so there is nothing in `bootinfo.autocon[]` to look
+at; the RAM size was used as a proxy for "this is an A3000-class machine". It is a guess, and it is
+wrong in **both** directions:
+
+- **False positive.** On a machine with no internal SCSI — a real A4000, or an A3000 whose controller
+  is absent — enough RAM fabricates a **phantom card 0** at `0xDD0000`. It claims `queue[0]`, shifts
+  every real controller up by one, and the compiled-in root device (which decodes to card 0) sends
+  the root read to hardware that does not exist ✅. This is the failure that produced the
+  `s5mountroot VOP_OPEN error 5` → `errno 89` panic chain; full story on
+  [the boot process](boot-process.md) and [Zorro autoconfig](../drivers/zorro-autoconfig.md).
+- **False negative.** On a machine whose RAM does **not** reach the threshold, the same test fails and
+  the **real** internal SCSI is silently dropped — root disk included — and every remaining SCSI card
+  renumbers ✅. Nothing is logged; the machine simply cannot find its disk.
+
+Real A3000s with more than 16 MB are inside the affected envelope ✅ — this is not an
+emulator-only curiosity.
+
+**The law: probe, don't guess.** The fix that replaced the special case is a **chipset gate plus a
+WD33C93 write/readback probe** — read a custom-chip register that is always present to tell an
+ECS/OCS (A3000-class) machine from an AGA one, then write two different values to two WD33C93
+registers through the same data port and read the first back, so an open bus (which aliases the read
+to the *last* write) cannot pass ✅. Full source and rationale on
+[Zorro autoconfig](../drivers/zorro-autoconfig.md); the anti-alias readback is the reference design
+for [any board probe](../drivers/kernel-composition.md).
 
 ## Networking quirks
 
@@ -339,6 +373,58 @@ kernel) and *succeeds anyway* with the alignment as the value — so the printed
 sits at a bogus address, flat `0.00` and six-digit garbage being the same defect; and the kernel's
 own load count omits the on-CPU process, reading exactly N−1 even when read correctly. Full story,
 measurements and the working read recipe: [load averages](load-averages.md).
+
+### 42. When you move a boundary, sweep the neighbours ✅ {#42-neighbour-sweep-law}
+
+The instinctive search after moving a kernel constant is *"what else assumes the old value?"* — and it
+finds every constant that was **derived from** the thing you moved. It does not find the neighbour
+that is sized from somewhere else entirely, because that neighbour never mentions the old value at
+all.
+
+The worked case: moving the kernel's fixed 4 MiB arena upward found the constants sized from the
+arena, and missed `segkmap` — the map between `kvsegmap` and `kvsegu` — which is sized from
+**physmem**. Moving `kvsegmap` therefore silently *shrank* it ✅. The right question is not "what
+assumes 4 MiB?" but **"for each neighbour of this boundary, what is it sized by?"** Ask it of every
+neighbour, including the ones the grep did not return. Full context on
+[the RAM ceiling](ram-ceiling.md#lifting-the-ceiling).
+
+### 43. `nm` and relocation similarity are not enough to place a binary patch ✅ {#43-disassembly-diff-gate}
+
+Two gates are commonly used to locate a patch site in a binary kernel: the symbol table (`nm`) says
+which function you are in, and a relocation/similarity check says the surrounding bytes match what you
+expected. Both can agree and both can be pointing at the wrong instruction — a neighbouring inlined
+copy, a different call site of the same helper, a compiler-reordered sequence.
+
+**The disassembly diff is a mandatory third gate** ✅: disassemble before and after, and read the
+changed instruction. Every site in the RAM campaign was located by **instruction context**, never by a
+remembered offset — offsets do not survive a rebuild, and an offset that is *nearly* right produces a
+kernel that boots. This is the same family as [§36](#36-an-optimised-probe-reporting-no-fault-must-be-disassembled-first)
+(prove the instruction exists before believing a negative) and
+[§37](#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded) (decode the byte before
+concluding).
+
+### 44. On-box `adb -k` needs a namelist that still has a symbol table ✅ {#44-adb-namelist}
+
+`adb -k` reads symbols from a **namelist file**, and on Amix the obvious candidate is the wrong one:
+`/stand/unix` has been through `elf2brel`, which **discards the symbol table** ✅. Point `adb` at it
+and you do not get a clean failure — you get resolutions that are silently meaningless.
+
+Keep an unstripped namelist beside the kernel (`unix.namelist`, the pre-`elf2brel` object) and read
+against that ✅. The rule generalises: on this platform, *the file you boot and the file you debug
+against are two different files* — verify the one you hand a debugger actually has a symtab before
+believing anything it prints.
+
+### 45. Heavy raw `dd` to the boot slice can reboot the box ✅ {#45-boot-slice-dd}
+
+A large raw `dd` to the boot slice can **spontaneously reboot the machine mid-write** ✅. Because the
+reboot kills the session that issued the command, the operator sees a transport failure — a dropped
+connection or a timeout — and the natural conclusion is that the write never happened.
+
+**Trust the on-disk record, not the session.** Have the job write its own verify line to a file on
+disk, and read that file on the next boot; the session's exit status is not evidence either way. The
+general shape is worth naming: **an operation that destroys its own reporting channel always looks
+like a failure** — and re-running it blindly is how a half-written boot slice becomes an unbootable
+one.
 
 ## Driver-authoring quirks
 
@@ -663,6 +749,15 @@ Append these bullets to the page's `## Sources` list (after the amiberry cycle-e
   launch line and a `shutdown -i6` reboot soak), the parenthesise-the-launch fix, and the four
   superficially-similar shapes that are safe and must not be flagged (the linter's `--self-test`
   exercises all four plus the unsafe one).
+- The **2026-08-12/14 RAM campaign** (amix-kerntools with Z3660 and amix-z3660net, workspace record)
+  ✅ — quirk 41 (stock `autocon()`'s `end > 0x07000000` RAM-size inference of the A3000 SCSI, failing
+  in both directions, with real A3000s above 16 MB inside the affected envelope) and the campaign's
+  own method laws, quirks 42–45: the neighbour sweep that found the arena's derived constants but
+  missed `segkmap` (sized from physmem); the mandatory disassembly-diff third gate, every patch site
+  located by instruction context rather than by offset; the `elf2brel`-stripped `/stand/unix` that is
+  useless as an `adb -k` namelist; and the spontaneous reboot under a heavy raw `dd` to the boot slice,
+  whose only reliable record is the verify line the job wrote to disk. See
+  [the RAM ceiling](ram-ceiling.md).
 - First-party **read-only metal session**, real A4000 + Z3660, 2026-08-27 ✅ — quirk 40: `dmesg` not
   present on the system; `wtmp`'s header dated *Mar 24 1992* with zero reboot records and `last reboot`
   returning nothing; `/sbin/bcheckrc` read verbatim (pre-check verdict discarded to `/dev/null`, repair

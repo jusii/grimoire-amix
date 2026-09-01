@@ -23,7 +23,7 @@ sha256: 890da5e52f00cae74b817b42d1b94c3438f57b8c13b3d2b055e8b116a3feac56
 ```
 ✅ (`tools/inspect-adf.sh` on `amix_21_root.adf`; cross-check against `sources/CHECKSUMS.txt`)
 
-## No bootblock — the body is a UFS filesystem
+## No bootblock — and the body is s5, not UFS
 
 The root floppy does **not** start with the AmigaDOS `DOS\0` signature that a [boot disk](anatomy-boot-adf.md) has. The boot area is zeroed, so any AmigaDOS-FS tool refuses it: ✅
 
@@ -35,7 +35,7 @@ detected disk type : root
     'list' FSError: Invalid Boot Block(1):block=BootBlock:@0
 ```
 
-That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **UFS** (Berkeley Fast File System) image, recognisable by its UFS fingerprints: a `lost+found` directory entry and `fsck`/`mkfs` string tables embedded in the image. ✅ (`inspect-adf.sh` keys off the `lost+found` string to classify the disk; see [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) lines 59–63.)
+That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **`s5`** filesystem, with its superblock at byte `0x200` (magic `0xfd187e20`) ✅ — see the 2026-07-05 correction at the top of this page. The `UFS miniroot` line the tool prints is **wrong**: `inspect-adf.sh` classifies by keying off the `lost+found` string, and `lost+found` plus the `fsck`/`mkfs` string tables are present here because the floppy *carries the UFS tools as installer binaries*, not because it is a UFS volume ✅ (see [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) lines 59–63). It is a good worked example of why a string heuristic is not a filesystem identification.
 
 **Note — reading the tree.** Linux's in-tree `ufs` driver generally **cannot** mount Amix's big-endian SVR4/m68k UFS, so a full file-tree traversal needs a UFS-aware reader (a *BSD host, or UFS Explorer). The bundled [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) does a *pragmatic carve* instead: it reports every ELF/script offset, carves the POSIX `tar` member(s), and dumps the install-script text — which is what you usually want when studying the installer. ✅
 
@@ -144,13 +144,15 @@ What file system type is this partition? [s5]
 
 The **prompt shows `[s5]` as the bracketed default**, and community guidance — and the brief — recommends **UFS** in practice; the s5 default is plausibly a 3B2-lineage hold-over. 🟡 (rationale unconfirmed; note: the research brief records the script's `ANS` variable as defaulting to `"ufs"` in at least some code paths — the exact fallback may depend on partition role)
 
-There is one hard exception the script enforces for the **root** partition: ✅
+There is one exception the script can enforce for the **root** partition: ✅
 
 ```sh
 ROOT_FSYS="s5"     # Johann ROM can only boot s5 filesystem
 ```
 
-After offering the s5/ufs choice for the root, the script *overrides* it back to `s5`, with the comment that the "Johann ROM" can only boot an s5 root. So even when you pick UFS elsewhere, the bootable root ends up s5 on this installer. ✅ (root.adf script text; the "Johann" name appears verbatim in the installer comment; its relationship to the Superkickstart boot ROM is 🔴 unconfirmed in the research brief — see the [boot process](../how-it-works/boot-process.md).)
+Here the script overrides the s5/ufs choice back to `s5`, with the comment that the "Johann ROM" can only boot an s5 root. ✅ (root.adf script text; the "Johann" name appears verbatim in the installer comment; its relationship to the Superkickstart boot ROM is 🔴 unconfirmed in the research brief — see the [boot process](../how-it-works/boot-process.md).)
+
+**Scope correction (2026-08-14).** That force is **not** unconditional: it is reached only on the stock `OLD_BOOT` / Johann-ROM path ✅. It is therefore not the reason a given disk is s5 — a modern install path can and does produce a **UFS** root, and the surviving 2.1 install lineage examined by this project is UFS-rooted (superblock fingerprint `-o free=2,opt=s`, 8192/8) ✅. What actually makes the *typical* root s5 is the plain `[s5]` prompt default above, not this override. And nothing in the kernel insists either way — [root filesystem selection is by probe, not by configuration](../how-it-works/boot-process.md#how-the-kernel-picks-the-root-filesystem).
 
 ### RDB partition type tags
 

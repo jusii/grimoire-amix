@@ -83,6 +83,12 @@ A single file — the form **AmixBP and amigaunix.com distribute** 🟡 — with
  carrying pkginfo, pkgmap, then the payload>
 ```
 
+> **The `cksum` field is a folded 32-bit byte sum, not a CRC** ✅. SVR4's `pkgmap` checksum simply adds
+> up the file's bytes into a 32-bit accumulator and folds the result — it is the same family as
+> `sum(1)`, not `cksum(1)`'s CRC-32, and it detects damage rather than resisting it. Anything
+> reimplementing `pkgmk`/`pkgadd` has to reproduce that arithmetic exactly or every line of the
+> manifest mismatches.
+
 The cpio member format is **SVR4 `070701` (portable ASCII, a.k.a. "newc")** ✅ — the same family the [patch disk](../boot-disks/anatomy-patch-adf.md) and the tape-install stream use. You can convert a directory package to a datastream with `pkgtrans <srcdir> <dest.pkg> <PKG>`, and `pkgadd -d <dest.pkg> <PKG>` installs it.
 
 ## How `pkgadd` mutates the database ✅
@@ -175,6 +181,9 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 
 - amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): the pkgadd -R altroot SIGSEGV root cause (adb on the in-altroot core; nhash HASH), engine rebuilt + re-verified 4/4 on the bench box 2026-07-20/21.
 - **Firsthand, reproduced live** (✅): a clean **Amix 2.1c** image (`UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, 2026-07-01 (the **amix-packagemanager** project; command transcripts retained there). Specifically: `ls -l /usr/{bin,sbin}/pkg*` + the `No such file or directory` for `pkgask`/`removef`/`amixpkg` (F1); `ls -laR /var/sadm`, `/var/sadm/install/admin/default`, `pkginfo -x`, `/var/sadm/pkg/*/pkginfo` (F2); `head`/`grep` of `/var/sadm/install/contents` (F3); an on-box throwaway package built with `pkgmk`/`pkgtrans` and its `pkgmap` + `.pkg` header dissected with `od -c` (F4); a before/after `diff` of `contents` across a controlled `pkgadd` (F5); `find /var/sadm/pkg -type f` showing only `pkginfo` + `*.mi` (F6); the `pkgrm`/`pkginfo -l` abort, the offending `contents` record, and its removal-and-retry (F7); the `# Last modified by amixpkg …` marker with `amixpkg` absent from the filesystem (F8).
+- The **2026-08-12/14 RAM campaign proof reports** (workspace record) ✅ — the SVR4 `pkgmap`
+  checksum is a folded 32-bit byte sum (the `sum(1)` family), not a CRC, established while
+  reproducing the manifest arithmetic outside the stock tooling.
 - **`sources/research-brief.md` §20** (the stock SVR4 pkg-system internals, media formats, DB mutation, and the F7 `contents` corruption) — the grounding for this page, carrying the tags above.
 - **Community distribution practice** (🟡): [amigaunix.com `more_software`](https://www.amigaunix.com/doku.php/more_software) (`.pkg` / cpio / `tar.zoo` distribution) and Michael Parson's **AmixBP** ([amixbp.sourceforge.net](https://amixbp.sourceforge.net), SourceForge group 263433) — the datastream-`.pkg` distribution channel.
 - **Licensing:** no proprietary `pkg*` source or media reproduced; this page documents runtime behaviour and on-disk **data-record** layout observed live. The single malformed `contents` record in the F7 section is cited as **factual defect data** (interoperability / bug documentation), not vendored source (per [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
