@@ -13,7 +13,9 @@ It covers three things the existing community wiki doesn't:
 
 1. **How Amix actually works** — kernel architecture, the boot path, hardware constraints.
 2. **How to develop software and device drivers for it** — grounded in Michael Ditto's 1990 driver
-   paper and the modern `va2000` / `xrtg` / `lszorro` / `hydra` driver repos.
+   paper, the modern `va2000` / `xrtg` / `lszorro` / `hydra` / `zz9000` driver repos, and this
+   project's own bring-ups: the Zorro III A4091 (53C710) SCSI driver, the Z3660 accelerator's
+   ethernet and piscsi drivers, X11R6.3 + Mesa on RTG, and a read-only optical filesystem.
 3. **How to build custom boot/install disks with extra hardware drivers** — reverse-engineered from
    the real 2.1 boot/root/patch floppies, with reproducible tooling.
 
@@ -44,12 +46,20 @@ The docs are plain Markdown so they render on GitHub and ingest cleanly into AI 
 
 ```
 docs/            the documentation (start at docs/index.md)
-  how-it-works/  what Amix is, hardware, boot, kernel, filesystems, networking, X11, quirks
+  how-it-works/  overview, hardware, boot process, kernel architecture, filesystems & disks,
+                 networking, X11 & desktop, quirks & gotchas, the RAM ceiling, 68040/68060 status,
+                 package management, the package repository, emulation fidelity, load averages,
+                 Z3660 board timings, performance benchmarks, glossary
   getting-started/ emulation (WinUAE/FS-UAE/Amiberry), putting Amix on your LAN, install walkthrough, real hardware, first login
-  drivers/       driver model, kernel build, char & STREAMS drivers, toolchain, case studies
+  drivers/       driver model, kernel build, kernel composition, kernel reverse-engineering,
+                 char & STREAMS drivers, toolchain, Zorro autoconfig, X11/RTG drivers, the A4091
+                 (53C710) and Z3660 (ethernet, piscsi) case studies, plus case-studies/
+                 (va2000, xrtg, lszorro, hydra, zz9000, x11r63-zz9000, mesa31)
   boot-disks/    boot/root/patch floppy anatomy + building custom driver disks
-  reference/     versions, device list, command cheat sheet, bibliography
+  reference/     versions, device list, major-number registry, command cheat sheet, bibliography
   contributing/  style guide, writing for LLMs
+import/          incoming handoff briefs from sibling projects (contract in import/README.md);
+                 the briefs themselves are gitignored transport artifacts
 tools/           reproducible scripts: inspect-adf, extract-kernel, build-bootfloppy, unpack-root, build-custom-bootdisk, gen-llms-full; host-net/ (put Amix on your LAN)
 sources/         primary materials (gitignored binaries) + research-brief.md + checksums + provenance
 llms.txt         curated LLM index
