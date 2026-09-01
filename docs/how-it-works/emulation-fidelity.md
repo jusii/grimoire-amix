@@ -54,6 +54,12 @@ This behaviour is exposed by a firmware knob, **`service_cadence N`** ✅:
 > emulation. The Z3660's *hardware* clock generation — CPLD timing rows, VCO/PCLK/phase — is a
 > different layer with different failure modes, covered on [Z3660 board timings](z3660-timings.md).
 
+> **Scope: it exists only in the emulated-CPU run loop.** ✅ The knob throttles the *software* 68k
+> emulator's interrupt-service poll, so on a board running a **real** 68060 with the emulator bypassed
+> there is no instruction batching to tune and the setting does nothing at all. A boot-reliability
+> problem on real silicon is a clock-tree or bus-timing problem, not a cadence one — do not spend a
+> session on this knob there.
+
 - `N` = the number of emulated instructions run between calls to the emulator's interrupt-service poll (`check_uae_int_request()`), i.e. the emulator batches `N` instructions between the poll that detects the Amiga IPL/INT2 line. **Default 1** (poll every instruction); values below 1 are clamped to 1. ✅
 - It is settable at boot in `z3660cfg.txt` and per-preset config (Z3660 commit **`e0e17d5`**), and cyclable at runtime `1→2→…→64→1` from the serial `SERV` console (commit `f7bbdb0`). ✅
 - Raising it trades interrupt latency for CPU throughput — measured on a real A4000 + Z3660 (Amix 2.1, Dhrystone 2.1) at up to ~**1.3× CPU** from cadence 1→64, with disk I/O essentially flat and a knee around 8. ✅
@@ -238,6 +244,38 @@ behaviour that fully explains a metal-versus-bench divergence — and it was clo
 guard, verified byte-for-byte not to touch any other configuration ✅. The general "any 68060
 emulator" statement is 🟡 (one codebase, not a survey); the metal behaviour and this bench's gap are ✅.
 
+## An emulated CPU can report a memory window as faulty where the real CPU reads it clean ✅ {#emulated-memory-window}
+
+A memory-test result taken through an emulated CPU is a result about **the emulated access path**, not
+only about the memory. Measured on one board, same diagnostic, same 16 MB window, the two CPU paths
+disagreed completely ✅:
+
+| | emulated 68040 path | real 68LC060 |
+|---|---|---|
+| whole-block address check | **fails, 4 / 4 runs** | **passes** |
+| failing boundary | wandered between runs (≈8.5 / 12.5 / 16 MB) | one clean, stable boundary |
+| address-error mask | a different bit set on every power cycle | empty |
+| detected fast RAM | over-counted by exactly the absent 4 MB | correct |
+
+The window really held **12 MB of working RAM with the top 4 MB unpopulated**, and the emulated path's
+failures were an **access artifact** ✅. A second tell arrived free: three different mechanisms for
+looking at the *same* guest addresses returned three different pictures in that session. **When a
+value depends on how you looked at it, the disagreement is in the tooling.**
+
+Four candidate mechanisms were actively contradicted before the artifact was confirmed, and the
+negative results are worth recording because they were expensive ✅:
+
+| candidate | what killed it |
+|---|---|
+| a discrete hardware fault | a bad joint does not move its boundary *and* change its bit set on every power cycle |
+| address aliasing | two addresses inside the window demonstrably held different values at the same time |
+| a host/guest address-translation leak into the emulator's own memory | its decisive test came back negative, with a positive control at a neighbouring address proving the read-out worked |
+| motherboard DRAM refresh starvation | decay predicts errors clustering at the **start** of a verify pass (oldest cells first); 3 of 4 runs put them at the **end** — and unrefreshed DRAM decays in milliseconds to seconds, not minutes |
+
+**The rule, not the verdict, is the transferable part**: run the identical test on a second CPU path
+before attributing a memory failure to hardware. The diagnostic framing for a suspect accelerator is
+on [Z3660 board timings](z3660-timings.md#moving-boundary).
+
 ## Blaming an emulator release needs the same image on the *old* build ✅
 
 A guest that stops booting after an emulator upgrade looks like an emulator regression, and the
@@ -301,6 +339,12 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   - SCSI INT2 / poll-cadence: `f7bbdb0` (the run-loop consumer + runtime `SERV`/`PERF`; `check_uae_int_request()` throttled to every `service_cadence` instructions in `src/uae/newcpu.cpp`, `do_specialties()` kept per-instruction) and `e0e17d5` ("emu perf: service_cadence config option (z3660cfg + per-preset)"; `Z3660/src/config_file.{c,h}`, default sentinel → clamp `<1 → 1`). ✅ (knob mechanics) The 4-boots / 8-hangs boundary and the INT2-latency attribution are from the firmware's `docs/AMIX.md` and shipped `z3660cfg.txt`, an author hardware sweep — 🟡.
   - Two-core DMA cache coherence (branch `amix-main`, source_commit `51038f3`): `e37bb43` (SD-controller producer-side `Xil_DCacheInvalidateRange`/`Xil_DCacheFlushRange` before direct read/write) ✅; `0a4c064` (consumer-side core1 `Xil_L1DCacheInvalidateRange` after the completion spin, READ-only — a parked Cortex-A9 still speculatively refills L1D over the DMA target) ✅. The "both endpoints must maintain their own caches" general rule generalizes those two fixes, carried 🟡. Baseline was **2/2 failures** on the unfixed firmware (kmem wild-pointer bus error at `0x4AFC000C`; then a silent root-FS `ufs_readdir` corruption); post-fix a full CD read suite came back **byte-identical, 7/7** `cmp`-verified host-side (T2.P3, real A4000 + Z3660, 2026-07-10 → 07-12). ✅
 - **Live result** (first-party, ✅): Amix 2.1 cold-boots to a multiuser root login from the piscsi disk on a real A4000 + Z3660 (2026-06) — HDMI console ("The system is ready") and telnet (`uname -a` → `UNIX_System_V … 2.1c … m68k`); a 27-reboot multi-hour soak under fork/exec load ran clean (Z3660 `docs/AMIX.md`). One rare bus-error-frame `SR`-flip under extreme sustained paging load remains tracked (did not recur across the soak) — 🟡.
+- First-party **accelerator acceptance pass on a real A4000D** (2026-08-31, workspace record) ✅ —
+  the emulated-versus-real CPU-path disagreement over a 16 MB motherboard memory window (the emulated
+  path failing 4/4 with a wandering boundary and a per-power-cycle bit set, the real 68LC060 returning
+  one clean 12 MB / 4 MB split with an empty error mask), the three-different-views observation, and
+  the four contradicted candidate mechanisms. Board-level signal-path documentation from that pass is
+  deliberately not reproduced here.
 - The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — the emulator-exoneration
   falsification: an inherited guest image that would not boot was re-run **byte-identically on the
   pre-upgrade emulator build** and panicked the same way (`s5mountroot VOP_OPEN error 6` → `PANIC:

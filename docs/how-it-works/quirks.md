@@ -62,6 +62,10 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 46 | **`adb -k` prints a one-byte kernel flag as `16777216`, not `1`** — `/D` reads four bytes as a big-endian int, so a set byte at the object's address reads as `0x01000000`. The value is right and the *format* is wrong; do not conclude the flag holds garbage | ✅ | [Quirks §46](#46-adb-byte-flag) |
 | 47 | **A successful remote halt looks like a transport failure** — `uadmin 2 0` kills the session that issues it, so the runner reports "failed after N tries"; that signature **is** the success case. A halt is proven clean only by a **`fsck`-silent next boot** — image a disk only after one | ✅ | [Quirks §47](#47-halt-looks-like-failure) |
 | 48 | **A stray reader on the box's serial port silently eats the console stream** — a leftover `cat /dev/ttyUSB0` or a USB re-enumeration steals the bytes, and "the boot menu never appeared" is then a host-side symptom, not a board fault | ✅ | [Quirks §48](#48-stray-serial-reader) |
+| 49 | **A warm reset is not a clean-state reset** — the accelerator's warm-reset command gave a valid reset vector **0/3** where a power cycle gave it **5/5**; and a power-on only 50 s after power-off wedged the board mid-boot. Power-cycle with **≥20 s off** for anything that needs a known state | ✅ | [Quirks §49](#49-power-cycle-law) |
+| 50 | **A diagnostic ROM's error mask is sticky within a boot** — a dense test run after a failing one repeats the earlier mask while reporting zero errors. Reboot between tests whose masks you intend to read; three more DiagROM operating traps live with this item | ✅ | [Quirks §50](#50-sticky-mask) |
+| 51 | **Memory detection that reads back immediately is fooled by capacitive echo** — an unpopulated bus holds the value it was just driven with and *passes*. Treat any "Detected NNN MB" as unverified until a whole-block address check confirms it | ✅ | [Quirks §51](#51-capacitive-echo) |
+| 52 | **A run whose boot path was not examined is not evidence** — gate every run on the boot log's *positive* start lines, not on the absence of an error; a run booted by a failed warm reset produced a full set of plausible, worthless results | ✅ | [Quirks §52](#52-boot-path-evidence) |
 
 The rest of this page expands each item.
 
@@ -491,6 +495,89 @@ a re-enumeration restart the logger **detached** (`setsid`) so it outlives the s
 it. Generalised: a single-reader channel is a shared resource — a wait on it is only meaningful once
 you know who else has it open.
 
+### 49. A warm reset is not a clean-state reset — power-cycle, and leave it off ✅ {#49-power-cycle-law}
+
+Measured on a real A4000 + Z3660 running the stock accelerator firmware, with the emulated-CPU boot
+mode ✅:
+
+| reset path | correct reset vector read |
+|---|---|
+| power cycle / cold boot | **5 / 5** |
+| the firmware's warm-reset command | **0 / 3** |
+
+Every warm-reset failure read the reset vector as `0xFFFFFFFF`; the emulated 68k then ran from a
+garbage PC and scribbled down through the board's registers and the exception vectors, leaving a
+black screen and a flood of unhandled-write messages on the serial ✅. So a warm reset is fine for
+"start the machine again" and useless for "start it from a known state".
+
+**Why an odd value at address 4 is not evidence of a corrupted ROM.** With the Kickstart **overlay
+cleared**, address 4 is *chip RAM*, not ROM ✅ — an unexpected value there is **stale memory**, not a
+corrupted ROM fetch, and a single-bit difference between two observed values is not a bit flip. An
+earlier claim to the contrary was withdrawn on exactly this ground.
+
+**The off interval is part of the procedure.** A power-on **50 s** after a power-off wedged the board
+mid-boot: the serial stopped right after the firmware's hunk-processing line — before the clock tree
+and before the CPU handover — and produced nothing for about nine minutes. A power cycle with a
+**20 s** discharge recovered it cleanly, first try ✅. Allow **≥15–20 s off**, not the ~5 s a helper
+script is likely to default to.
+
+**Consequence for any procedure needing a known-clean machine** — a diagnostic run, a clock change, an
+acceptance test: power-cycle with a ≥20 s gap, and *gate* the run on the reset vector the firmware
+prints before trusting anything the run produces ([§52](#52-boot-path-evidence)).
+
+### 50. A diagnostic ROM's error mask is sticky within a boot ✅ {#50-sticky-mask}
+
+DiagROM's address-error mask persists **across tests inside one boot** ✅. A dense memory test run
+after a failing sparse scan displayed the *identical* mask —
+`-------- -EEEEEEE E------- --------` — while simultaneously reporting `Number of errors: 0`,
+`NONUsable memory: 0` and no bad block, having covered the same region densely. Freshly booted, the
+same test shows an all-dashes mask.
+
+**Never read bit positions off a mask without knowing what ran before it in that boot.** Any "failing
+bit → byte lane → memory ball" chain built on a mask captured after another test is worthless.
+Reboot between tests whose masks you intend to read.
+
+Three more DiagROM operating facts from the same session, each of which costs a run if you learn it
+the hard way ✅:
+
+* **The Autoconfig test's "Assign board?" step is destructive to video** — answering yes reassigns
+  *live* Zorro III boards, including an RTG board driving the HDMI output; the display dies
+  mid-session and only a power cycle brings it back. Read the enumeration; treat assignment as an
+  end-of-session action, or skip it. (It also blocks memory-testing a Zorro III RAM board, whose test
+  is reached through that same step.)
+* **Stopping a running test takes several keypresses, not one** — a single Escape silently does
+  nothing and the test runs on.
+* **The manual-scan address field takes 4 hex digits** (the top 16 bits), not 8.
+
+### 51. Memory detection that reads back immediately is fooled by capacitive echo ✅ {#51-capacitive-echo}
+
+A detection probe that **writes a pattern and reads it straight back** cannot tell populated memory
+from an **unpopulated bus still holding the value it was just driven with** ✅. Two independent
+instances in a single session: a 16 MB motherboard window whose top 4 MB is genuinely empty passed
+detection, and a phantom *"Detected 127MB of memory"* over a range the emulator maps to a dummy bank —
+one whose reads return all-ones and whose writes are discarded.
+
+**Treat any "Detected NNN MB" as unverified until a whole-block address check confirms it** — fill the
+whole block with address-derived data and verify it afterwards, once the echo has decayed.
+
+The same caution applies to a hand-rolled peek/poke check: one that probes only low addresses proves
+only that the low addresses echo. An earlier "floating bus ruled out" conclusion in that session was
+withdrawn for exactly that reason.
+
+### 52. A run whose boot path was not examined is not evidence ✅ {#52-boot-path-evidence}
+
+Gate every measurement run on **positive** evidence in the boot log that a real boot happened — never
+on the absence of an error ✅. A memory-scan run was booted by a warm reset that had *failed*: its
+serial showed **no** firmware start line, **no** Kickstart load and **no** ROM reload between the
+failed reset and the vector read. It was a 68k-level re-reset *inside the still-running emulator*,
+entering mid-ROM after a runaway CPU had already been scribbling memory. The run produced a full set
+of plausible numbers and was discarded; a second run was discarded the same way, its 150 captured
+frames all black screen.
+
+**Name the specific lines a healthy boot must print, and require all of them before scoring the run.**
+This is the same family as [§35](#35-a-zero-behind-a-gate-needs-a-pre-gate-denominator-): a reading is
+only evidence once you can show the thing that produces it actually ran.
+
 ## Driver-authoring quirks
 
 ### 15. An un-enumerated board silently never runs ✅
@@ -823,6 +910,17 @@ Append these bullets to the page's `## Sources` list (after the amiberry cycle-e
   useless as an `adb -k` namelist; and the spontaneous reboot under a heavy raw `dd` to the boot slice,
   whose only reliable record is the verify line the job wrote to disk. See
   [the RAM ceiling](ram-ceiling.md).
+- First-party **accelerator acceptance campaign**, real A4000D + Z3660 with a socketed MC68LC060
+  (2026-08-31 / 09-01, workspace record) ✅ — quirk 49 (the 5/5 versus 0/3 reset-vector rates for a
+  power cycle versus the firmware's warm reset, the `0xFFFFFFFF` vector read and the runaway-CPU
+  register/vector scribble that follows it, the overlay-cleared address-4-is-chip-RAM correction, and
+  the 50-second power-cycle gap that wedged a boot where 20 seconds recovered it), quirk 50 (the
+  sticky address-error mask reproduced against a zero-error dense pass, plus the destructive
+  Autoconfig assign step, the multi-keypress test stop and the 4-hex-digit scan field), quirk 51 (the
+  two capacitive-echo detections in one night — an empty 4 MB motherboard window and a phantom 127 MB
+  over a dummy-mapped range), and quirk 52 (the two runs discarded because their serial showed no
+  firmware start, no Kickstart load and no ROM reload). Board-level signal-path documentation and the
+  campaign's tooling notes are deliberately not reproduced here.
 - The **2026-08-14/15 golden-regeneration event** (workspace record), real A4000 + Z3660 ✅ —
   quirk 46 (`z3660_direct_map/D` printing `16777216` for a set one-byte flag, read live against the
   running kernel), quirk 47 (`sync; sync; /sbin/uadmin 2 0` reported by the host runner as "failed
