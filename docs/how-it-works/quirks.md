@@ -66,6 +66,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 50 | **A diagnostic ROM's error mask is sticky within a boot** — a dense test run after a failing one repeats the earlier mask while reporting zero errors. Reboot between tests whose masks you intend to read; three more DiagROM operating traps live with this item | ✅ | [Quirks §50](#50-sticky-mask) |
 | 51 | **Memory detection that reads back immediately is fooled by capacitive echo** — an unpopulated bus holds the value it was just driven with and *passes*. Treat any "Detected NNN MB" as unverified until a whole-block address check confirms it | ✅ | [Quirks §51](#51-capacitive-echo) |
 | 52 | **A run whose boot path was not examined is not evidence** — gate every run on the boot log's *positive* start lines, not on the absence of an error; a run booted by a failed warm reset produced a full set of plausible, worthless results | ✅ | [Quirks §52](#52-boot-path-evidence) |
+| 53 | **68060: the unimplemented 64-bit integer instructions trap to a vector the stock SVR4 trap table never populated** — the 64-bit `MULU.L`/`MULS.L`/`DIVU.L`/`DIVS.L` forms are left to software by the CPU, the stock trap-dispatch table has no entry for them, and the process is killed with no diagnostic at all (a bare `Killed`, rc 137 — no SIGILL, no SIGFPE, no core). Integer ops, so it is not an FPU matter; constrain a 68060 toolchain to the **32-bit** `MULU.L`/`DIVU.L`/`DIVUL.L` forms | ✅ | [Quirks §53](#53-unimplemented-integer-vector), [040/060 status](68040-68060-status.md) |
 
 The rest of this page expands each item.
 
@@ -269,6 +270,35 @@ source-specifier field — precisely the field a *disabled* FPU has no reason to
 stacked next-PC can be short by the operand's width (an IEEE double immediate is 8 bytes the frame
 never accounted for). This is the structural reason quirk 33's field cannot be trusted, and it names
 the one instruction class where the discrepancy occurs.
+
+### 53. 68060: the unimplemented integer instructions trap to a vector stock Amix never populated ✅ {#53-unimplemented-integer-vector}
+
+The 68060 does not implement every integer instruction form in silicon. The **64-bit**
+`MULU.L`/`MULS.L`/`DIVU.L`/`DIVS.L` forms — a 64-bit product, or a 64-bit dividend with its
+quotient/remainder register pair — are trapped out to software through the CPU's
+**unimplemented-integer-instruction** exception (vector 61), for an emulation layer to serve ✅. The
+stock SVR4 trap-dispatch table on this platform stops at **vector 55**, so that vector has no
+handler: the trap falls through to the kernel's default unhandled-vector path and the process is
+**SIGKILLed with no diagnostic at all** ✅ — a bare `Killed` and exit status 137, no SIGILL, no
+SIGFPE, no named fault, no core, and nothing in any log. Two consequences:
+
+- **It is not an FPU problem, and nothing in the failure says so either way.** The affected
+  instructions are *integer* ops the core leaves to software, so the kill fires identically on a
+  full-FPU 68060 and on an FPU-less 68LC060 ✅. Do not file it next to the
+  [SIGSYS float-printing class](#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call-)
+  — that one is F-line and FPU-shaped, this one is not.
+- **The 32-bit forms are safe.** `MULU.L`/`DIVU.L`/`DIVUL.L` in their 32-bit spellings are
+  hardware-implemented and execute normally ✅. `CMP2`/`CHK2`/`CAS2`/`MOVEP` belong to the same
+  unimplemented-integer class architecturally and should be expected to behave the same way 🟡 (class
+  membership per the CPU's own definition of the set, not each form separately exercised).
+
+Practical rule for anyone *emitting* 68060 code — a compiler, an assembler macro, a hand-patch:
+constrain the toolchain to the 32-bit integer forms until the kernel gains both the vector handler
+and the emulation behind it ✅. Because the trap is silent, the diagnostic signature is a freshly
+rebuilt binary that runs a while and then dies `Killed` with rc 137 where the previous build did not
+— check the instruction encodings before suspecting the program. This is distinct from the GNU `as`
+2.8.1 size-bit defect on [the toolchain page](../drivers/toolchain.md), which produces a 64-bit
+divide form by accident on a *68030*: same instruction family, different cause, different platform.
 
 ## Diagnostics & logging quirks
 
@@ -936,3 +966,15 @@ Append these bullets to the page's `## Sources` list (after the amiberry cycle-e
   pass to the console with no redirection); and the passive HDMI capture at a fresh `login:` prompt
   recovering the full boot transcript, used in the same session to answer a "did fsck run?" question.
   A delta to quirk 24, orthogonal to the syslogd state.
+- The **68060's unimplemented-integer instruction class**, read against the **stock SVR4
+  trap-dispatch table** on this platform ✅ — quirk 53: the CPU's own definition of the integer
+  forms it declines to implement in silicon and traps out for software emulation (vector 61), versus
+  a dispatch table whose populated range ends at vector 55, so the vector reaches only the default
+  unhandled-vector path and the process dies as a bare `Killed` (rc 137) with no SIGILL, no SIGFPE
+  and no core. Because the forms are integer ops, the outcome does not depend on whether an FPU is
+  present ✅. The 32-bit `MULU.L`/`DIVU.L`/`DIVUL.L` spellings are hardware-implemented and
+  unaffected ✅; `CMP2`/`CHK2`/`CAS2`/`MOVEP` are named as the same architectural class rather than
+  each individually exercised 🟡. The matching porting note is on
+  [040/060 status](68040-68060-status.md#what-a-soft-fpu-port-would-require); the unrelated GNU `as`
+  2.8.1 mis-encode that produces a 64-bit divide form on a 68030 is on
+  [the toolchain page](../drivers/toolchain.md).
