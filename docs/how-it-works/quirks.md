@@ -59,6 +59,9 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 43 | **`nm` plus relocation similarity is not enough to place a binary patch** — the disassembly diff is a mandatory third gate; locate every site by *instruction context*, never by a remembered offset | ✅ | [Quirks §43](#43-disassembly-diff-gate) |
 | 44 | **On-box `adb -k` needs a namelist that still has a symbol table** — `elf2brel` discards symtabs, so `/stand/unix` is useless as a namelist and `adb` reports nonsense instead of failing | ✅ | [Quirks §44](#44-adb-namelist) |
 | 45 | **Heavy raw `dd` to the boot slice can spontaneously reboot the box** — the session dies mid-write and looks like a failure. Trust the verify line the job wrote *to disk*, not the session that vanished | ✅ | [Quirks §45](#45-boot-slice-dd) |
+| 46 | **`adb -k` prints a one-byte kernel flag as `16777216`, not `1`** — `/D` reads four bytes as a big-endian int, so a set byte at the object's address reads as `0x01000000`. The value is right and the *format* is wrong; do not conclude the flag holds garbage | ✅ | [Quirks §46](#46-adb-byte-flag) |
+| 47 | **A successful remote halt looks like a transport failure** — `uadmin 2 0` kills the session that issues it, so the runner reports "failed after N tries"; that signature **is** the success case. A halt is proven clean only by a **`fsck`-silent next boot** — image a disk only after one | ✅ | [Quirks §47](#47-halt-looks-like-failure) |
+| 48 | **A stray reader on the box's serial port silently eats the console stream** — a leftover `cat /dev/ttyUSB0` or a USB re-enumeration steals the bytes, and "the boot menu never appeared" is then a host-side symptom, not a board fault | ✅ | [Quirks §48](#48-stray-serial-reader) |
 
 The rest of this page expands each item.
 
@@ -414,6 +417,12 @@ against that ✅. The rule generalises: on this platform, *the file you boot and
 against are two different files* — verify the one you hand a debugger actually has a symtab before
 believing anything it prints.
 
+**The one exception is a kernel linked natively on the box.** A `/stand/unix` produced by an on-box
+native link still carries its symbol table, so there it **doubles as its own `adb` namelist** ✅ —
+`adb -k /stand/unix /dev/mem` resolves correctly, and no separate namelist file is needed. So the
+invariant to check is not *which file* but *does this particular file still have a symtab*; the
+answer depends on how that kernel was produced.
+
 ### 45. Heavy raw `dd` to the boot slice can reboot the box ✅ {#45-boot-slice-dd}
 
 A large raw `dd` to the boot slice can **spontaneously reboot the machine mid-write** ✅. Because the
@@ -425,6 +434,62 @@ disk, and read that file on the next boot; the session's exit status is not evid
 general shape is worth naming: **an operation that destroys its own reporting channel always looks
 like a failure** — and re-running it blindly is how a half-written boot slice becomes an unbootable
 one.
+
+### 46. `adb -k` prints a one-byte kernel flag as a big-endian int ✅ {#46-adb-byte-flag}
+
+Reading a driver's boolean flag out of a running kernel prints an absurd number:
+
+```text
+# echo 'z3660_direct_map/D' | adb -k /stand/unix /dev/mem
+z3660_direct_map:       16777216
+```
+
+**The flag is set, and the read is correct.** `16777216` is `0x01000000`: the flag is a **one-byte**
+object, `/D` reads **four** bytes and formats them as a big-endian signed int, so a set byte at the
+object's address lands in the top byte of the word ✅. Nothing is wrong with the kernel — the format
+letter is wrong for the object's width.
+
+Read a byte object with a byte format, or learn the shape: `16777216`, `65536` and `256` are "a byte
+holding 1, read as a 4-byte int" at the first, second and third byte of the word. The trap is
+expensive precisely because the wrong answer is *plausible* — a reader who has just patched a driver
+sees a huge number and concludes the flag was never initialised.
+
+### 47. A successful remote halt looks like a transport failure ✅ {#47-halt-looks-like-failure}
+
+`sync; sync; /sbin/uadmin 2 0` issued over the box's telnet transport **kills the session executing
+it**, so the host-side runner reports `failed after 3 tries` — a no-route or a timeout ✅. **That
+signature is the success case.** It is the same family as [§45](#45-boot-slice-dd): an operation that
+destroys its own reporting channel always looks like a failure, and re-running or power-cutting it
+"because it failed" is how a completed clean halt becomes a dirty one.
+
+**The proof of a clean halt is the next boot, not the halt.** Amix keeps no persistent boot log
+([§40](#40-no-persistent-boot-logging)), so the evidence is a **verification boot whose console shows
+`fsck` repairing nothing** ✅. Observed twice on a real A4000 + Z3660: runner "failure", fsck-silent
+next boot, clean filesystem.
+
+This is the gate to hang **disk imaging** on. Copy a box's disk image only after a halt that a
+fsck-silent verification boot has proven clean — otherwise the image carries a dirty, unjournaled
+filesystem forward into every machine cloned from it, and the defect is invisible until the clone's
+first boot repairs it.
+
+### 48. A stray reader on the box's serial port silently eats the console stream ✅ {#48-stray-serial-reader}
+
+An accelerator's firmware console usually arrives on the host as a USB-serial port (a CP2103-class
+bridge) with a long-lived logger appending to a file. Two things take the stream away, both silently:
+
+* a **leftover `cat /dev/ttyUSB0`** from a login that died keeps the port open and **steals the
+  bytes** — the log file simply stops growing;
+* a **USB re-enumeration** of the bridge kills the logger loop, and whatever opens the port next owns
+  the stream.
+
+The symptom presents as *hardware*: "the boot menu never appeared", "the board produced nothing" —
+while the board was talking normally and something else was reading it ✅. Any host-side wait on a
+serial pattern then blocks forever against a healthy box.
+
+**Check for competing readers before trusting a serial wait** (`fuser`/`lsof` on the tty), and after
+a re-enumeration restart the logger **detached** (`setsid`) so it outlives the session that started
+it. Generalised: a single-reader channel is a shared resource — a wait on it is only meaningful once
+you know who else has it open.
 
 ## Driver-authoring quirks
 
@@ -758,6 +823,15 @@ Append these bullets to the page's `## Sources` list (after the amiberry cycle-e
   useless as an `adb -k` namelist; and the spontaneous reboot under a heavy raw `dd` to the boot slice,
   whose only reliable record is the verify line the job wrote to disk. See
   [the RAM ceiling](ram-ceiling.md).
+- The **2026-08-14/15 golden-regeneration event** (workspace record), real A4000 + Z3660 ✅ —
+  quirk 46 (`z3660_direct_map/D` printing `16777216` for a set one-byte flag, read live against the
+  running kernel), quirk 47 (`sync; sync; /sbin/uadmin 2 0` reported by the host runner as "failed
+  after 3 tries" on both halt cycles, with the `fsck`-silent verification boot as the only proof of
+  cleanliness — and used as the gate before the box's disk was imaged), and quirk 48 (a leftover
+  `cat` on the firmware serial port after a CP2103 re-enumeration had killed the logger loop,
+  starving a serial wait and presenting as "the boot menu never appeared"). Same session for
+  [§44](#44-adb-namelist)'s exception: the on-box **native-linked** `/stand/unix` keeps its symbol
+  table and is a valid `adb` namelist for itself.
 - First-party **read-only metal session**, real A4000 + Z3660, 2026-08-27 ✅ — quirk 40: `dmesg` not
   present on the system; `wtmp`'s header dated *Mar 24 1992* with zero reboot records and `last reboot`
   returning nothing; `/sbin/bcheckrc` read verbatim (pre-check verdict discarded to `/dev/null`, repair

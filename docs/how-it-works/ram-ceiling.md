@@ -169,6 +169,12 @@ The fix was not a smaller mapping but **no mapping**: when the board's base is b
 already inside the identity-mapped low 1 GB, so the driver **direct-maps** it and its arena cost goes
 from 65 pages to **zero** ✅. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
 
+**The reclaim is confirmed on metal, not just in the build.** On a running real A4000 + Z3660 both
+drivers' direct-map flags read *set* in the live kernel, so the **98 arena pages** the two of them
+would otherwise have page-mapped are hardware fact rather than a compile-time intention ✅. Read a
+flag like that with care: it is a one-byte object, and `adb`'s int format prints a set byte as
+`16777216` — see [quirk 46](quirks.md#46-adb-byte-flag).
+
 That is the general shape of the interaction: **a driver's mapping budget and the machine's RAM
 ceiling are the same budget.** A driver that page-maps a window it did not need to map is spending
 frames the kernel wanted for `page[]`.
@@ -302,6 +308,10 @@ are recorded on [quirks and gotchas](quirks.md#42-neighbour-sweep-law).
   sized-from-physmem neighbour, and the metal results at 88 MB (durable, networked), 128 MB (full
   banner then a post-banner hang, cause open) and ≈151 MB (end stop) ✅. The individual patch sites
   are deliberately held back — see the note under *Lifting it*.
+- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — the live-on-metal
+  confirmation that both direct-map flags read set on the running kernel, i.e. the 98 reclaimed
+  arena pages are measured rather than inferred, read with `adb -k` against the on-box
+  native-linked kernel.
 - The same campaign's **`z3660eth` >80 MB investigation** — the ">80 MB board not found" failure
   root-caused to `sptmap` exhaustion rather than a firmware map clash (banks byte-identical at every
   window, host DDR empty), and the direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅.

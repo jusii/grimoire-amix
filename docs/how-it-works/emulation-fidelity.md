@@ -238,6 +238,36 @@ behaviour that fully explains a metal-versus-bench divergence — and it was clo
 guard, verified byte-for-byte not to touch any other configuration ✅. The general "any 68060
 emulator" statement is 🟡 (one codebase, not a survey); the metal behaviour and this bench's gap are ✅.
 
+## Blaming an emulator release needs the same image on the *old* build ✅
+
+A guest that stops booting after an emulator upgrade looks like an emulator regression, and the
+reflex is to pin the old release. **Run the identical image on the pre-upgrade build first.** In one
+case an inherited disk image failed to boot on a new emulator build; the *same image copy* panicked
+**identically** on the older build, exonerating the release and locating the defect in the image
+lineage instead ✅.
+
+The panic signature is worth recognising because it names the layer:
+
+```text
+s5mountroot: VOP_OPEN error 6
+PANIC: vfs_mountroot: cannot mount root: errno 89
+```
+
+**`VOP_OPEN error 6` is `ENXIO`** — the root device could not be opened *at all* ✅, which is a
+different fault from the `VOP_OPEN error 5` (`EIO`) variant on [the boot page](boot-process.md), where
+the device opened and the read failed. In both cases `errno 89` is only the `vfssw[]` walk running
+out of filesystem types to try, not a filesystem-format verdict — see
+[root-filesystem selection is by probe](boot-process.md).
+
+Two rules follow, and they apply to any bench that carries images forward:
+
+* **An image whose provenance you cannot reconstruct is not a control.** A long-inherited image
+  accumulates changes nobody recorded; when it fails, it cannot distinguish an emulator defect from
+  its own history. Retire such a lineage and mint a fresh image from a known installer run rather
+  than patching it.
+* **The falsification is cheap** — one boot of the same bytes on the previous build — and it is the
+  only step that separates "the emulator changed" from "this image was already broken".
+
 ## Where this was discovered
 
 These findings come from running Amix on the **Z3660**, a Zorro III **68030/68060-class accelerator** built around a Xilinx **Zynq-7000** SoC, whose firmware emulates the 68k with a **UAE-4.4.0-derived software CPU (with MMU)** running on the Zynq's ARM cores. So a real **A4000 + Z3660** executes Amix on that software 68030 emulator — which is exactly why the emulator-core fidelity above is load-bearing on *real hardware*, and was verified there: Amix 2.1 cold-boots to a **multiuser root login** (confirmed on the HDMI console and over telnet, `uname -a` → `UNIX_System_V … 2.1c … m68k`), reproduced on a real A4000 + Z3660 (2026-06). ✅
@@ -271,4 +301,10 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   - SCSI INT2 / poll-cadence: `f7bbdb0` (the run-loop consumer + runtime `SERV`/`PERF`; `check_uae_int_request()` throttled to every `service_cadence` instructions in `src/uae/newcpu.cpp`, `do_specialties()` kept per-instruction) and `e0e17d5` ("emu perf: service_cadence config option (z3660cfg + per-preset)"; `Z3660/src/config_file.{c,h}`, default sentinel → clamp `<1 → 1`). ✅ (knob mechanics) The 4-boots / 8-hangs boundary and the INT2-latency attribution are from the firmware's `docs/AMIX.md` and shipped `z3660cfg.txt`, an author hardware sweep — 🟡.
   - Two-core DMA cache coherence (branch `amix-main`, source_commit `51038f3`): `e37bb43` (SD-controller producer-side `Xil_DCacheInvalidateRange`/`Xil_DCacheFlushRange` before direct read/write) ✅; `0a4c064` (consumer-side core1 `Xil_L1DCacheInvalidateRange` after the completion spin, READ-only — a parked Cortex-A9 still speculatively refills L1D over the DMA target) ✅. The "both endpoints must maintain their own caches" general rule generalizes those two fixes, carried 🟡. Baseline was **2/2 failures** on the unfixed firmware (kmem wild-pointer bus error at `0x4AFC000C`; then a silent root-FS `ufs_readdir` corruption); post-fix a full CD read suite came back **byte-identical, 7/7** `cmp`-verified host-side (T2.P3, real A4000 + Z3660, 2026-07-10 → 07-12). ✅
 - **Live result** (first-party, ✅): Amix 2.1 cold-boots to a multiuser root login from the piscsi disk on a real A4000 + Z3660 (2026-06) — HDMI console ("The system is ready") and telnet (`uname -a` → `UNIX_System_V … 2.1c … m68k`); a 27-reboot multi-hour soak under fork/exec load ran clean (Z3660 `docs/AMIX.md`). One rare bus-error-frame `SR`-flip under extreme sustained paging load remains tracked (did not recur across the soak) — 🟡.
+- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — the emulator-exoneration
+  falsification: an inherited guest image that would not boot was re-run **byte-identically on the
+  pre-upgrade emulator build** and panicked the same way (`s5mountroot VOP_OPEN error 6` → `PANIC:
+  vfs_mountroot: cannot mount root: errno 89`), so the release was cleared and the image lineage
+  retired in favour of a freshly installer-minted root. Emulator-version numbers and image
+  filenames are project bookkeeping and are deliberately not reproduced here.
 - First-party **68040/68060 port campaign**, FPU-less-060 software-FPE lane, real 68LC060 metal (2026-08) ✅ — the vector-60 bench-fidelity gap: a UAE-family emulator whose exception-raising guard suppressed vector 60 for an FPU-less 68060 configuration (so a kernel's vector-60 handler could not be exercised on that bed), closed by a narrowed guard verified byte-for-byte against every other configuration. The "any 68060 emulator" generalization is 🟡 (one codebase). The 68060 vector-60 architecture and instruction class are grounded on [the 040/060 status page](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon). No vendor MC68060 / FPSP text and no port source reproduced — measured behaviour paraphrased.

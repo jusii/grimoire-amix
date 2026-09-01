@@ -256,6 +256,12 @@ and the frame windows are directly usable. Direct-mapping whenever `base < VSECT
 from **65 `sptmap` pages to 0** ✅: the >80 MB failure disappears, and the driver stops competing with
 the kernel for the frame array's arena.
 
+**Verified live on metal.** On a running real A4000 + Z3660 the driver's `z3660eth_direct_map` flag
+and its SCSI sibling's `z3660_direct_map` both read *set* in the live kernel, so the **98 arena pages**
+the pair would otherwise have consumed are a measured reclaim, not a build-time intention ✅. Reading
+those flags has its own trap — they are one-byte objects and `adb`'s int format prints a set byte as
+`16777216`, not `1` ([quirk 46](../how-it-works/quirks.md#46-adb-byte-flag)).
+
 > The law worth carrying to any Amix driver: **a driver's mapping budget and the machine's RAM
 > ceiling are the same budget** ✅. `sptalloc()` is not free space — page-map only what you cannot
 > reach directly.
@@ -424,6 +430,10 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   falsified (banks byte-identical at every window, host DDR empty) — and the `base < VSECT1`
   direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅. Kernel-side context on
   [the RAM ceiling](../how-it-works/ram-ceiling.md).
+- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — both direct-map flags read
+  set in the live kernel on a real A4000 + Z3660 (98 arena pages reclaimed across the ethernet and
+  SCSI drivers), read with `adb -k` against the on-box native-linked kernel; and the byte-vs-int
+  `adb` format trap that makes a set flag print as `16777216`.
 - Magic numbers (✅): cdevsw major **48**; board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.168.2.39`; build box `192.168.2.38`; TFTP `192.168.2.29`; station MAC
   `00:80:51:01:02:03`.
