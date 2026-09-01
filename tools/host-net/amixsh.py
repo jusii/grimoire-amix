@@ -14,7 +14,7 @@ import os, re, socket, sys, time
 HOST = os.environ.get('AMIX_HOST', '192.168.2.38')
 PORT = int(os.environ.get('AMIX_PORT', '23'))
 USER = (os.environ.get('AMIX_USER', 'root') + '\r\n').encode()
-PW   = (os.environ.get('AMIX_PASS', 'pass') + '\r\n').encode()   # 'pass' = the standardized root pw on every image; override via AMIX_PASS
+PW   = (os.environ.get('AMIX_PASS', 'changeme') + '\r\n').encode()   # set AMIX_PASS to your root password
 
 def strip_iac(sock, data):
     """Strip/answer telnet IAC negotiation; refuse all options (WONT/DONT)."""

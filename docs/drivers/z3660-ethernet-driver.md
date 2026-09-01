@@ -276,17 +276,18 @@ out-of-band ✅. Two paths:
 2. **Full-image / firmware deploy (no-console)** — the Z3660 ARM firmware console has a **TFTP
    server**. Power-cycle into the ARM console (spam `C` at power-on), `P` to start TFTP at
    `192.168.2.29`, `PUT` the artifact, `R` to reboot: path **`0:`** (FAT32) holds `Z3660.bin` (the
-   firmware, ~12.3 MB, ~21 s TFTP; built with `cd ~/Devel/Omat/Amiga/Z3660 && ./docker/run.sh make
+   firmware, ~12.3 MB, ~21 s TFTP; built with `cd <your Z3660 checkout> && ./docker/run.sh make
    bootbin` → `…/Alfa/sd_card/BOOT.BIN`, incremental control-core builds in seconds); path **`1:`**
    (exFAT) holds `hdf/Amix.hdf` (the full root image, ~629 MB, ~20 min TFTP). The host↔box TFTP host is
    the laptop wired directly to the Z3660.
 
-> ⚠️ **Operational gotchas (✅, all hit this session).** Power control is a flaky HA webhook — verify
-> the serial actually goes silent before powering back on (often needs two tries). The **KVM video is
-> solid black** (an unusable video-converter), so you **cannot** read the Amiga console over it;
-> detect state via the **firmware serial `[PC]` heartbeat** (pinned PC = hung; varying = alive) and,
-> once up, **telnet/ftp over `zen0`**. The serial log is mirrored at
-> `kvm1w.alanara.fi:/userdata/media/z3660-serial.log`.
+> ⚠️ **Operational gotchas (✅, all hit this session).** Whatever switches power to the box, verify the
+> **serial has actually gone silent** before powering back on — a remote switch reporting success is not
+> proof the machine went down, and a cut on a still-running box costs you an `fsck` on the next boot.
+> Do not rely on remote video to read the Amiga console either: a video-capture path can show a solid
+> black frame while the machine is perfectly alive. Detect state from the **firmware serial `[PC]`
+> heartbeat** (pinned PC = hung; varying = alive) and, once `zen0` is up, over **telnet/ftp**. Keep the
+> serial stream logged to a file — a bring-up is reconstructed from the log, not from the screen.
 
 ### Boot auto-bring-up — `/etc/rc2.d/S99zen`
 
