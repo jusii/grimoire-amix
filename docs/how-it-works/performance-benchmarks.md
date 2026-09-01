@@ -36,14 +36,16 @@ Higher is faster; `per-MHz` = Dhrystones/s ÷ CPU clock (clock-independent effic
 **Both EMU rows are the Zynq's ARM-hosted soft-68k** (UAE-derived) — ARM-bound, not 68k-clock-bound, so
 there's no meaningful per-MHz ✅. Current figures: **EMU 030 MMU = 6,396.6, EMU 040 MMU = 8,100**. Earlier
 pre-optimization runs were lower (an 08-18 soft-030 ≈ 4,615, an 08-21 soft-040 ≈ 3,818); the 030-MMU /
-emulation-speed work brought them to the current numbers. The real-silicon FPE lane (70,257.6 @ 80 MHz) is
-~11× the emulated modes — that gap is real hardware vs emulation, not a 68k-generation difference.
+emulation-speed work brought them to the current numbers ✅. The real-silicon FPE lane (70,257.6 @ 80 MHz)
+is ~11× the emulated modes — that gap is real hardware vs emulation, not a 68k-generation difference ✅.
 
 ### Reading the numbers
 - The Mercury 68040 @ 33 MHz cache progression (5,367 → 11,539 → 18,293 → 30,050) shows the caches are
-  worth **~5.6×** end to end: instruction cache alone ~2.1×, +data cache ~1.6×, +copyback another ~1.6×.
-- With full caches, Antti's 68040 and 68060 both land near **~911–916 dhry/MHz**; our real 68LC060 on the
-  Z3660 is **878/MHz** — slightly lower, consistent with the LC060 + Z3660 bus.
+  worth **~5.6×** end to end: instruction cache alone ~2.1×, +data cache ~1.6×, +copyback another ~1.6× 🟡
+  (arithmetic over the collaborator-reported rows — we have not reproduced any of them).
+- With full caches, Antti's 68040 and 68060 both land near **~911–916 dhry/MHz** 🟡; our real 68LC060 on
+  the Z3660 is **878/MHz** ✅ — slightly lower, consistent with the LC060 + Z3660 bus 🟡 (a plausible
+  reading of the difference, not an isolated measurement of the bus).
 - Dhrystone is **linear in PCLK** on this part at ≈875 ± 7 Dhry/MHz ✅ (measured, below); the small
   867→880 rise with clock is timer quantisation (`hz=60` — fewer ticks per run at speed), not a real
   effect 🟡 (a consistent explanation, not an isolated measurement).
@@ -61,9 +63,9 @@ FP-free `dhry` (sha256 `41f6755a…` — the fieldkit's shipped `dhry` dies `SIG
 | 100 | 87,976.5 / 87,976.5 / 87,976.5 | **0** | 879.8 | booted every time |
 
 - The 80 row reproduces the 2026-08-26 first-68060-Dhrystone **exactly** (70,257.6) — on a *different
-  kernel* than that row, i.e. cross-kernel repeatability.
-- 70 runs a 20 MHz bus (the others 25) yet sits on the same Dhry/MHz line — bus frequency barely affects
-  a cache-resident integer loop.
+  kernel* than that row, i.e. cross-kernel repeatability ✅.
+- 70 runs a 20 MHz bus (the others 25) yet sits on the same Dhry/MHz line ✅ — bus frequency barely
+  affects a cache-resident integer loop 🟡 (one clock pair, offered as the explanation of the rows above).
 
 > ⚠ **70 MHz is not a dependable clock on current evidence** ✅ (rates) / 🔴 (cause) — 2026-08-31: boots **2/2** from a pristine
 > disk after a full power-cycle, but **0/4** when switched via the firmware console (`CCF`) from another
@@ -85,12 +87,13 @@ a scratch *file* (never a raw device). Values in KB/s; repeats shown where taken
 | 80  | 2,296.8 · 2,329.5 | 1,827.2 · 1,981.9 · 1,927.5 |
 | 100 | 2,614.5 · 2,628.4 | 2,100.5 · 2,174.9 · 2,174.9 |
 
-- **Both directions scale with CPU clock** → the path is CPU/driver-bound, not media-bound; the SD card
-  is not the limit at these rates (~2.6 MB/s read @ 100 MHz).
-- Small-block reference (80 MHz): sequential **512 B** reads = 409.6 KB/s — latency-bound, ~5.6× worse
+- **Both directions scale with CPU clock** ✅ → the path is CPU/driver-bound, not media-bound; the SD
+  card is not the limit at these rates (~2.6 MB/s read @ 100 MHz) ✅.
+- Small-block reference (80 MHz): sequential **512 B** reads = 409.6 KB/s ✅ — latency-bound, ~5.6× worse
   per byte than 64 KB blocks.
 - Measurement note: the *first* write into a freshly created file pays allocation/metadata cost (one
-  early 100 MHz write read 851.9 KB/s and did not replicate — withdrawn; always repeat writes).
+  early 100 MHz write read 851.9 KB/s and did not replicate — withdrawn; always repeat writes) ✅
+  (the outlier and its non-replication are measured; the allocation-cost explanation for it is 🟡).
 
 ## Thermals — real 68LC060 under load (A4000D + Z3660, 2026-08-31)
 
@@ -105,11 +108,11 @@ Load = the sustained mixed Dhrystone + disk-I/O soak loop.
 | 80 MHz  | 50.1 °C | **53.8 °C** | 52.4–54.9 | +3.7 |
 | 100 MHz | 52.9 °C | **57.5 °C** | 55.6–58.9 | +4.6 |
 
-- Peak ever observed **58.9 °C**, against a 70 °C abort threshold. The part reaches its load
-  band within ~5 min (80) / ≤4 min (100); the band oscillates ±0.9 °C with workload phase.
-- Slope for this cooler: load ≈ **0.19 °C/MHz**, idle ≈ 0.14 °C/MHz — two points, an
+- Peak ever observed **58.9 °C**, against a 70 °C abort threshold ✅. The part reaches its load
+  band within ~5 min (80) / ≤4 min (100); the band oscillates ±0.9 °C with workload phase ✅.
+- Slope for this cooler: load ≈ **0.19 °C/MHz**, idle ≈ 0.14 °C/MHz 🟡 — two points, an
   interpolation, not a demonstrated law.
-- **No thermal throttling on this part, demonstrated:** at 100 MHz, 56 of 176 Dhrystone runs
+- **No thermal throttling on this part, demonstrated** ✅ — at 100 MHz, 56 of 176 Dhrystone runs
   came in at or *above* the 87,976.5 reference (4 above it — a throttling part cannot beat
   its own reference), and the slower timer-tick buckets split exactly evenly between the
   first and second halves of the 38 min load at both clocks: OS scheduling noise, no thermal
