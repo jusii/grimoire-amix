@@ -219,8 +219,10 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 In emulation this translates directly to "set Fast RAM to 16 MB (not less, not more)." See [the WinUAE config table](../getting-started/emulation-winuae.md).
 
-**A second, separate limit sits far above this one: total *describable* RAM.** ✅ Past a computed
-bound of roughly 128 MB, the kernel's **unchecked `rmalloc()` in `page_init()`** wild-writes a
+**A second, separate limit sits far above this one: total *describable* RAM.** ✅ Past roughly
+**64 MB** on a stock 68030 kernel — a bound set by a fixed 4 MiB kernel arena, not by an arithmetic
+accident, and reached at ≈128 MB only by a 4 KB-page 68060 kernel — the kernel's **unchecked
+`rmalloc()` in `page_init()`** wild-writes a
 60-byte stride from physical address 0 and the machine dies **silently, before any console output**
 — a completely different mechanism and symptom from this section's SCSI mis-mapping, reached by any
 route that hands the guest too much memory (debug/DDR windows, Zorro III RAM boards, accelerator
@@ -265,7 +267,7 @@ The Amix kernel **predates the 68040 MMU** and has no support for it (or the lat
 
 ### Zorro III — stock support is Zorro II only
 
-**Stock** Amix supports **Zorro II expansion only**; out of the box it has **no Zorro III support**. ✅ The stock drivers just dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside the 68030's TT0 window), and — because that kernel source was never shipped — the *stock* card set can't be patched in place. ✅ This is **not** a hard wall for a *purpose-written* driver, though: one that maps the board explicitly (the kernel's `sptalloc()` primitive, or a window that happens to fall inside TT0) **can** reach a Zorro III board — the [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do. For ordinary use, assume a card must work in (or fall back to) **Zorro II** address ranges.
+**Stock** Amix supports **Zorro II expansion only**; out of the box it has **no Zorro III support**. ✅ The stock drivers just dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)), and — because that kernel source was never shipped — the *stock* card set can't be patched in place. ✅ This is **not** a hard wall for a *purpose-written* driver, though: one that maps the board explicitly (the kernel's `sptalloc()` primitive, or a window that happens to fall inside the identity map) **can** reach a Zorro III board — the [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do. For ordinary use, assume a card must work in (or fall back to) **Zorro II** address ranges.
 
 Board addresses are assigned at reset by the Amiga **AUTOCONFIG** mechanism, which Amix reads through the kernel's `autocon()` interface — again, **Zorro II only**. ✅ See [the Zorro autoconfig driver page](../drivers/zorro-autoconfig.md) for how drivers consume this.
 
@@ -352,7 +354,7 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 
 ---
 title: The Amix RAM Ceiling
-summary: Why Amix cannot describe much more than ~128 MB of RAM, what the failure looks like (a silent wild write from address 0, not a panic), and how much memory to actually present in emulation and on metal.
+summary: Why a stock 68030 Amix kernel cannot describe much more than ~64 MB of RAM (a fixed 4 MiB kernel arena, not an arithmetic accident), what the failure looks like (a silent wild write from address 0, not a panic), and how much memory to actually present in emulation and on metal.
 status: draft
 ---
 
@@ -369,7 +371,7 @@ Two limits live on this page, and they are **not the same limit**:
 | Limit | Value | What goes wrong past it | Tag |
 |---|---|---|---|
 | **Fast RAM configuration ceiling** | **16 MB** | The SCSI drive is mis-mapped — presents as a disk fault | ✅ |
-| **Total describable RAM** | **≈128 MB (computed)** | `page_init()` wild-writes from address 0 — total silence | ✅ mechanism / 🔴 exact figure |
+| **Total describable RAM** | **≈64 MB** on a stock 68030 kernel (a 4 KB-page 68060 kernel reaches ≈128 MB) | `page_init()` wild-writes from address 0 — total silence | ✅ |
 
 Set your emulator, your accelerator and your memory map to the **16 MB Fast RAM** rule and neither
 one can bite you. The rest of this page is for when something has already handed the guest more
@@ -380,11 +382,14 @@ memory — and you are staring at a machine that produces nothing.
 
 - **Cap the RAM you present.** 4–16 MB of Fast RAM is the supported envelope; see
   [hardware and requirements](hardware.md#fast-ram-4-mb-minimum-16-mb-hard-ceiling). ✅
-- **32 MB total is the largest value with positive boot evidence** on any rig here, and it exists
+- **32 MB total is the largest value with positive boot evidence on a *stock* kernel**, and it exists
   only because one bench rig needs RAM at `0x08000000` for a DMA-threshold reason. ✅
 - **528 MB is proven fatal**, in exactly the way described below. ✅
-- **Nothing between 32 MB and 512 MB has ever been booted** — the ≈128 MB figure is *computed*, not
-  bisected. Do not quote it as a tested boundary. 🔴
+- **The ceiling is a fixed 4 MiB kernel arena, not an arithmetic accident** — ≈64 MB on the stock
+  68030 kernel, ≈128 MB on a 4 KB-page 68060 kernel, and it moves only if the arena moves. ✅
+- **On a kernel whose arena *was* moved, 88 MB boots durably and networks on real hardware**, 128 MB
+  banners and then hangs, and ≈151 MB is the end stop ✅ — but on a **stock** kernel nothing between
+  32 MB and 512 MB has ever booted.
 - **This is a kernel limit, not an emulator bug.** Any route that hands the guest memory reaches the
   same code — emulator RAM knobs, a Zorro III fastmem board, accelerator DDR. ✅
 
@@ -424,18 +429,109 @@ The memory *sizing* was correct throughout: measured `maxpfn` was `0x50000` (× 
 the true top of RAM. The kernel knew exactly how much memory it had — **it simply could not describe
 that much**. ✅
 
-### Where ≈128 MB comes from — and why it is a bound, not a boundary
+## Where the ceiling comes from — a fixed 4 MiB kernel arena
 
-The kernel virtual map free list held **one** entry at the time of failure: 2048 pages of 2048 bytes
-= 4 MB. Break-even is therefore about `2048 × 2048 ÷ 60 ≈ 69,900` describable frames ≈ **136 MB**,
-and the same allocation also has to cover the page-table array — so the practical ceiling lands
-around **128 MB of total RAM**. ✅ (the arithmetic; the inputs are measured)
+> **Correction (2026-08-14).** This page previously derived the ceiling as an arithmetic accident —
+> the kernel virtual map *happened* to have 4 MB free at the moment of failure — and quoted
+> **≈128 MB (computed)** with the exact figure tagged 🔴. The 2026-08 RAM campaign measured the
+> mechanism rather than inferring it, and the 4 MB is **not** an accident: it is a fixed arena that
+> the kernel's own layout constants define, so the ceiling is a property of the kernel and not of how
+> much virtual space that particular boot had already spent ✅. The stock figure is **≈64 MB**, not
+> ≈128 MB. The wild-write mechanism below is unaffected.
 
-**Treat that number as an order of magnitude, not a tested edge.** 🔴 No boot has been attempted
-between 32 MB (works) and 512 MB (fatal), so the true boundary has never been bisected, and the free
-map size is itself a function of how much kernel virtual space the running kernel has already spent
-— a bigger kernel moves the line. The two numbers you can rely on are the measured ones: **32 MB
-boots, 528 MB kills.** ✅
+The law, measured ✅:
+
+> **usable RAM = frames × `NBPP`**, where the frame count is bounded by a **fixed 4 MiB kernel
+> arena** spanning `[syssegs, kvsegmap)` = `0x40040000`–`0x40440000`.
+
+Three consumers share that arena, which is why the whole of it is never available to `page[]`:
+
+- **`page[]`** — one ~60-byte record per physical page frame; the array whose failed allocation this
+  page is about ✅.
+- **`sptalloc()`** — every kernel mapping of a board window, [the primitive a Zorro III driver uses
+  to reach its hardware](../drivers/zorro-autoconfig.md#the-identity-map) ✅.
+- **u-areas** — one per process ✅.
+
+All three are handed out of the same **`sptmap` resource map**, so they are in direct competition: a
+driver that maps a large board window with `sptalloc()` is spending exactly the arena the frame array
+needs. That is not hypothetical — see [the driver that ate the arena](#a-worked-consumer-a-driver-that-ate-the-arena) below.
+
+The two headline figures follow from the arena and the page size:
+
+| Kernel | Page size (`NBPP`) | What the arena describes | Total RAM | Tag |
+|---|---|---|---|---|
+| **Stock 68030** | 2048 B | ~4 MiB ÷ 60 B per frame, less the arena's other tenants | **≈64 MB** | ✅ |
+| **4 KB-page 68060** | 4096 B | the *same* frame count | **≈128 MB** | ✅ |
+
+The 060 does not get a bigger arena — it gets **twice the RAM per frame**, so the same number of
+60-byte records covers twice the memory ✅. The 128 MB figure is a page-size result, not a headroom
+result.
+
+The break-even arithmetic this page used to do — one free-list entry of 2048 pages × 2048 bytes,
+÷ 60 ≈ 69,900 frames ≈ 136 MB — is that same arena seen from the outside at the moment it ran out.
+It was the right order of magnitude for the wrong reason, and it did not account for the arena's
+other tenants, which is where the factor of two went ✅.
+
+### Lifting it — and the coupling law that governs any attempt ✅ {#lifting-the-ceiling}
+
+The ceiling is not a check to switch off; it *is* the arena's size. Raising it means **moving the
+arena** and then re-sizing, from the new arena, every constant that was sized from the old one. The
+campaign did exactly that on a stock 030 kernel and booted the result on real hardware.
+
+The load-bearing rule — and the reason a partial job yields a machine that boots and then dies:
+
+> **seed ≤ page-table extent ≤ arena.** The `sptmap` seed the kernel starts its resource map with,
+> the bound on the page tables that describe the arena, and the arena itself are three constants that
+> must move together and stay in that order. Move one alone and the machine boots into a silent
+> inconsistency. ✅
+
+And the neighbour that is *not* sized from the arena at all: `segkmap` — the map between `kvsegmap`
+and `kvsegu` — is sized from **physmem**, so moving `kvsegmap` upward silently **shrank** it. The
+fixed distance between `kvsegmap` and `kvsegu` has to be preserved as part of the same edit ✅. This
+is the concrete case behind [the neighbour-sweep method law](quirks.md#42-neighbour-sweep-law).
+
+The individual patch sites — file, offset, before/after instruction — are deliberately **not**
+published here: they are edit points inside a proprietary binary kernel, and it is the mechanism and
+the coupling law that generalise.
+
+### What was actually measured ✅
+
+On real hardware, on a kernel whose arena had been moved (except where the row says *stock*):
+
+| Total RAM | Result | Tag |
+|---|---|---|
+| **32 MB** | Boots. The largest value with positive evidence on a **stock** kernel | ✅ |
+| **88 MB** | **Boots durably and networks** — a working multiuser machine, not just a banner | ✅ |
+| **128 MB** | Prints the **full** SVR4 banner (`134215680` bytes of memory), then **hangs post-banner** | ✅ observed / 🔴 cause open |
+| **≈151 MB** | **End stop** — a further page-table extent bound in the root map; nothing beyond it was reached | ✅ |
+| **528 MB** | Fatal, in exactly the way described above | ✅ |
+
+The 88 MB row is what supersedes the old text. This page used to say **"nothing between 32 MB and
+512 MB has ever been booted"** and that the boundary had never been bisected. On a **stock** kernel
+that remains true. On a kernel with the arena moved it is not: 88 MB is a durable, networked
+machine ✅.
+
+### A worked consumer: a driver that ate the arena {#a-worked-consumer-a-driver-that-ate-the-arena}
+
+The `z3660eth` ethernet driver failed to find its board on any machine with **more than 80 MB** of
+RAM — which looked exactly like a firmware memory-map clash. It was not: the board's banks read
+**byte-identical at every window** and the host DDR was empty ✅. The cause was **`sptmap`
+exhaustion** — at that much RAM `page[]` had taken the arena, and the driver's own 65 pages of
+`sptalloc()` mappings had nothing left to allocate from ✅.
+
+The fix was not a smaller mapping but **no mapping**: when the board's base is below `VSECT1` it is
+already inside the identity-mapped low 1 GB, so the driver **direct-maps** it and its arena cost goes
+from 65 pages to **zero** ✅. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
+
+**The reclaim is confirmed on metal, not just in the build.** On a running real A4000 + Z3660 both
+drivers' direct-map flags read *set* in the live kernel, so the **98 arena pages** the two of them
+would otherwise have page-mapped are hardware fact rather than a compile-time intention ✅. Read a
+flag like that with care: it is a one-byte object, and `adb`'s int format prints a set byte as
+`16777216` — see [quirk 46](quirks.md#46-adb-byte-flag).
+
+That is the general shape of the interaction: **a driver's mapping budget and the machine's RAM
+ceiling are the same budget.** A driver that page-maps a window it did not need to map is spending
+frames the kernel wanted for `page[]`.
 
 ## Recognising it
 
@@ -471,7 +567,7 @@ Uniformly ✅ unless tagged.
 |---|---|---|
 | Chip RAM | 2 MB (4 MB on the A4000-style rigs) | Standard; not counted against the Fast RAM rule |
 | Fast / motherboard RAM | **16 MB, exactly** | The supported ceiling; 16 MB *exactly* is proven clean, and less than 8 MB livelocks under package-install workloads |
-| A debug/DDR window (e.g. a stand-in for accelerator memory) | **32 MB** if you need one at all | The only oversized value with positive boot evidence |
+| A debug/DDR window (e.g. a stand-in for accelerator memory) | **32 MB** if you need one at all | The only oversized value with positive boot evidence *on a stock kernel* — the 88 MB result below needed the kernel arena moved |
 | Zorro III fastmem board | avoid | It is AutoConfig RAM counted straight from the memory list, so it reaches the ceiling faster than a mapped window 🟡 |
 
 A window that is *not* an AutoConfig RAM board can still be counted: if it lands immediately above
@@ -524,6 +620,12 @@ code path — see [reverse-engineering the kernel](../drivers/kernel-reverse-eng
    one all the way to `/sbin/init`, and one to a full multiuser `login:` — once the memory window is
    bounded. Six boots, one variable at a time.
 
+The **arena** half of this page (the fixed `[syssegs, kvsegmap)` extent, the `sptmap` sharing, the
+≈64/≈128 MB figures and the 88/128/≈151 MB rows) comes from a second, later lineage ✅ — the 2026-08
+RAM campaign, which located every constant **by instruction context in a disassembly diff, never by
+offset**, and validated each step by booting a real A4000 rather than an emulator. Its method laws
+are recorded on [quirks and gotchas](quirks.md#42-neighbour-sweep-law).
+
 ## See also
 
 - [Hardware and requirements](hardware.md) — the 16 MB Fast RAM rule in its full context, plus the
@@ -553,6 +655,20 @@ code path — see [reverse-engineering the kernel](../drivers/kernel-reverse-eng
   base-set tree digest) and the 8 MB memory-exhaustion livelock signature ✅.
 - The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window, the dummy
   bank preventing coalescing past the ceiling, and the `amix_mode`-forces-CPU-RAM-off contract ✅.
+- The **2026-08-12/14 RAM campaign** (amix-kerntools with Z3660 and amix-z3660net, workspace record):
+  the fixed 4 MiB kernel arena `[syssegs 0x40040000, kvsegmap 0x40440000)`, the 60 B/frame `page[]`
+  cost and its `sptmap` sharing with `sptalloc()` and u-areas, the ≈64 MB stock-030 / ≈128 MB
+  4 KB-page-060 figures, the `seed ≤ page-table extent ≤ arena` coupling law and the `segkmap`
+  sized-from-physmem neighbour, and the metal results at 88 MB (durable, networked), 128 MB (full
+  banner then a post-banner hang, cause open) and ≈151 MB (end stop) ✅. The individual patch sites
+  are deliberately held back — see the note under *Lifting it*.
+- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — the live-on-metal
+  confirmation that both direct-map flags read set on the running kernel, i.e. the 98 reclaimed
+  arena pages are measured rather than inferred, read with `adb -k` against the on-box
+  native-linked kernel.
+- The same campaign's **`z3660eth` >80 MB investigation** — the ">80 MB board not found" failure
+  root-caused to `sptmap` exhaustion rather than a firmware map clash (banks byte-identical at every
+  window, host DDR empty), and the direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅.
 
 
 ================================================================================
@@ -616,6 +732,14 @@ FPU-less part that arm says SIGSYS (see the FPU bullet above), so the emulator m
 signal-info itself from what the emulation actually determined 🟡. Two 68060 frame-level facts any
 such port trips over — the software-maintained "Next PC" field and the immediate-operand length
 ambiguity — are on the [quirks page](quirks.md#68060-cpu-quirks) as CPU properties.
+
+**One requirement on the same list that is not about floating point at all:** the 68060 traps its
+unimplemented 64-bit integer instructions to an exception vector the stock SVR4 trap table never
+populated, so such an instruction is killed silently rather than emulated ✅ — a real 060 port has to
+add both the handler and the emulation, or constrain its toolchain to the 32-bit integer forms. The
+affected forms and the practical toolchain rule are on
+[quirks §53](quirks.md#53-unimplemented-integer-vector) (✅ for the 64-bit `MULx.L`/`DIVx.L` forms,
+🟡 for `CMP2`/`CHK2`/`CAS2`/`MOVEP`).
 
 ## What is being worked on
 
@@ -790,6 +914,14 @@ above. Both are real; they are different lanes.
   *published* 060 kernel is claimed. The bench-fidelity counterpart (an emulator that could not raise
   vector 60 for an FPU-less configuration) is on
   [emulation fidelity](emulation-fidelity.md#the-vector-60-gap-a-bench-that-could-not-raise-it-at-all).
+- The **68060's unimplemented-integer instruction class** versus the **stock SVR4 trap-dispatch
+  table**, whose populated range ends at vector 55 ✅ — the porting requirement noted under
+  [what a soft-FPU port would require](#what-a-soft-fpu-port-would-require): the vector the CPU uses
+  for the 64-bit `MULU.L`/`MULS.L`/`DIVU.L`/`DIVS.L` forms has no handler in the stock table, so such
+  an instruction reaches the default unhandled-vector path and the process is killed with no
+  diagnostic — not emulated, and not an FPU matter, since the forms are integer ops. Full item, with
+  the safe 32-bit spellings and the 🟡 `CMP2`/`CHK2`/`CAS2`/`MOVEP` class note, on
+  [quirks §53](quirks.md#53-unimplemented-integer-vector).
 
 
 ================================================================================
@@ -956,7 +1088,9 @@ The machine boots the kernel out of the raw **`UNI\0`** boot slice, **never `/st
 - The **flags-based `boot2.boot` has a fixed `sum -r` fingerprint of `14193`** — verify it before writing, because the name-based loader D245s (previous section).
 - After the `dd`, `sync` and read the slice back to confirm the write landed.
 
-**Telling which kernel is actually running** (there is no `uname` field for it): the SVR4 banner reads **`2.1c`** for a cdfs-carrying kernel vs `2.1` for one without, and `mount -F cdfs` returns **errno 5** when cdfs is in the kernel vs **errno 22** (the `GETFSIND` lookup fails) when it is not — a quick, non-destructive probe of the booted image's driver set.
+**Telling which kernel is actually running** (there is no `uname` field for it): the SVR4 banner reads **`2.1c`** for a cdfs-carrying kernel vs `2.1` for one without, and `mount -F cdfs` returns **errno 22** (the `GETFSIND` lookup fails) when cdfs is **not** in the kernel — reliable in that direction ✅.
+
+> **The positive half of that probe is stale.** ✅ It used to be "`errno 5` means cdfs is present", and that worked only because `cdfs` was **laundering four different failures into one errno**. That was root-caused and fixed, so on a current cdfs kernel the value depends on the media state instead — one live probe of a no-media mount returned **`errno 25`** 🟡 (single observation). Read the *negative* (`22` = absent), or ask directly with `sysfs(GETFSIND, "cdfs")`, which is unambiguous both ways. Full account on [filesystems and disks](filesystems-and-disks.md#confirming-cdfs-is-live-in-the-booted-kernel).
 
 ### First boot: the whole stock setup dialog hangs on one exec bit ✅
 
@@ -1014,9 +1148,19 @@ The compiled-in `rootdev = c6d0s1` decodes to `sdcard = 0`, so the kernel sent t
 
 ✅ **The fix.** The phantom is replaced by a **chipset-gated WD33C93 probe** that makes the A4091 card 0 when no real A3000 SCSI is present. With the A4091 at card 0, the compiled-in `rootdev = c6d0s1`, `swap = c6d0s2`, and `/etc/vfstab` all resolve to the A4091, and **Amix boots fully from the A4091** — root read/write, swap active, multi-user. ✅ See the detection logic on [the Zorro III autoconfig page](../drivers/zorro-autoconfig.md).
 
+### How the kernel picks the root filesystem — by probe, not by configuration {#how-the-kernel-picks-the-root-filesystem}
+
+**The Amiga port ships `rootfstype` as the empty string** ✅ — where AT&T's generic SVR4 configuration names `s5`, Amix names nothing and lets the kernel *try them all*. `vfs_mountroot` therefore walks the `vfssw[]` table in order, asking each filesystem in turn to mount the root device, and takes the first that succeeds ✅. `s5mountroot` declines politely with `EINVAL` when the device is not an s5 filesystem, so the walk continues rather than stopping ✅; `ufs` sits at **`vfssw[2]`** in every kernel examined here, install kernels included ✅.
+
+Three consequences worth carrying:
+
+- **You cannot tell a disk's filesystem from the kernel's configuration**, because the kernel does not know it either. A UFS-rooted disk and an s5-rooted disk boot the same kernel unchanged.
+- **`s5mountroot` appearing in a boot message says nothing about the disk.** It is simply the probe that ran first — see the panic below.
+- **A genuine device failure looks like "no filesystem matched"**, because every probe fails for the same reason and the walk runs off the end of the table.
+
 ### The mountroot fstype probe sequence
 
-The panic surfaces through `vfs_mountroot`'s filesystem-type probe, which tries `s5` then `nfs`. The full console sequence is ✅:
+The panic surfaces through that same probe walk. The full console sequence is ✅:
 
 ```
 s5mountroot VOP_OPEN error 5
@@ -1077,6 +1221,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - `amiga/config/unix.c` (`rootdev = ROOTDEV`, `-DROOTDEV`) and `amiga/config/c6s1unix.c` (`C6D0S1 = makedevice(18,22)`, swap `c6d0s2`); `amiga/alien/sd.h` (`SDCARDS`, `sdunit`/`sdcard`/`sdpart` macros).
 - `src/kernel-patches/support.c` — the `autocon()` phantom-A3000 fix replaced by the chipset-gated WD33C93 probe; `src/kernel-patches/sd.c` — the `0x02020054,&a4091queue` registry row; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
+- The **2026-08-12/14 RAM campaign proof reports** (workspace record) ✅ — root-filesystem selection is by probe, not by configuration: the Amiga port ships `rootfstype` **empty** (AT&T generic says `s5`), `vfs_mountroot` walks `vfssw[]`, `s5mountroot` returns `EINVAL` politely so the walk continues, and `ufs` sits at `vfssw[2]` in every kernel including the install kernels. Same source for the `cdfs` errno de-laundering that makes the old `errno 5` probe stale; the 🟡 no-media `errno 25` value is a single live probe from the 2026-08-14/15 golden-regeneration event, carried unchanged. Cross-checked against the `vfs_mountroot` disassembly recorded on [building a kernel](../drivers/kernel-build.md).
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
@@ -1222,7 +1367,7 @@ status: draft
 
 # Filesystems & Disk Layout
 
-Amix stores everything on a single SCSI hard disk — **ID 6 by convention** (the installer prompts for the disk target; ID 6 is simply what every manual and emulator assumes, and it gets baked into the device names once installed — see the note below) 🟡, partitioned with the Amiga **Rigid Disk Block (RDB)** scheme ✅ — the same on-disk partition table AmigaOS uses, which is what lets the Superkickstart ROM find and boot the disk. The installer carves out four partitions by default (root, swap, a 2 MB boot/bootstrap partition, and data) ✅. You choose a filesystem at install time: **s5** (System V; the default but discouraged) or **UFS** (Berkeley Fast File System; recommended, and what the install scripts actually default to) ✅. Disk device names like `/dev/dsk/c0d0s1` are not arbitrary — the **minor number encodes the SCSI address, LUN, and partition**, and the **major number selects the driver** (block major **18** for the SCSI disk, block major **16** for the floppy) ✅.
+Amix stores everything on a single SCSI hard disk — **ID 6 by convention** (the installer prompts for the disk target; ID 6 is simply what every manual and emulator assumes, and it gets baked into the device names once installed — see the note below) 🟡, partitioned with the Amiga **Rigid Disk Block (RDB)** scheme ✅ — the same on-disk partition table AmigaOS uses, which is what lets the Superkickstart ROM find and boot the disk. The installer carves out four partitions by default (root, swap, a 2 MB boot/bootstrap partition, and data) ✅. You choose a filesystem at install time: **s5** (System V; what the install scripts actually default to) or **UFS** (Berkeley Fast File System; recommended, but you must type `ufs`) ✅. Disk device names like `/dev/dsk/c0d0s1` are not arbitrary — the **minor number encodes the SCSI address, LUN, and partition**, and the **major number selects the driver** (block major **18** for the SCSI disk, block major **16** for the floppy) ✅.
 
 If you just want the major/minor cheat sheet, jump to [Device name → SCSI address mapping](#device-name-scsi-address-mapping) or the [device list reference](../reference/device-list.md). For how the disk gets booted in the first place, see the [boot process](boot-process.md).
 
@@ -1311,7 +1456,7 @@ The UFS *recommendation* still stands on community consensus 🟡 — but it req
 
 Why does **s5** linger as a nominal default at all? 🟡 The most plausible explanation is **lineage**: Amix was a direct port of AT&T's **3B2 (WE32x00) SVR4 codebase** 🟡 (community-reported — amigaunix.com hedges "it appears that"), where the System V filesystem was the native default, and that default carried over even though UFS is the better choice on this hardware. The 3B2-lineage rationale is **community-reported, not primary-verified** 🟡 — see the [quirks page](quirks.md).
 
-**Recommendation:** choose **UFS** when the installer asks. UFS is also what the miniroot itself uses — the root floppy *is* a UFS filesystem (it carries `lost+found` and `fsck` strings) ✅, so the installer environment runs on UFS before your disk is even partitioned.
+**Recommendation:** choose **UFS** when the installer asks — and remember you have to *type* it. The miniroot you type it from is not UFS: the root floppy is an **s5** filesystem ✅ (its superblock sits at byte `0x200` with the s5 magic; the UFS magic in the image belongs to the bundled `mkfs_ufs`/`fsck_ufs` binaries, which is why a `lost+found`/`fsck` string heuristic mislabels it). See [the anatomy of the root floppy](../boot-disks/anatomy-root-adf.md) for the superblock evidence.
 
 ### Filesystem mechanics
 
@@ -1319,7 +1464,10 @@ Why does **s5** linger as a nominal default at all? 🟡 The most plausible expl
 - The standard SVR4 toolset is present: `fsck`, `dd`, and `cpio` all appear as m68k ELF binaries inside the root miniroot ✅, used during install and available afterward.
 - s5 is the older System V filesystem with smaller block sizes and weaker crash recovery than FFS; it is functional but offers no advantage here.
 - **s5 truncates filenames at 14 characters (`DIRSIZ=14`), silently** ✅ — no error, the name just shortens (e.g. a file written as `bootslice.manifest` reads back as `bootslice.mani`, and two long names can collide into one). This bites any s5-hosted tooling/payload tree — for example a custom install-payload slice — so keep every filename on an s5 volume ≤ 14 chars. UFS is unaffected.
-- **Host-side surgery on an installed disk image: the on-disk root is UFS, and it loop-mounts on Linux** ✅. An installed Amix root partition is SVR4 **big-endian** UFS, so a modern Linux host can read it directly, read-only, with `mount -t ufs -o ro,loop,offset=<partition-start-bytes>,ufstype=sun <image> <mnt>` (the `ufstype=sun` variant is the one that matches). This is how you extract or verify files from a captured `.hdf` without booting it — note the s5 reader used for *miniroot/floppy* media does **not** apply to an installed root.
+- **s5 has a hard ceiling of 65,535 inodes** ✅. Because `mkfs_s5` scales the inode count with the filesystem size, the knee lands at a root of roughly **288 MB** — past that the inode count saturates and the extra space buys files you have no inodes to name. If you are sizing an s5 root, size it for the inode ceiling, not for the bytes.
+- **An s5 device node stores its major and minor inside the inode's `di_addr` block list**, not in a separate field ✅. The first four three-byte slots read `L3[0] = minor`, `L3[1] = 1`, `L3[2] = major`, `L3[3] = minor`. Practical consequence: any tool that rewrites or normalises an s5 inode's block list — a naive image editor, a carve-and-repack pipeline — silently destroys every device node it touches, and the damage does not show up until something opens `/dev`.
+- **Host-side surgery on an installed disk image: an installed root is usually UFS, and it loop-mounts on Linux** ✅. An installed Amix root partition is SVR4 **big-endian** UFS, so a modern Linux host can read it directly, read-only, with `mount -t ufs -o ro,loop,offset=<partition-start-bytes>,ufstype=sun <image> <mnt>` (the `ufstype=sun` variant is the one that matches). This is how you extract or verify files from a captured `.hdf` without booting it — note the s5 reader used for *miniroot/floppy* media does **not** apply to an installed root. Check before you assume: the surviving 2.1 install lineage examined here is **UFS-rooted** ✅ (superblock fingerprint `-o free=2,opt=s`, 8192/8), but a root produced by accepting the installer's default is **s5**, and the two need different readers.
+- **What the kernel will accept as a UFS root at all** ✅: `mountfs` gates the superblock on **1380 ≤ `fs_bsize` ≤ 8192** and **`fs_frag` ≤ 8**. A filesystem made by a modern host `mkfs` with a larger block size is a perfectly good UFS that this kernel will simply refuse — check the two numbers before blaming the disk or the driver.
 
 ## Mounting a CD: the read-only `cdfs` optical filesystem
 
@@ -1342,6 +1490,21 @@ ls -la /cdrom
 ### Confirming `cdfs` is live in the booted kernel
 
 `mount -F cdfs` returning **`errno 22` (`EINVAL`)** almost always means `cdfs` is *not* in the running kernel — the classic SVR4 ghost: the kernel was patched on disk but never relinked-and-rebooted, or the wrong kernel is booted ✅. `cdfs` registers exactly like the built-in filesystems: a static `vfssw[]` row whose `cdfsinit` hook `vfsinit` calls automatically at boot, so injecting the row and relinking is sufficient to register it ✅. Confirm live registration with `sysfs(GETFSIND, "cdfs")` — **≥ 1** means registered (it is `12` on the bench kernel), **`-1`** means absent from this boot ✅. The disassembly-backed mechanism (why `22` is unambiguous here, `vfs_getvfssw`, the numeric-vs-string fstype dispatch) is documented on the [kernel reverse-engineering page](../drivers/kernel-reverse-engineering.md).
+
+> **The errno channel used to launder its own diagnostics — root-caused and fixed.** ✅ Before the
+> fix, `cdfs` collapsed four genuinely different failures — device absent (`ENXIO`), a wrong or
+> unrecognised device, a bad/unsupported format, and a real I/O error — into a single **`errno 5`** at
+> `mount(2)`. The design law generalises to any in-kernel filesystem: **a VFS whose only diagnostic
+> channel is `mount(2)`'s errno must not collapse device-absent, wrong-device, bad-format and I/O
+> into one value** ✅ — the caller has nothing else to read, so every value it *can* return has to
+> mean something.
+>
+> Consequence for anyone using the errno as a probe: the **negative** case is unchanged — `errno 22`
+> still reliably means "no `cdfs` in this kernel". The **positive** case is no longer a flat
+> `errno 5`; on a de-laundered kernel it depends on the media state. One live probe of a no-media
+> mount returned **`errno 25` (`ENOTTY`)** 🟡 (single observation; layer attribution between `cdfs`
+> and the `sd` target not yet pinned). For the liveness question use `sysfs(GETFSIND, "cdfs")`, which
+> is unambiguous in both directions.
 
 ### Kernel prerequisites
 
@@ -1418,6 +1581,15 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
   every kernel that roots through the A3000 onboard SCSI, not by a4091/cdfs kernels specifically, and
   the `s5mountroot VOP_OPEN error 6` panic is **not** size-triggered (four-kernel section-size table;
   a 652-byte-larger patched kernel boots).
+- The **2026-08-12/14 RAM campaign and its proof reports** (workspace record) ✅ — the s5 facts
+  (the 65,535-inode ceiling and its ~288 MB root knee; the `di_addr` device-major layout
+  `L3[0] = minor`, `L3[1] = 1`, `L3[2] = major`, `L3[3] = minor`); the `mountfs` superblock gates
+  (1380 ≤ `fs_bsize` ≤ 8192, `fs_frag` ≤ 8); the UFS-rooted 2.1 install lineage and its `-o free=2,opt=s`
+  / 8192-8 superblock fingerprint; the corrections to this page's lead (the install scripts default to
+  s5) and to the root-floppy claim (s5, not UFS); and the `cdfs` errno de-laundering (ENXIO /
+  bad-format / unsupported / I/O had all surfaced as `errno 5`) with its design law ✅. The 🟡
+  no-media `errno 25` observation is a single live probe from the 2026-08-14/15 golden-regeneration
+  event, carried unchanged.
 - The **Installer-NG** author-mode matrix proof (amix-installng, 2026-07-31) ✅ — the stock installer's `/etc/rdb -c`/`-a`/`-p` + `mkfs_s5` sequence run against a blank disk on the Amiberry bench and read back host-side: `-c` refuses without `-d` and `-d` is absent from the tool's usage text; the 512-byte-block unit proven by `rdb_Cylinders = 3200 = 204800 ÷ 64` (`rdb_Sectors = 64`, `rdb_Heads = 1`); the `-p` 1-based `atoi()` partition-number convention; `mkfs_s5`'s 512-byte-block operand (authored root `fsize=80896, type=2`, the full slice); the resulting disk cold-boots. Reference caller: the stock install script, `/etc/profile` on `amix_21_root.adf`, read by path with an s5 reader; `/etc/rdb` byte-identical stock ↔ rebuilt miniroot, md5 `6cacf95f738abea7cfddc6bb9ebf28e7`.
 
 
@@ -1453,7 +1625,7 @@ Because the stack is statically linked into a monolithic kernel with **no loadab
 |---|---|---|---|---|
 | **A2065** (Am7990 LANCE Ethernet) | `aen0` | Zorro II | native (`aen/` in the kernel source tree) | ✅ |
 | **Hydra AmigaNet** (NE2000 / DP8390) | `hya0` | Zorro II | modern `hydra-amix` STREAMS/DLPI driver | ✅ |
-| **Z3660** (accelerator's onboard Zynq GEM) | `zen0` | Zorro III *(eth window at `0x10000000`, inside TT0)* | modern `z3660eth` STREAMS/DLPI driver — **works on real hardware (2026-06)** | ✅ |
+| **Z3660** (accelerator's onboard Zynq GEM) | `zen0` | Zorro III *(eth window at `0x10000000`, inside the identity-mapped low 1 GB)* | modern `z3660eth` STREAMS/DLPI driver — **works on real hardware (2026-06)** | ✅ |
 | **Ariadne I** | (Gateway! Vol.2 driver) | Zorro II | community | 🟡 |
 
 The A2065 is the card Commodore shipped and the only Ethernet board Amix supports out of the box ✅. `aen0` is what `ifconfig` and the routing tables refer to. Both modern STREAMS/DLPI add-on drivers (Hydra → `hya0`, Z3660 → `zen0`) are real-hardware-verified — see [Adding other network cards](#adding-other-network-cards).
@@ -2106,6 +2278,12 @@ A single file — the form **AmixBP and amigaunix.com distribute** 🟡 — with
  carrying pkginfo, pkgmap, then the payload>
 ```
 
+> **The `cksum` field is a folded 32-bit byte sum, not a CRC** ✅. SVR4's `pkgmap` checksum simply adds
+> up the file's bytes into a 32-bit accumulator and folds the result — it is the same family as
+> `sum(1)`, not `cksum(1)`'s CRC-32, and it detects damage rather than resisting it. Anything
+> reimplementing `pkgmk`/`pkgadd` has to reproduce that arithmetic exactly or every line of the
+> manifest mismatches.
+
 The cpio member format is **SVR4 `070701` (portable ASCII, a.k.a. "newc")** ✅ — the same family the [patch disk](../boot-disks/anatomy-patch-adf.md) and the tape-install stream use. You can convert a directory package to a datastream with `pkgtrans <srcdir> <dest.pkg> <PKG>`, and `pkgadd -d <dest.pkg> <PKG>` installs it.
 
 ## How `pkgadd` mutates the database ✅
@@ -2198,6 +2376,9 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 
 - amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): the pkgadd -R altroot SIGSEGV root cause (adb on the in-altroot core; nhash HASH), engine rebuilt + re-verified 4/4 on the bench box 2026-07-20/21.
 - **Firsthand, reproduced live** (✅): a clean **Amix 2.1c** image (`UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, 2026-07-01 (the **amix-packagemanager** project; command transcripts retained there). Specifically: `ls -l /usr/{bin,sbin}/pkg*` + the `No such file or directory` for `pkgask`/`removef`/`amixpkg` (F1); `ls -laR /var/sadm`, `/var/sadm/install/admin/default`, `pkginfo -x`, `/var/sadm/pkg/*/pkginfo` (F2); `head`/`grep` of `/var/sadm/install/contents` (F3); an on-box throwaway package built with `pkgmk`/`pkgtrans` and its `pkgmap` + `.pkg` header dissected with `od -c` (F4); a before/after `diff` of `contents` across a controlled `pkgadd` (F5); `find /var/sadm/pkg -type f` showing only `pkginfo` + `*.mi` (F6); the `pkgrm`/`pkginfo -l` abort, the offending `contents` record, and its removal-and-retry (F7); the `# Last modified by amixpkg …` marker with `amixpkg` absent from the filesystem (F8).
+- The **2026-08-12/14 RAM campaign proof reports** (workspace record) ✅ — the SVR4 `pkgmap`
+  checksum is a folded 32-bit byte sum (the `sum(1)` family), not a CRC, established while
+  reproducing the manifest arithmetic outside the stock tooling.
 - **`sources/research-brief.md` §20** (the stock SVR4 pkg-system internals, media formats, DB mutation, and the F7 `contents` corruption) — the grounding for this page, carrying the tags above.
 - **Community distribution practice** (🟡): [amigaunix.com `more_software`](https://www.amigaunix.com/doku.php/more_software) (`.pkg` / cpio / `tar.zoo` distribution) and Michael Parson's **AmixBP** ([amixbp.sourceforge.net](https://amixbp.sourceforge.net), SourceForge group 263433) — the datastream-`.pkg` distribution channel.
 - **Licensing:** no proprietary `pkg*` source or media reproduced; this page documents runtime behaviour and on-disk **data-record** layout observed live. The single malformed `contents` record in the F7 section is cited as **factual defect data** (interoperability / bug documentation), not vendored source (per [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
@@ -2503,8 +2684,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | # | Quirk | Tag | Deeper coverage |
 |---|---|---|---|
 | 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
-| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive. A second, far-higher limit — total *describable* RAM, ~128 MB computed — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
-| 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside TT0) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
+| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive. A second, far-higher limit — total *describable* RAM, ≈64 MB on a stock 030 kernel, set by a fixed 4 MiB kernel arena — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
+| 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside the identity-mapped low 1 GB) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md), [040/060 status](68040-68060-status.md) |
 | 5 | **Superkickstart dual-boot** by holding the right mouse button at power-on | ✅ | [Boot process](boot-process.md) |
 | 6 | **DNS resolution is OFF by default** (`/etc/hosts` only) | ✅/🟡 | [Networking](networking.md) |
@@ -2542,6 +2723,19 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 38 | **`uptime` and `w` do not report the machine's load** — the reader resolves a COMMON kernel symbol to a non-address without an error (flat `0.00` and absurd millions are the SAME defect), and even the kernel's own count reads exactly N−1 (the on-CPU process is never counted). Read the truth with `adb -k <running-kernel> /dev/mem`, `avenrun/3X`, ÷256 | ✅ | [Load averages](load-averages.md) |
 | 39 | **A bare trailing `&` in a command sent to the box's telnet transport silently never runs** — the transport appends `; echo DONE_$?` for completion detection, so `<cmd> &` arrives as `<cmd> &; echo …` and `&;` is a Bourne syntax error: the job never starts, the retries re-login into the [inetd throttle](#23-inetd-disables-a-service-after-40-connections-in-60-seconds), and any poller waiting on it spins forever. Parenthesise the background launch: `(… &)` | ✅ | [Quirks §39](#39-transport-ampersand-law) |
 | 40 | **Amix keeps no persistent boot log** — no `dmesg` at all, `wtmp` has never recorded a reboot, and boot `fsck` writes only to the console (a delta to quirk 24, independent of `syslogd`). The console is the only record — and it still holds the whole boot transcript at a fresh `login:` prompt. Plan an HDMI capture; there is no log to read | ✅ | [Quirks §40](#40-no-persistent-boot-logging) |
+| 41 | **Stock `autocon()` decides whether the A3000 internal SCSI exists from the *RAM size*, not from the hardware** (`end > 0x07000000`) — wrong in both directions: it fabricates a phantom card 0 where there is no controller, and it silently drops the real one (root disk included) on a machine whose RAM does not reach the threshold, renumbering every remaining SCSI card | ✅ | [Quirks §41](#41-scsi-by-ram-size), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
+| 42 | **When you move a boundary, sweep the neighbours and ask what each one is sized by** — "what else assumes 4 MiB?" finds the constants derived from the thing you moved and misses the neighbour sized from somewhere else entirely | ✅ | [Quirks §42](#42-neighbour-sweep-law), [RAM ceiling](ram-ceiling.md) |
+| 43 | **`nm` plus relocation similarity is not enough to place a binary patch** — the disassembly diff is a mandatory third gate; locate every site by *instruction context*, never by a remembered offset | ✅ | [Quirks §43](#43-disassembly-diff-gate) |
+| 44 | **On-box `adb -k` needs a namelist that still has a symbol table** — `elf2brel` discards symtabs, so `/stand/unix` is useless as a namelist and `adb` reports nonsense instead of failing | ✅ | [Quirks §44](#44-adb-namelist) |
+| 45 | **Heavy raw `dd` to the boot slice can spontaneously reboot the box** — the session dies mid-write and looks like a failure. Trust the verify line the job wrote *to disk*, not the session that vanished | ✅ | [Quirks §45](#45-boot-slice-dd) |
+| 46 | **`adb -k` prints a one-byte kernel flag as `16777216`, not `1`** — `/D` reads four bytes as a big-endian int, so a set byte at the object's address reads as `0x01000000`. The value is right and the *format* is wrong; do not conclude the flag holds garbage | ✅ | [Quirks §46](#46-adb-byte-flag) |
+| 47 | **A successful remote halt looks like a transport failure** — `uadmin 2 0` kills the session that issues it, so the runner reports "failed after N tries"; that signature **is** the success case. A halt is proven clean only by a **`fsck`-silent next boot** — image a disk only after one | ✅ | [Quirks §47](#47-halt-looks-like-failure) |
+| 48 | **A stray reader on the box's serial port silently eats the console stream** — a leftover `cat /dev/ttyUSB0` or a USB re-enumeration steals the bytes, and "the boot menu never appeared" is then a host-side symptom, not a board fault | ✅ | [Quirks §48](#48-stray-serial-reader) |
+| 49 | **A warm reset is not a clean-state reset** — the accelerator's warm-reset command gave a valid reset vector **0/3** where a power cycle gave it **5/5**; and a power-on only 50 s after power-off wedged the board mid-boot. Power-cycle with **≥20 s off** for anything that needs a known state | ✅ | [Quirks §49](#49-power-cycle-law) |
+| 50 | **A diagnostic ROM's error mask is sticky within a boot** — a dense test run after a failing one repeats the earlier mask while reporting zero errors. Reboot between tests whose masks you intend to read; three more DiagROM operating traps live with this item | ✅ | [Quirks §50](#50-sticky-mask) |
+| 51 | **Memory detection that reads back immediately is fooled by capacitive echo** — an unpopulated bus holds the value it was just driven with and *passes*. Treat any "Detected NNN MB" as unverified until a whole-block address check confirms it | ✅ | [Quirks §51](#51-capacitive-echo) |
+| 52 | **A run whose boot path was not examined is not evidence** — gate every run on the boot log's *positive* start lines, not on the absence of an error; a run booted by a failed warm reset produced a full set of plausible, worthless results | ✅ | [Quirks §52](#52-boot-path-evidence) |
+| 53 | **68060: the unimplemented 64-bit integer instructions trap to a vector the stock SVR4 trap table never populated** — the 64-bit `MULU.L`/`MULS.L`/`DIVU.L`/`DIVS.L` forms are left to software by the CPU, the stock trap-dispatch table has no entry for them, and the process is killed with no diagnostic at all (a bare `Killed`, rc 137 — no SIGILL, no SIGFPE, no core). Integer ops, so it is not an FPU matter; constrain a 68060 toolchain to the **32-bit** `MULU.L`/`DIVU.L`/`DIVUL.L` forms | ✅ | [Quirks §53](#53-unimplemented-integer-vector), [040/060 status](68040-68060-status.md) |
 
 The rest of this page expands each item.
 
@@ -2559,7 +2753,7 @@ The kernel hard-codes a Fast RAM ceiling of **16 MB** (minimum 4 MB) ✅. Going 
 
 ### 3. Zorro III — stock drivers are Zorro II only ✅
 
-**Stock** Amix is **Zorro II only** ✅: its stock drivers simply dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside the 68030's TT0 window), and that kernel source was never shipped so the *stock* card set can't be patched in place. This is **not** absolute for a *purpose-written* driver, though: one that maps the board explicitly — the kernel's `sptalloc()` primitive, or (when the board's window happens to fall inside TT0) a direct mapping — **can** reach a Zorro III board. The [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do exactly this. For ordinary expansion, still assume a card must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
+**Stock** Amix is **Zorro II only** ✅: its stock drivers simply dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)), and that kernel source was never shipped so the *stock* card set can't be patched in place. This is **not** absolute for a *purpose-written* driver, though: one that maps the board explicitly — the kernel's `sptalloc()` primitive, or (when the board's window happens to fall inside the identity map) a direct mapping — **can** reach a Zorro III board. The [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do exactly this. For ordinary expansion, still assume a card must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
 
 ### 4. No 68040/68060 — the A4000 is out ✅
 
@@ -2603,6 +2797,35 @@ and bus-bridge authors the only requirement is to *tolerate* the access (decode-
 correct for an A4000 target; only an A3000 SuperKickstart model needs to honour the bit). And don't
 confuse this motherboard address with the similar-looking AutoConfig product code `0xc0de0002` in
 [the major-number registry](../reference/major-number-registry.md) — they are unrelated.
+
+### 41. The stock kernel infers the A3000 SCSI from the RAM size ✅ {#41-scsi-by-ram-size}
+
+Stock `autocon()` (`amiga/kernel/support.c`) decides whether the A3000 internal SCSI controller
+exists by testing **how far RAM extends** — `end > 0x07000000` — and not by touching the hardware ✅.
+The A3000 controller is not an AutoConfig board, so there is nothing in `bootinfo.autocon[]` to look
+at; the RAM size was used as a proxy for "this is an A3000-class machine". It is a guess, and it is
+wrong in **both** directions:
+
+- **False positive.** On a machine with no internal SCSI — a real A4000, or an A3000 whose controller
+  is absent — enough RAM fabricates a **phantom card 0** at `0xDD0000`. It claims `queue[0]`, shifts
+  every real controller up by one, and the compiled-in root device (which decodes to card 0) sends
+  the root read to hardware that does not exist ✅. This is the failure that produced the
+  `s5mountroot VOP_OPEN error 5` → `errno 89` panic chain; full story on
+  [the boot process](boot-process.md) and [Zorro autoconfig](../drivers/zorro-autoconfig.md).
+- **False negative.** On a machine whose RAM does **not** reach the threshold, the same test fails and
+  the **real** internal SCSI is silently dropped — root disk included — and every remaining SCSI card
+  renumbers ✅. Nothing is logged; the machine simply cannot find its disk.
+
+Real A3000s with more than 16 MB are inside the affected envelope ✅ — this is not an
+emulator-only curiosity.
+
+**The law: probe, don't guess.** The fix that replaced the special case is a **chipset gate plus a
+WD33C93 write/readback probe** — read a custom-chip register that is always present to tell an
+ECS/OCS (A3000-class) machine from an AGA one, then write two different values to two WD33C93
+registers through the same data port and read the first back, so an open bus (which aliases the read
+to the *last* write) cannot pass ✅. Full source and rationale on
+[Zorro autoconfig](../drivers/zorro-autoconfig.md); the anti-alias readback is the reference design
+for [any board probe](../drivers/kernel-composition.md).
 
 ## Networking quirks
 
@@ -2717,6 +2940,35 @@ stacked next-PC can be short by the operand's width (an IEEE double immediate is
 never accounted for). This is the structural reason quirk 33's field cannot be trusted, and it names
 the one instruction class where the discrepancy occurs.
 
+### 53. 68060: the unimplemented integer instructions trap to a vector stock Amix never populated ✅ {#53-unimplemented-integer-vector}
+
+The 68060 does not implement every integer instruction form in silicon. The **64-bit**
+`MULU.L`/`MULS.L`/`DIVU.L`/`DIVS.L` forms — a 64-bit product, or a 64-bit dividend with its
+quotient/remainder register pair — are trapped out to software through the CPU's
+**unimplemented-integer-instruction** exception (vector 61), for an emulation layer to serve ✅. The
+stock SVR4 trap-dispatch table on this platform stops at **vector 55**, so that vector has no
+handler: the trap falls through to the kernel's default unhandled-vector path and the process is
+**SIGKILLed with no diagnostic at all** ✅ — a bare `Killed` and exit status 137, no SIGILL, no
+SIGFPE, no named fault, no core, and nothing in any log. Two consequences:
+
+- **It is not an FPU problem, and nothing in the failure says so either way.** The affected
+  instructions are *integer* ops the core leaves to software, so the kill fires identically on a
+  full-FPU 68060 and on an FPU-less 68LC060 ✅. Do not file it next to the
+  [SIGSYS float-printing class](#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call-)
+  — that one is F-line and FPU-shaped, this one is not.
+- **The 32-bit forms are safe.** `MULU.L`/`DIVU.L`/`DIVUL.L` in their 32-bit spellings are
+  hardware-implemented and execute normally ✅. `CMP2`/`CHK2`/`CAS2`/`MOVEP` belong to the same
+  unimplemented-integer class architecturally and should be expected to behave the same way 🟡 (class
+  membership per the CPU's own definition of the set, not each form separately exercised).
+
+Practical rule for anyone *emitting* 68060 code — a compiler, an assembler macro, a hand-patch:
+constrain the toolchain to the 32-bit integer forms until the kernel gains both the vector handler
+and the emulation behind it ✅. Because the trap is silent, the diagnostic signature is a freshly
+rebuilt binary that runs a while and then dies `Killed` with rc 137 where the previous build did not
+— check the instruction encodings before suspecting the program. This is distinct from the GNU `as`
+2.8.1 size-bit defect on [the toolchain page](../drivers/toolchain.md), which produces a 64-bit
+divide form by accident on a *68030*: same instruction family, different cause, different platform.
+
 ## Diagnostics & logging quirks
 
 ### 24. `syslogd` is present, correct, and deliberately switched off ✅
@@ -2827,6 +3079,203 @@ kernel) and *succeeds anyway* with the alignment as the value — so the printed
 sits at a bogus address, flat `0.00` and six-digit garbage being the same defect; and the kernel's
 own load count omits the on-CPU process, reading exactly N−1 even when read correctly. Full story,
 measurements and the working read recipe: [load averages](load-averages.md).
+
+### 42. When you move a boundary, sweep the neighbours ✅ {#42-neighbour-sweep-law}
+
+The instinctive search after moving a kernel constant is *"what else assumes the old value?"* — and it
+finds every constant that was **derived from** the thing you moved. It does not find the neighbour
+that is sized from somewhere else entirely, because that neighbour never mentions the old value at
+all.
+
+The worked case: moving the kernel's fixed 4 MiB arena upward found the constants sized from the
+arena, and missed `segkmap` — the map between `kvsegmap` and `kvsegu` — which is sized from
+**physmem**. Moving `kvsegmap` therefore silently *shrank* it ✅. The right question is not "what
+assumes 4 MiB?" but **"for each neighbour of this boundary, what is it sized by?"** Ask it of every
+neighbour, including the ones the grep did not return. Full context on
+[the RAM ceiling](ram-ceiling.md#lifting-the-ceiling).
+
+### 43. `nm` and relocation similarity are not enough to place a binary patch ✅ {#43-disassembly-diff-gate}
+
+Two gates are commonly used to locate a patch site in a binary kernel: the symbol table (`nm`) says
+which function you are in, and a relocation/similarity check says the surrounding bytes match what you
+expected. Both can agree and both can be pointing at the wrong instruction — a neighbouring inlined
+copy, a different call site of the same helper, a compiler-reordered sequence.
+
+**The disassembly diff is a mandatory third gate** ✅: disassemble before and after, and read the
+changed instruction. Every site in the RAM campaign was located by **instruction context**, never by a
+remembered offset — offsets do not survive a rebuild, and an offset that is *nearly* right produces a
+kernel that boots. This is the same family as [§36](#36-an-optimised-probe-reporting-no-fault-must-be-disassembled-first)
+(prove the instruction exists before believing a negative) and
+[§37](#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded) (decode the byte before
+concluding).
+
+### 44. On-box `adb -k` needs a namelist that still has a symbol table ✅ {#44-adb-namelist}
+
+`adb -k` reads symbols from a **namelist file**, and on Amix the obvious candidate is the wrong one:
+`/stand/unix` has been through `elf2brel`, which **discards the symbol table** ✅. Point `adb` at it
+and you do not get a clean failure — you get resolutions that are silently meaningless.
+
+Keep an unstripped namelist beside the kernel (`unix.namelist`, the pre-`elf2brel` object) and read
+against that ✅. The rule generalises: on this platform, *the file you boot and the file you debug
+against are two different files* — verify the one you hand a debugger actually has a symtab before
+believing anything it prints.
+
+**The one exception is a kernel linked natively on the box.** A `/stand/unix` produced by an on-box
+native link still carries its symbol table, so there it **doubles as its own `adb` namelist** ✅ —
+`adb -k /stand/unix /dev/mem` resolves correctly, and no separate namelist file is needed. So the
+invariant to check is not *which file* but *does this particular file still have a symtab*; the
+answer depends on how that kernel was produced.
+
+### 45. Heavy raw `dd` to the boot slice can reboot the box ✅ {#45-boot-slice-dd}
+
+A large raw `dd` to the boot slice can **spontaneously reboot the machine mid-write** ✅. Because the
+reboot kills the session that issued the command, the operator sees a transport failure — a dropped
+connection or a timeout — and the natural conclusion is that the write never happened.
+
+**Trust the on-disk record, not the session.** Have the job write its own verify line to a file on
+disk, and read that file on the next boot; the session's exit status is not evidence either way. The
+general shape is worth naming: **an operation that destroys its own reporting channel always looks
+like a failure** — and re-running it blindly is how a half-written boot slice becomes an unbootable
+one.
+
+### 46. `adb -k` prints a one-byte kernel flag as a big-endian int ✅ {#46-adb-byte-flag}
+
+Reading a driver's boolean flag out of a running kernel prints an absurd number:
+
+```text
+# echo 'z3660_direct_map/D' | adb -k /stand/unix /dev/mem
+z3660_direct_map:       16777216
+```
+
+**The flag is set, and the read is correct.** `16777216` is `0x01000000`: the flag is a **one-byte**
+object, `/D` reads **four** bytes and formats them as a big-endian signed int, so a set byte at the
+object's address lands in the top byte of the word ✅. Nothing is wrong with the kernel — the format
+letter is wrong for the object's width.
+
+Read a byte object with a byte format, or learn the shape: `16777216`, `65536` and `256` are "a byte
+holding 1, read as a 4-byte int" at the first, second and third byte of the word. The trap is
+expensive precisely because the wrong answer is *plausible* — a reader who has just patched a driver
+sees a huge number and concludes the flag was never initialised.
+
+### 47. A successful remote halt looks like a transport failure ✅ {#47-halt-looks-like-failure}
+
+`sync; sync; /sbin/uadmin 2 0` issued over the box's telnet transport **kills the session executing
+it**, so the host-side runner reports `failed after 3 tries` — a no-route or a timeout ✅. **That
+signature is the success case.** It is the same family as [§45](#45-boot-slice-dd): an operation that
+destroys its own reporting channel always looks like a failure, and re-running or power-cutting it
+"because it failed" is how a completed clean halt becomes a dirty one.
+
+**The proof of a clean halt is the next boot, not the halt.** Amix keeps no persistent boot log
+([§40](#40-no-persistent-boot-logging)), so the evidence is a **verification boot whose console shows
+`fsck` repairing nothing** ✅. Observed twice on a real A4000 + Z3660: runner "failure", fsck-silent
+next boot, clean filesystem.
+
+This is the gate to hang **disk imaging** on. Copy a box's disk image only after a halt that a
+fsck-silent verification boot has proven clean — otherwise the image carries a dirty, unjournaled
+filesystem forward into every machine cloned from it, and the defect is invisible until the clone's
+first boot repairs it.
+
+### 48. A stray reader on the box's serial port silently eats the console stream ✅ {#48-stray-serial-reader}
+
+An accelerator's firmware console usually arrives on the host as a USB-serial port (a CP2103-class
+bridge) with a long-lived logger appending to a file. Two things take the stream away, both silently:
+
+* a **leftover `cat /dev/ttyUSB0`** from a login that died keeps the port open and **steals the
+  bytes** — the log file simply stops growing;
+* a **USB re-enumeration** of the bridge kills the logger loop, and whatever opens the port next owns
+  the stream.
+
+The symptom presents as *hardware*: "the boot menu never appeared", "the board produced nothing" —
+while the board was talking normally and something else was reading it ✅. Any host-side wait on a
+serial pattern then blocks forever against a healthy box.
+
+**Check for competing readers before trusting a serial wait** (`fuser`/`lsof` on the tty), and after
+a re-enumeration restart the logger **detached** (`setsid`) so it outlives the session that started
+it. Generalised: a single-reader channel is a shared resource — a wait on it is only meaningful once
+you know who else has it open.
+
+### 49. A warm reset is not a clean-state reset — power-cycle, and leave it off ✅ {#49-power-cycle-law}
+
+Measured on a real A4000 + Z3660 running the stock accelerator firmware, with the emulated-CPU boot
+mode ✅:
+
+| reset path | correct reset vector read |
+|---|---|
+| power cycle / cold boot | **5 / 5** |
+| the firmware's warm-reset command | **0 / 3** |
+
+Every warm-reset failure read the reset vector as `0xFFFFFFFF`; the emulated 68k then ran from a
+garbage PC and scribbled down through the board's registers and the exception vectors, leaving a
+black screen and a flood of unhandled-write messages on the serial ✅. So a warm reset is fine for
+"start the machine again" and useless for "start it from a known state".
+
+**Why an odd value at address 4 is not evidence of a corrupted ROM.** With the Kickstart **overlay
+cleared**, address 4 is *chip RAM*, not ROM ✅ — an unexpected value there is **stale memory**, not a
+corrupted ROM fetch, and a single-bit difference between two observed values is not a bit flip. An
+earlier claim to the contrary was withdrawn on exactly this ground.
+
+**The off interval is part of the procedure.** A power-on **50 s** after a power-off wedged the board
+mid-boot: the serial stopped right after the firmware's hunk-processing line — before the clock tree
+and before the CPU handover — and produced nothing for about nine minutes. A power cycle with a
+**20 s** discharge recovered it cleanly, first try ✅. Allow **≥15–20 s off**, not the ~5 s a helper
+script is likely to default to.
+
+**Consequence for any procedure needing a known-clean machine** — a diagnostic run, a clock change, an
+acceptance test: power-cycle with a ≥20 s gap, and *gate* the run on the reset vector the firmware
+prints before trusting anything the run produces ([§52](#52-boot-path-evidence)).
+
+### 50. A diagnostic ROM's error mask is sticky within a boot ✅ {#50-sticky-mask}
+
+DiagROM's address-error mask persists **across tests inside one boot** ✅. A dense memory test run
+after a failing sparse scan displayed the *identical* mask —
+`-------- -EEEEEEE E------- --------` — while simultaneously reporting `Number of errors: 0`,
+`NONUsable memory: 0` and no bad block, having covered the same region densely. Freshly booted, the
+same test shows an all-dashes mask.
+
+**Never read bit positions off a mask without knowing what ran before it in that boot.** Any "failing
+bit → byte lane → memory ball" chain built on a mask captured after another test is worthless.
+Reboot between tests whose masks you intend to read.
+
+Three more DiagROM operating facts from the same session, each of which costs a run if you learn it
+the hard way ✅:
+
+* **The Autoconfig test's "Assign board?" step is destructive to video** — answering yes reassigns
+  *live* Zorro III boards, including an RTG board driving the HDMI output; the display dies
+  mid-session and only a power cycle brings it back. Read the enumeration; treat assignment as an
+  end-of-session action, or skip it. (It also blocks memory-testing a Zorro III RAM board, whose test
+  is reached through that same step.)
+* **Stopping a running test takes several keypresses, not one** — a single Escape silently does
+  nothing and the test runs on.
+* **The manual-scan address field takes 4 hex digits** (the top 16 bits), not 8.
+
+### 51. Memory detection that reads back immediately is fooled by capacitive echo ✅ {#51-capacitive-echo}
+
+A detection probe that **writes a pattern and reads it straight back** cannot tell populated memory
+from an **unpopulated bus still holding the value it was just driven with** ✅. Two independent
+instances in a single session: a 16 MB motherboard window whose top 4 MB is genuinely empty passed
+detection, and a phantom *"Detected 127MB of memory"* over a range the emulator maps to a dummy bank —
+one whose reads return all-ones and whose writes are discarded.
+
+**Treat any "Detected NNN MB" as unverified until a whole-block address check confirms it** — fill the
+whole block with address-derived data and verify it afterwards, once the echo has decayed.
+
+The same caution applies to a hand-rolled peek/poke check: one that probes only low addresses proves
+only that the low addresses echo. An earlier "floating bus ruled out" conclusion in that session was
+withdrawn for exactly that reason.
+
+### 52. A run whose boot path was not examined is not evidence ✅ {#52-boot-path-evidence}
+
+Gate every measurement run on **positive** evidence in the boot log that a real boot happened — never
+on the absence of an error ✅. A memory-scan run was booted by a warm reset that had *failed*: its
+serial showed **no** firmware start line, **no** Kickstart load and **no** ROM reload between the
+failed reset and the vector read. It was a 68k-level re-reset *inside the still-running emulator*,
+entering mid-ROM after a runaway CPU had already been scribbling memory. The run produced a full set
+of plausible numbers and was discarded; a second run was discarded the same way, its 150 captured
+frames all black screen.
+
+**Name the specific lines a healthy boot must print, and require all of them before scoring the run.**
+This is the same family as [§35](#35-a-zero-behind-a-gate-needs-a-pre-gate-denominator-): a reading is
+only evidence once you can show the thing that produces it actually ran.
 
 ## Driver-authoring quirks
 
@@ -3151,12 +3600,53 @@ Append these bullets to the page's `## Sources` list (after the amiberry cycle-e
   launch line and a `shutdown -i6` reboot soak), the parenthesise-the-launch fix, and the four
   superficially-similar shapes that are safe and must not be flagged (the linter's `--self-test`
   exercises all four plus the unsafe one).
+- The **2026-08-12/14 RAM campaign** (amix-kerntools with Z3660 and amix-z3660net, workspace record)
+  ✅ — quirk 41 (stock `autocon()`'s `end > 0x07000000` RAM-size inference of the A3000 SCSI, failing
+  in both directions, with real A3000s above 16 MB inside the affected envelope) and the campaign's
+  own method laws, quirks 42–45: the neighbour sweep that found the arena's derived constants but
+  missed `segkmap` (sized from physmem); the mandatory disassembly-diff third gate, every patch site
+  located by instruction context rather than by offset; the `elf2brel`-stripped `/stand/unix` that is
+  useless as an `adb -k` namelist; and the spontaneous reboot under a heavy raw `dd` to the boot slice,
+  whose only reliable record is the verify line the job wrote to disk. See
+  [the RAM ceiling](ram-ceiling.md).
+- First-party **accelerator acceptance campaign**, real A4000D + Z3660 with a socketed MC68LC060
+  (2026-08-31 / 09-01, workspace record) ✅ — quirk 49 (the 5/5 versus 0/3 reset-vector rates for a
+  power cycle versus the firmware's warm reset, the `0xFFFFFFFF` vector read and the runaway-CPU
+  register/vector scribble that follows it, the overlay-cleared address-4-is-chip-RAM correction, and
+  the 50-second power-cycle gap that wedged a boot where 20 seconds recovered it), quirk 50 (the
+  sticky address-error mask reproduced against a zero-error dense pass, plus the destructive
+  Autoconfig assign step, the multi-keypress test stop and the 4-hex-digit scan field), quirk 51 (the
+  two capacitive-echo detections in one night — an empty 4 MB motherboard window and a phantom 127 MB
+  over a dummy-mapped range), and quirk 52 (the two runs discarded because their serial showed no
+  firmware start, no Kickstart load and no ROM reload). Board-level signal-path documentation and the
+  campaign's tooling notes are deliberately not reproduced here.
+- The **2026-08-14/15 golden-regeneration event** (workspace record), real A4000 + Z3660 ✅ —
+  quirk 46 (`z3660_direct_map/D` printing `16777216` for a set one-byte flag, read live against the
+  running kernel), quirk 47 (`sync; sync; /sbin/uadmin 2 0` reported by the host runner as "failed
+  after 3 tries" on both halt cycles, with the `fsck`-silent verification boot as the only proof of
+  cleanliness — and used as the gate before the box's disk was imaged), and quirk 48 (a leftover
+  `cat` on the firmware serial port after a CP2103 re-enumeration had killed the logger loop,
+  starving a serial wait and presenting as "the boot menu never appeared"). Same session for
+  [§44](#44-adb-namelist)'s exception: the on-box **native-linked** `/stand/unix` keeps its symbol
+  table and is a valid `adb` namelist for itself.
 - First-party **read-only metal session**, real A4000 + Z3660, 2026-08-27 ✅ — quirk 40: `dmesg` not
   present on the system; `wtmp`'s header dated *Mar 24 1992* with zero reboot records and `last reboot`
   returning nothing; `/sbin/bcheckrc` read verbatim (pre-check verdict discarded to `/dev/null`, repair
   pass to the console with no redirection); and the passive HDMI capture at a fresh `login:` prompt
   recovering the full boot transcript, used in the same session to answer a "did fsck run?" question.
   A delta to quirk 24, orthogonal to the syslogd state.
+- The **68060's unimplemented-integer instruction class**, read against the **stock SVR4
+  trap-dispatch table** on this platform ✅ — quirk 53: the CPU's own definition of the integer
+  forms it declines to implement in silicon and traps out for software emulation (vector 61), versus
+  a dispatch table whose populated range ends at vector 55, so the vector reaches only the default
+  unhandled-vector path and the process dies as a bare `Killed` (rc 137) with no SIGILL, no SIGFPE
+  and no core. Because the forms are integer ops, the outcome does not depend on whether an FPU is
+  present ✅. The 32-bit `MULU.L`/`DIVU.L`/`DIVUL.L` spellings are hardware-implemented and
+  unaffected ✅; `CMP2`/`CHK2`/`CAS2`/`MOVEP` are named as the same architectural class rather than
+  each individually exercised 🟡. The matching porting note is on
+  [040/060 status](68040-68060-status.md#what-a-soft-fpu-port-would-require); the unrelated GNU `as`
+  2.8.1 mis-encode that produces a 64-bit divide form on a 68030 is on
+  [the toolchain page](../drivers/toolchain.md).
 
 
 ================================================================================
@@ -3218,6 +3708,12 @@ This behaviour is exposed by a firmware knob, **`service_cadence N`** ✅:
 > Disambiguation: `service_cadence` is a **software** poll-cadence knob of the firmware's device
 > emulation. The Z3660's *hardware* clock generation — CPLD timing rows, VCO/PCLK/phase — is a
 > different layer with different failure modes, covered on [Z3660 board timings](z3660-timings.md).
+
+> **Scope: it exists only in the emulated-CPU run loop.** ✅ The knob throttles the *software* 68k
+> emulator's interrupt-service poll, so on a board running a **real** 68060 with the emulator bypassed
+> there is no instruction batching to tune and the setting does nothing at all. A boot-reliability
+> problem on real silicon is a clock-tree or bus-timing problem, not a cadence one — do not spend a
+> session on this knob there.
 
 - `N` = the number of emulated instructions run between calls to the emulator's interrupt-service poll (`check_uae_int_request()`), i.e. the emulator batches `N` instructions between the poll that detects the Amiga IPL/INT2 line. **Default 1** (poll every instruction); values below 1 are clamped to 1. ✅
 - It is settable at boot in `z3660cfg.txt` and per-preset config (Z3660 commit **`e0e17d5`**), and cyclable at runtime `1→2→…→64→1` from the serial `SERV` console (commit `f7bbdb0`). ✅
@@ -3403,6 +3899,68 @@ behaviour that fully explains a metal-versus-bench divergence — and it was clo
 guard, verified byte-for-byte not to touch any other configuration ✅. The general "any 68060
 emulator" statement is 🟡 (one codebase, not a survey); the metal behaviour and this bench's gap are ✅.
 
+## An emulated CPU can report a memory window as faulty where the real CPU reads it clean ✅ {#emulated-memory-window}
+
+A memory-test result taken through an emulated CPU is a result about **the emulated access path**, not
+only about the memory. Measured on one board, same diagnostic, same 16 MB window, the two CPU paths
+disagreed completely ✅:
+
+| | emulated 68040 path | real 68LC060 |
+|---|---|---|
+| whole-block address check | **fails, 4 / 4 runs** | **passes** |
+| failing boundary | wandered between runs (≈8.5 / 12.5 / 16 MB) | one clean, stable boundary |
+| address-error mask | a different bit set on every power cycle | empty |
+| detected fast RAM | over-counted by exactly the absent 4 MB | correct |
+
+The window really held **12 MB of working RAM with the top 4 MB unpopulated**, and the emulated path's
+failures were an **access artifact** ✅. A second tell arrived free: three different mechanisms for
+looking at the *same* guest addresses returned three different pictures in that session. **When a
+value depends on how you looked at it, the disagreement is in the tooling.**
+
+Four candidate mechanisms were actively contradicted before the artifact was confirmed, and the
+negative results are worth recording because they were expensive ✅:
+
+| candidate | what killed it |
+|---|---|
+| a discrete hardware fault | a bad joint does not move its boundary *and* change its bit set on every power cycle |
+| address aliasing | two addresses inside the window demonstrably held different values at the same time |
+| a host/guest address-translation leak into the emulator's own memory | its decisive test came back negative, with a positive control at a neighbouring address proving the read-out worked |
+| motherboard DRAM refresh starvation | decay predicts errors clustering at the **start** of a verify pass (oldest cells first); 3 of 4 runs put them at the **end** — and unrefreshed DRAM decays in milliseconds to seconds, not minutes |
+
+**The rule, not the verdict, is the transferable part**: run the identical test on a second CPU path
+before attributing a memory failure to hardware. The diagnostic framing for a suspect accelerator is
+on [Z3660 board timings](z3660-timings.md#moving-boundary).
+
+## Blaming an emulator release needs the same image on the *old* build ✅
+
+A guest that stops booting after an emulator upgrade looks like an emulator regression, and the
+reflex is to pin the old release. **Run the identical image on the pre-upgrade build first.** In one
+case an inherited disk image failed to boot on a new emulator build; the *same image copy* panicked
+**identically** on the older build, exonerating the release and locating the defect in the image
+lineage instead ✅.
+
+The panic signature is worth recognising because it names the layer:
+
+```text
+s5mountroot: VOP_OPEN error 6
+PANIC: vfs_mountroot: cannot mount root: errno 89
+```
+
+**`VOP_OPEN error 6` is `ENXIO`** — the root device could not be opened *at all* ✅, which is a
+different fault from the `VOP_OPEN error 5` (`EIO`) variant on [the boot page](boot-process.md), where
+the device opened and the read failed. In both cases `errno 89` is only the `vfssw[]` walk running
+out of filesystem types to try, not a filesystem-format verdict — see
+[root-filesystem selection is by probe](boot-process.md).
+
+Two rules follow, and they apply to any bench that carries images forward:
+
+* **An image whose provenance you cannot reconstruct is not a control.** A long-inherited image
+  accumulates changes nobody recorded; when it fails, it cannot distinguish an emulator defect from
+  its own history. Retire such a lineage and mint a fresh image from a known installer run rather
+  than patching it.
+* **The falsification is cheap** — one boot of the same bytes on the previous build — and it is the
+  only step that separates "the emulator changed" from "this image was already broken".
+
 ## Where this was discovered
 
 These findings come from running Amix on the **Z3660**, a Zorro III **68030/68060-class accelerator** built around a Xilinx **Zynq-7000** SoC, whose firmware emulates the 68k with a **UAE-4.4.0-derived software CPU (with MMU)** running on the Zynq's ARM cores. So a real **A4000 + Z3660** executes Amix on that software 68030 emulator — which is exactly why the emulator-core fidelity above is load-bearing on *real hardware*, and was verified there: Amix 2.1 cold-boots to a **multiuser root login** (confirmed on the HDMI console and over telnet, `uname -a` → `UNIX_System_V … 2.1c … m68k`), reproduced on a real A4000 + Z3660 (2026-06). ✅
@@ -3436,7 +3994,675 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   - SCSI INT2 / poll-cadence: `f7bbdb0` (the run-loop consumer + runtime `SERV`/`PERF`; `check_uae_int_request()` throttled to every `service_cadence` instructions in `src/uae/newcpu.cpp`, `do_specialties()` kept per-instruction) and `e0e17d5` ("emu perf: service_cadence config option (z3660cfg + per-preset)"; `Z3660/src/config_file.{c,h}`, default sentinel → clamp `<1 → 1`). ✅ (knob mechanics) The 4-boots / 8-hangs boundary and the INT2-latency attribution are from the firmware's `docs/AMIX.md` and shipped `z3660cfg.txt`, an author hardware sweep — 🟡.
   - Two-core DMA cache coherence (branch `amix-main`, source_commit `51038f3`): `e37bb43` (SD-controller producer-side `Xil_DCacheInvalidateRange`/`Xil_DCacheFlushRange` before direct read/write) ✅; `0a4c064` (consumer-side core1 `Xil_L1DCacheInvalidateRange` after the completion spin, READ-only — a parked Cortex-A9 still speculatively refills L1D over the DMA target) ✅. The "both endpoints must maintain their own caches" general rule generalizes those two fixes, carried 🟡. Baseline was **2/2 failures** on the unfixed firmware (kmem wild-pointer bus error at `0x4AFC000C`; then a silent root-FS `ufs_readdir` corruption); post-fix a full CD read suite came back **byte-identical, 7/7** `cmp`-verified host-side (T2.P3, real A4000 + Z3660, 2026-07-10 → 07-12). ✅
 - **Live result** (first-party, ✅): Amix 2.1 cold-boots to a multiuser root login from the piscsi disk on a real A4000 + Z3660 (2026-06) — HDMI console ("The system is ready") and telnet (`uname -a` → `UNIX_System_V … 2.1c … m68k`); a 27-reboot multi-hour soak under fork/exec load ran clean (Z3660 `docs/AMIX.md`). One rare bus-error-frame `SR`-flip under extreme sustained paging load remains tracked (did not recur across the soak) — 🟡.
+- First-party **accelerator acceptance pass on a real A4000D** (2026-08-31, workspace record) ✅ —
+  the emulated-versus-real CPU-path disagreement over a 16 MB motherboard memory window (the emulated
+  path failing 4/4 with a wandering boundary and a per-power-cycle bit set, the real 68LC060 returning
+  one clean 12 MB / 4 MB split with an empty error mask), the three-different-views observation, and
+  the four contradicted candidate mechanisms. Board-level signal-path documentation from that pass is
+  deliberately not reproduced here.
+- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — the emulator-exoneration
+  falsification: an inherited guest image that would not boot was re-run **byte-identically on the
+  pre-upgrade emulator build** and panicked the same way (`s5mountroot VOP_OPEN error 6` → `PANIC:
+  vfs_mountroot: cannot mount root: errno 89`), so the release was cleared and the image lineage
+  retired in favour of a freshly installer-minted root. Emulator-version numbers and image
+  filenames are project bookkeeping and are deliberately not reproduced here.
 - First-party **68040/68060 port campaign**, FPU-less-060 software-FPE lane, real 68LC060 metal (2026-08) ✅ — the vector-60 bench-fidelity gap: a UAE-family emulator whose exception-raising guard suppressed vector 60 for an FPU-less 68060 configuration (so a kernel's vector-60 handler could not be exercised on that bed), closed by a narrowed guard verified byte-for-byte against every other configuration. The "any 68060 emulator" generalization is 🟡 (one codebase). The 68060 vector-60 architecture and instruction class are grounded on [the 040/060 status page](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon). No vendor MC68060 / FPSP text and no port source reproduced — measured behaviour paraphrased.
+
+
+================================================================================
+# FILE: docs/how-it-works/z3660-timings.md
+================================================================================
+
+---
+title: "Z3660 board timings: CPLD clock rows are per-unit and per-clock"
+summary: The accelerator's hardware clock generation — why a timing row validated on one card guarantees nothing on another, why phase values do not transfer between clock rows even on the same card, and how to diagnose "config mismatch or failing card".
+status: draft
+---
+
+# Z3660 board timings: CPLD clock rows are per-unit and per-clock
+
+This page is about the Z3660's **hardware clock generation** — the CPLD-driven PCLK/BCLK/CPUCLK
+divider and phase rows. It is *not* about `service_cadence`, the firmware's software poll-cadence
+knob, which lives on [emulation fidelity](emulation-fidelity.md#scsi-int2-interrupt-latency-a3000-mainboard-bootstrap)
+and fails in entirely different ways. If you are tuning boot reliability, know which layer you are in.
+
+**A standing safety rule for everything below: no hand-crafted or interpolated timing values.** If
+the evidence calls for a value not already validated somewhere, that is a decision for the board's
+owner — not for a tool, a script, or an agent.
+
+## A timing row is never "known good" — only "known good on this card at this clock" ✅
+
+Z3660 CPLD timing rows do **not** transfer between physical units. Two cards of the same board
+revision, running the same CPLD version, the same firmware, the same SoM and the same CPU, can
+differ in whether a given row boots at all. This has been measured in both directions: a row one
+card ran reliably for eight consecutive boots failed on a second card nine boots out of nine, with
+every other variable held fixed and the applied clock block verified digit-for-digit from the
+firmware's own readback — so "the wrong row got loaded" is excluded, and the single changed variable
+is the base card itself.
+
+**Confirmed a second time, on a second pair of cards** ✅. A tuned **80 MHz** row from a tracker of
+known-good owner configurations — same host model (A4000D), same CPU class (68LC060), same nominal
+clock, phases and dividers copied verbatim — was applied to a different physical card and *confirmed
+applied* by reading the firmware's own serial printout. 80 MHz still failed. Of that tracker row's
+whole clock table only the **50 MHz** row worked on the receiving card. Re-tuning 80 MHz for it would
+be a fresh phase campaign, not a file copy. The law now rests on two independent card pairs measured
+in opposite directions.
+
+## A fresh card arrives untuned — it ships the *stock* clock table ✅
+
+The per-unit law has a blunt practical consequence for anyone handed a card: **the tuned rows live on
+the card, not in the firmware.** A newly built card, or one whose storage has been reflashed, carries
+the **stock** clock table; the hand-fitted rows a tuning campaign produced exist only as a timings
+file on the unit they were fitted to.
+
+With the stock table and a **real 68060**, the failure is early, specific, and looks nothing like an
+operating-system problem ✅:
+
+* the firmware reaches its `060 starting now` handover and then there is **no SCSI activity at all** —
+  not a slow disk or a failed read: the CPU never issues a single request;
+* the Amiga puts up a **diagnostic colour screen** from the Kickstart ROM's own early self-test —
+  **green = a chip-RAM error, blue = a custom-chip error**;
+* with some Kickstart ROM choices it **reset-loops** instead (one card logged 174 consecutive resets).
+
+This is the Kickstart-era chipset/RAM initialisation failing on marginal bus timing, *before* any OS
+is involved, so nothing on the Amix side can fix or work around it. **Restore the card's own tuned
+table first; debug anything else afterwards.** It is also the reason the *reproducibility rule* below
+is not bureaucracy: an unrecorded row is a card that no longer boots.
+
+## Phase values do not transfer between clock rows, even on the same card ✅
+
+Sharing a VCO frequency is **not** sufficient for two rows to share phase values. Phase degrees at
+the same VCO look directly comparable in real time units, and they are not: if the rows generate
+different PCLK, the CPU-side timing relationship differs even when the motherboard clocks land
+identically. Tested deliberately — proven motherboard phases transplanted from a working row into a
+lower-clock row of the *same card*, same VCO — and refuted 0-for-3: all three boots reached a
+display and then never touched the disk at all.
+
+**A method note that came out of that test: a screen is not a boot.** A flat default-palette display
+is a display that opened and a disk that was never touched. Score boot attempts on **disk I/O**,
+never on "the screen looks up".
+
+## Community rows are per-config starting points, not validated settings 🟡
+
+Across a chart of Z3660 owners' working configurations, **every owner runs different phase values**
+(the motherboard-side pairs alone spread across roughly 140–220° on one leg and 230–320° on the
+other), across differing board revisions, CPLD versions, operating modes (real-CPU vs JIT-emulated)
+and CPU clocks. Two traps follow:
+
+* **Your own chart row may not validate the configuration you actually run** — a row recorded for
+  one operating mode at one clock says nothing about the same card in a different mode at a
+  different clock.
+* **A single matching row is not a control** — one owner's "works for me" (with caveats of their
+  own) is a candidate to try, not a baseline to measure a fault against.
+
+The reframe matters beyond tuning: independent owners all needing different phases is external
+corroboration that **per-unit variation on these cards is normal, not a symptom**. "My card needs
+different timings" is an expected property of the platform, not a fault report.
+
+## The derived-clock law, and the one hard edge ✅
+
+The clock tree is a single VCO with per-output dividers: `VCO = 200 MHz × multiplier / divider`, and
+each output clock is `VCO / its own divider`. The hard edge is the **motherboard interface: exactly
+25.000 MHz, never above it.**
+
+The interaction that is easy to get wrong: a "dividers only, leave the VCO alone" tuning method
+works **only** where `VCO / 25` is an integer. Where it is not (e.g. a VCO of 1120 → 44.8), no
+integer divider can hit the motherboard edge, and reaching the target CPU clock requires moving the
+VCO itself — a separately ratified class of edit, not a continuation of the same method.
+
+**The reproducibility rule:** keep a durable, hashed copy of the ratified row off the card. A card's
+tuning is a physical fact about that unit; if the SD is lost or reflashed, an unrecorded row is gone
+and the validation must be redone from scratch.
+
+## A measured clock envelope: one A4000D card, 80 MHz the only stable rung ✅
+
+The per-unit law above is abstract until you sweep one card. This section is that sweep — a specific
+Z3660 in an **A4000D**, socketed **MC68LC060 rev 4** (no FPU), in real-CPU mode. **Every result
+below is a fact about this one board's silicon at each clock, not a property of every Z3660** — the
+same caveat the first two laws make in general.
+
+**Descending from the card's working 80 MHz row, none of the lower `cpufreq` presets is usable** ✅:
+
+| Preset | Outcome on this card | Failure mode |
+|---|---|---|
+| **80 MHz** | boots to multiuser SVR4 login on **every** cold power-on across both sessions | — (the working row) |
+| **70 MHz** | marginal — **1 boot in 3** reached multiuser | the other two: **kernel-image checksum mismatch** reported by the Amix boot loader itself (it detected corrupt data, did not merely hang) |
+| **60 MHz** | dead — **0 of 3** | the 68LC060 never begins executing: black video console, no Kickstart, nothing |
+| **50 MHz** | dead — **0 of 11** across both sessions | scattered early: device-not-found, corrupted boot-partition read, one console reaching the full kernel banner before its telnet daemon failed to stay up; after a targeted timing fix, a repeating **"User BUS ERROR" in `/sbin/init` (PID 1)** |
+
+### The failure tracks the realised bus clock, not the nominal "CPU MHz" label ✅
+
+The firmware prints its realised clock tree on every boot, and reading the values off that printout
+(not the preset label) is what makes the pattern legible ✅. The structural fact: the **bus-facing
+clock runs at the same 25.00 MHz at both the 50 MHz preset and the 80 MHz preset** — the two presets
+that differ most in nominal "CPU MHz" share an *identical* realised bus clock — and that line only
+drops below 25 MHz at the presets in between (roughly the 55–75 MHz band, stepping to values like
+17.50 and 15.00 MHz). This is the axis the failures follow: 60 MHz (bus 15.00 MHz, furthest from
+25.00) is deadest; 70 MHz (17.50 MHz) is marginal; 50 MHz shares 80 MHz's own 25.00 MHz bus clock and
+*still* fails, downstream of the boot loader, for a different reason. The nominal MHz a preset
+advertises is not the variable that predicts stability — the realised bus-side clock tree is. (This
+is the [motherboard-25 MHz edge](#the-derived-clock-law-and-the-one-hard-edge) seen from the failure
+side: hitting 25.00 exactly is necessary, not sufficient.)
+
+### 50 MHz corrupts the kernel's own read path even after the phase difference is fixed ✅
+
+Because 50 MHz shares 80 MHz's 25.00 MHz bus clock, the two rows differ only in phase-alignment
+parameters. Transplanting the single largest such phase difference from the working 80 MHz row onto
+the 50 MHz row (a one-parameter, same-frequency edit) measurably **narrowed** the failure — from
+three scattered break points across four boots to **one reproducible break point (4 of 4)** — but did
+not close it ✅. With that adjustment the boot loader reliably reads and validates the kernel image,
+the kernel starts and prints a correct memory-size banner, and *then* the **first disk read the
+running kernel performs on its own** (as opposed to the boot loader's reads) returns corrupted data —
+traced to `/sbin/init` receiving garbage code/data and bus-error-faulting in an infinite loop. A
+disk-activity trace left running ten minutes (rather than cut off early) showed the I/O pattern of a
+genuinely wedged read path — long silent gaps, a handful of requests total — not a slow-but-
+progressing one, ruling out "50 MHz just needs more time" ✅. Four further phase/CPU-clock candidates
+were tried (five configurations total); **0 successes**, one a clear regression to a dead
+black-screen boot. The card's storage media was independently exonerated three ways across two
+sessions: a corrupted read returns a *different* wrong value on each attempt (a live corrupting
+transfer, where damaged media would return the same bytes every time), and a full re-verification at
+the known-good 80 MHz between every failing-clock experiment found every file byte-identical ✅.
+
+### The ARM co-processor runs 27% over its printed rating — but is not the cause *here* ✅
+
+Independent of the 68060-side clock: the accelerator's onboard **ARM co-processor** (which runs the
+firmware, the SD-card I/O and the emulated storage mailbox the 68060 talks to) is configured at
+**1100 MHz**, while the firmware's own boot printout states this chip's silicon is rated for a
+maximum of **866.667 MHz** — the applied clock is **~27% above the card's own stated maximum**, and
+has been throughout this investigation (not a side effect of the CPU-clock experiments) ✅. Bringing
+the ARM clock down to the firmware's in-spec default (666.667 MHz), tested with the 50 MHz CPU clock
+both alone and combined with the phase fix, **changed nothing** — still 0 successful boots ✅. So the
+out-of-spec ARM clock is a real, independently worth-fixing reliability concern for this card, but it
+is **not** what causes the 50 MHz CPU-clock failure.
+
+**Read that as scoped, not as "the overclock is harmless".** It says the ARM clock is not the cause of
+*this* card's 50 MHz no-boot. On a different card the same overclock produced a failure of its own —
+[the corrupt kernel read path](#arm-overclock-read-path) below.
+
+**The envelope, stated as a fact about this card:** the clock-frequency axis alone does not yield a
+stable sub-80 MHz operating point here — every rung between the working preset and the next-lower
+stable one fails, for at least two structurally different reasons (a dead CPU core at 60 MHz vs. a
+corrupting kernel-era disk read path at 50 MHz), and the most promising single-parameter fix narrows
+but does not close the 50 MHz failure ✅.
+
+## An out-of-spec ARM clock corrupts the 060 to Zynq kernel read path ✅ {#arm-overclock-read-path}
+
+On a second card the out-of-spec ARM clock was **not** harmless. With `arm_frequency 1100` — again
+≈27 % above the 866.667 MHz maximum the firmware prints for that part — the SVR4 boot loader reached
+the disk and then stopped:
+
+```text
+WARNING! Kernel file checksum mismatch. Expected 0x0000A7D9, found 0x000054A2.
+```
+
+**The diagnostic is which half moves** ✅. `Expected` is *constant* across boots; `found` differs on
+**every** boot (`0x3A7E`, `0xCC59`, `0x8A7D`, `0x54A2` across one session). A stale or wrongly stored
+checksum would give a constant `found`; a value that changes each time can only come from a **corrupt
+read path** — the bytes differ each time they are fetched. This is a reusable discriminator, and it
+retroactively reclassifies "kernel checksum mismatch" rows in older campaign logs that were read as
+image corruption.
+
+Two eliminations came with it:
+
+* **The storage is not the source** ✅. The firmware's own `CRC` command, run twice from the boot menu
+  over the same image file, returned an identical checksum for an identical byte count — a stable,
+  repeatable read. The bit errors are therefore **downstream of the SD card, in the 68060 to Zynq bus
+  transfer**.
+* **Lowering the ARM clock reduces but does not eliminate it** ✅. `arm_frequency 667` — the firmware's
+  in-spec default — made the mismatch much rarer, and it still returned on a later cold power-on after
+  three clean boots. An in-spec ARM clock is necessary, not sufficient.
+
+**`service_cadence` is not a lever here** ✅: the firmware documents it as an **030-MMU run-loop**
+knob, inert when a real CPU is running the code — see
+[emulation fidelity](emulation-fidelity.md#scsi-int2-interrupt-latency-a3000-mainboard-bootstrap).
+
+## Diagnosing "config mismatch or failing card" — the cheapest decisive test ✅
+
+Boot the suspect card at **its own previously-proven operating point**:
+
+| result | verdict |
+|---|---|
+| it runs | the fault is the row — a per-unit mismatch, exactly what the first law predicts when one unit's ratified row is applied to another |
+| it fails at a setting this unit itself has proven | the timing explanation is dead; the fault is something the card has **acquired** |
+
+Corollaries: an emulated-CPU boot (bypassing the real CPU) that also fails exonerates the CPU and
+its socket, because bypassing the CPU is a property of the mode — but if that boot rode a different
+clock row, its result says nothing about the untested row. Run the suspect card's own known-good
+point before concluding anything about timings.
+
+### A diagnostic ROM is a control that deliberately skips Kickstart ✅ {#diagrom-as-a-control}
+
+The second cheap test at a failing clock is to boot a **diagnostic ROM** (DiagROM) instead of a
+Kickstart. It exercises the CPU, the bus and memory, but it **never performs Kickstart's early
+chipset/RAM initialisation** — so it splits the failure in two:
+
+| DiagROM at the failing clock | verdict |
+|---|---|
+| boots and runs its tests | CPU, bus and clock tree reach that clock; the fault is in the **Kickstart-era chipset/RAM init**, which nothing on the OS side can reach |
+| fails too | the fault is below the OS entirely — CPU, bus or clock tree |
+
+Worked case ✅: a card that failed 80 MHz identically under **both** AmigaOS and Amix booted DiagROM
+fine at 80 MHz on its real 68060. That narrows "this card cannot do 80" to "this card's Kickstart-era
+chipset init cannot do 80" — a far smaller target, and it explains why the failure presents as an
+Amiga diagnostic colour screen rather than an OS panic.
+
+### Single-variable module swaps eliminate whole subsystems ✅
+
+The board is two separable pieces — the **ARM/Zynq module** and the **carrier/CPLD**. Moving the
+module from a card that ran 80 and 100 MHz well into the failing card, keeping that card's own
+storage and confirming the applied clocks on the serial, reproduced the 80 MHz failure **identically**
+✅. One variable changed, so the ARM module is eliminated, leaving the carrier/CPLD and the firmware
+build on the storage as the open suspects. The completing test is the reciprocal one: put the suspect
+storage into the *complete* other card — works ⇒ carrier, fails ⇒ firmware.
+
+### A failure whose boundary moves is not a discrete hardware fault ✅ {#moving-boundary}
+
+Two shape rules that classify a memory failure before anyone reaches for a soldering iron:
+
+* **A discrete hardware fault does not move.** A bad joint, a failed buffer or a dead memory ball
+  produces the *same* boundary and the *same* failing bits every run. A failure whose boundary **and**
+  bit set change on every power cycle contradicts a discrete fault outright ✅.
+* **Run the identical test on a second CPU path.** A window that fails every run under the emulated
+  CPU and passes cleanly on the real socketed CPU is an artifact of the emulated access path, not a
+  board defect ✅. The worked case, its table, and the four candidate mechanisms it eliminated are on
+  [emulation fidelity](emulation-fidelity.md#emulated-memory-window).
+
+Both rules earned their keep in a card acceptance pass that ended with **no defect found on either
+CPU path** — the one anomaly turning out to belong to the *host machine's* motherboard memory
+(a partial SIMM population), not to the accelerator ✅.
+
+## No readable field identifies the physical board ✅
+
+FPGA version, ARM IDCODE, silicon revision and speed grade, firmware image versions, CPLD usercode,
+DDR speed and ARM clock all read **identical** across physically different boards — every field
+names the bitstream, the part or the firmware; none names the board. Which unit a session is driving
+is a **physical-custody fact** that cannot be recovered afterwards from a log. Since rows are
+per-unit, a captured configuration is only interpretable if the card's identity was recorded
+out-of-band at the time. **Log the card's identity by hand at the top of any metal session — a
+timings file without a named unit is an unlabelled key.**
+
+## See also
+
+- [Emulation fidelity](emulation-fidelity.md) — the *software* cadence knob this page is not about,
+  and the frame-level behaviours an emulator must honour.
+- [Hardware](hardware.md) — the base machine's CPU/MMU/FPU rules.
+- [Amix on 68040/68060](68040-68060-status.md) — why this card runs a 68LC060 at all, and the
+  software-float lane it depends on.
+
+## Sources
+
+- First-party **Z3660 clock-envelope sweep** — two back-to-back real-hardware sessions on one
+  specific Z3660 in an **A4000D**, socketed **MC68LC060 rev 4**, real-CPU mode (2026-08) ✅: the
+  80/70/60/50 MHz `cpufreq` ladder against the working 80 MHz baseline (per-preset console evidence —
+  kernel-checksum mismatch at 70, black-screen at 60, the insert-disk / `IBLK`-read-failure /
+  `/sbin/init` bus-error signatures at 50), the realised clock-tree printout read at every preset
+  (the 25.00 MHz bus clock shared by 50 and 80, the 17.50/15.00 MHz dip between), the targeted 50 MHz
+  phase-adjustment follow-up with its ten-minute disk-activity trace, the three-way media-integrity
+  cross-check, and the in-spec-ARM-clock control experiment. Hardware/firmware facts only — clock
+  frequencies, boot outcomes, and register/serial signatures; no lab-infrastructure detail. **One
+  card**: the results describe this board's silicon at each clock, not a guaranteed property of every
+  Z3660.
+- First-party **second-card bring-up and acceptance campaign** (2026-08-31 / 09-01, workspace record)
+  ✅ — a *different* physical Z3660 in an A4000D with a socketed MC68LC060: the stock-clock-table
+  failure signature (no SCSI activity after the firmware's `060 starting now`, the green/blue Kickstart
+  diagnostic colour screens, the 174-reset loop under one ROM choice); the verbatim transplant of a
+  tracker's tuned 80 MHz row confirmed applied on the serial and still failing, with only the 50 MHz
+  row transferring; the `arm_frequency 1100` kernel-checksum corruption with its constant-`Expected` /
+  per-boot-varying-`found` discriminator and the partial improvement at 667; the twice-repeated
+  firmware `CRC` over the same image file exonerating the storage; the DiagROM-boots-at-80 control
+  that localises the fault to Kickstart's early chipset init; and the single-variable ARM-module swap.
+  Card identities, image names and checksums are project bookkeeping and are deliberately not
+  reproduced here.
+
+
+================================================================================
+# FILE: docs/how-it-works/load-averages.md
+================================================================================
+
+---
+title: "Load averages: uptime and w do not report the machine's load"
+summary: Two independent stock defects — a reader that resolves a COMMON symbol to garbage without an error, and a kernel count that omits the on-CPU process — make Amix load averages structurally wrong since 1992; how to read the real value today.
+status: draft
+---
+
+# Load averages: `uptime` and `w` do not report the machine's load
+
+**On Amix, the number `uptime` and `w` print is unrelated to the kernel's own load average** ✅. Its
+flavour — a permanently flat `0.00, 0.00, 0.00`, or values in the hundreds of thousands — depends
+only on what happens to sit at the address they mistakenly read. **A flat `0.00` is not an idle
+machine; it is the same defect wearing a more convincing disguise.** Anyone who has ever concluded
+"this Amix box is idle" from `uptime` has concluded nothing at all.
+
+Both halves below reproduce on the **shipped stock 2.1 kernel** — these are properties of Amix as
+Commodore released it, measured on a stock 68030 machine in a controlled 40-minute, 78-sample run
+with the run queue independently tracked by `ps -el` throughout ✅.
+
+## Defect 1 — the reader: `nlist(3)` succeeds and hands back a non-address ✅
+
+`avenrun`, the kernel's three load accumulators, is a C tentative definition — an ELF `SHN_COMMON`
+symbol — and `/stand/unix` is an `ET_REL` relocatable object, so the symbol **has no address in the
+file**: `nlist(3)` returns *success* with the symbol's **alignment** (4) as its value, and the
+reader prints whatever pointer-shaped memory lives at address 4 on that boot. The same box produced
+**both** wrongness flavours at once: `uptime` printed `0.00` in all 78 samples while a direct read
+of address 4 rendered as `458759.84 / 63495.78 / 63498.61`. This is the
+[COMMON-symbol trap](../drivers/kernel-reverse-engineering.md#the-common-symbol-trap-nlist-succeeds-and-lies)
+in its natural habitat; the reader half is **Amix's own addition** (stock SVR4's `w` prints no load
+average at all) ✅.
+
+## Defect 2 — the kernel: the load count omits the on-CPU process, so it reads exactly N−1 ✅
+
+Fix the reader and the number is *still* wrong. The accounting that produces the runnable count
+classifies every process by scheduling state and **omits the state meaning "currently executing on
+a processor"** — on a uniprocessor, exactly one process whenever the machine is busy. Measured as a
+prediction test: 1 spinner → **0.00**, 2 → **1.00**, 3 → **1.99**, with `ps` confirming the run
+queue moved 2→5 in step. This half is **inherited from the SVR4 lineage**, not introduced by the
+port ✅ (stated as behaviour; the ancestral source is proprietary and is not quoted).
+
+Everything either side of the two defects is healthy ✅: given a correct count, the averaging is
+textbook — right time constants, right decay ordering (1-min crosses below 5-min below 15-min),
+`FSCALE = 256`. Only the input count and the reader are wrong.
+
+## Reading the real value today, with no fix ✅
+
+```sh
+echo 'avenrun/3X' | adb -k /stand/unix /dev/mem     # divide each by 256
+```
+
+`adb -k` reproduces the boot loader's COMMON placement — with two load-bearing conditions: the
+namelist must be **the kernel actually running**, and when the running kernel exists in **no file**
+(loaded from a raw slice), `adb -k /stand/unix` fails *silently* with plausible zeros — replay the
+loader's allocation host-side instead. Both conditions, the ten-second COMMON tells, and the
+fallbacks are on the
+[reverse-engineering page](../drivers/kernel-reverse-engineering.md#the-common-symbol-trap-nlist-succeeds-and-lies).
+`crash(1M)` does not work here (`process slot out of bounds`) ✅.
+
+The blast radius is every `nlist`-based consumer of a COMMON kernel symbol — `uptime` and `w`
+confirmed; anything else reading `avenrun` the same way is equally affected and equally silent 🟡.
+The fix, if anyone wants it, is cheap on both halves: resolve through the running image in the
+reader, add the missing state to the kernel's accounting switch. Neither has been attempted ✅.
+
+## The same silent-miss on real hardware: the kernel *load base* moves with the accelerator card ✅
+
+The defect above is a *plausible-but-wrong number read from an address that isn't what you think it
+is*. The same class recurs one level down, at the kernel's **load base** — the address the kernel
+image itself is loaded at (a load *address*, not to be confused with the load *average* the rest of
+this page is about). Any host-side tool that computes a runtime kernel address as `load_base +
+offset` — to read a counter, a symbol, or a magic word out of `/dev/mem` — inherits exactly the
+COMMON-symbol trap's failure signature if it pins the wrong base: an `adb`/`/dev/mem` read at the
+wrong address returns a *plausible* number rather than an error ✅.
+
+**On an Amiga running Amix from a raw-slice-loaded kernel, the load base is set by the accelerator
+card's fast-RAM, not by the machine — so it moves when the CPU card changes** ✅. A kernel loaded
+into an accelerator's 32 MB fast-RAM region loads at that region's base: a **68060 Mercury** card
+places it at **`0x08000000`**; swapping to an **A3640/68040** moves it to **`0x07000000`** — a 16 MiB
+shift. Every runtime address computed off the old base is then wrong by that amount, silently. The
+load base is therefore not a constant to hardcode; it is an input to **verify** ✅.
+
+**The remedy that works: a fail-closed magic-word gate** ✅. The port kernel's counter blocks carry
+magic words (`fpe_magic` = `"FPE!"` `0x46504521`, `f60_magic` = `"FP60"`, and siblings `fpc_magic` /
+`fpi_magic` / `fpe_abort_magic`). Before trusting any derived address, read the anchor magic at its
+*computed* address and compare it against the value the ELF artifact actually holds (read from the
+artifact, never a hardcoded table). A mismatch means the base is wrong — **refuse loudly** and try
+the other candidate; probing `{0x08000000, 0x07000000}` and keeping the base whose magic reads back
+correct turns a silent megabyte-off read into a caught, named error. This is implemented and verified
+in `amix-kerntools/tools/comaddr.py` (commit `4cc29cc`): `--load-base` with the fail-closed gate (a
+deliberate wrong base is refused, exit 3, naming the base to try; `--discover` picks the correct
+candidate), a host-static 18-case selftest — the box read is an input, so the check is
+offline-testable ✅. The magic words themselves are the [software-FPE lane](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)'s
+counter anchors; reported firsthand from real hardware, where a 68060→68040 card swap moved the base
+and the magic-word check caught it on the first read ✅.
+
+The through-line with [Defect 1](#defect-1-the-reader-nlist3-succeeds-and-hands-back-a-non-address)
+and the [COMMON-symbol trap](../drivers/kernel-reverse-engineering.md#the-common-symbol-trap-nlist-succeeds-and-lies):
+a wrong-but-plausible number from an address that moved is only ever caught by *validating the read
+against something the target must independently satisfy* — a magic word here, the running kernel's
+own namelist there.
+
+## See also
+
+- [Kernel reverse-engineering](../drivers/kernel-reverse-engineering.md) — the COMMON-symbol law and
+  the load-bias trap, kept distinct.
+- [Quirks §38](quirks.md) — the checklist row.
+- [Amix on 68040/68060](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)
+  — the software-FPE lane whose counter magic words anchor the load-base gate.
+
+## Sources
+
+- First-party load-average measurement — a stock Amix 2.1 68030 machine, a controlled 40-minute,
+  78-sample run with the run queue independently tracked by `ps -el` throughout ✅: `nlist(3)`
+  resolving `avenrun` (a `SHN_COMMON` symbol in the `ET_REL` `/stand/unix`) to its alignment (4) and
+  succeeding; the flat `0.00` vs. six-digit-garbage duality read at address 4; the N−1 on-CPU-omission
+  prediction test (1 spinner → 0.00, 2 → 1.00, 3 → 1.99); and the healthy averaging either side
+  (`FSCALE = 256`, correct decay ordering). The reader half is Amix's own addition (stock SVR4 `w`
+  prints no load average); the count half is inherited from the SVR4 lineage (behaviour only, source
+  not quoted).
+- First-party **68040/68060 port campaign** + `amix-kerntools` — the kernel-load-base finding ✅: a
+  raw-slice-loaded kernel loads at the accelerator's fast-RAM base (68060 Mercury `0x08000000`,
+  A3640/68040 `0x07000000`), so it moves on a card swap and a pinned base silently reads the wrong
+  memory (the same silent-miss class as a stale COMMON address); the fail-closed magic-word gate
+  (`fpe_magic`/`f60_magic`/…, read from the ELF artifact) as the remedy, implemented and verified in
+  `amix-kerntools/tools/comaddr.py` @ `4cc29cc` (host-static 18-case selftest; `--load-base` /
+  `--discover`), corroborated firsthand on real hardware by a 68060→68040 card swap the check caught
+  on the first read.
+
+
+================================================================================
+# FILE: docs/how-it-works/performance-benchmarks.md
+================================================================================
+
+---
+title: "Performance benchmarks: Dhrystone, disk I/O and thermals"
+summary: Measured Dhrystone, sequential disk-I/O and CPU-temperature figures for Amix on real and emulated 68k, together with the method each set of numbers was taken by.
+status: draft
+---
+
+# Performance benchmarks — Dhrystone, disk I/O & thermals
+
+Living reference for Amix performance on real and emulated 68k. **Our reference machine is the
+A4000D + Z3660 accelerator** (real 68LC060, no FPU → software FPE); every row marked *ours* is that
+box unless stated otherwise. This page is updated as new benchmark runs land.
+
+**Provenance, once for the whole page:** rows marked *ours* are first-party measurements on that one
+machine ✅; the **Mercury** rows are collaborator-reported and not reproduced by us 🟡; the A3000
+68030 row is a published reference figure 🟡. Individual claims that are weaker than their
+surrounding section carry their own tag inline.
+
+## Dhrystone 2.1 (Dhrystones per second)
+
+Integer Dhrystone 2.1, one comparable binary basis across rows (the FP-free `dhry` on FPU-less parts).
+Higher is faster; `per-MHz` = Dhrystones/s ÷ CPU clock (clock-independent efficiency).
+
+| Machine | CPU / config | clock | Dhrystones/s | per-MHz | source |
+|---|---|---|---|---|---|
+| A3000 (baseline) | 68030, stock | 25 MHz | 5,309.7 | 212 | reference |
+| **A4000D + Z3660 (ours)** | **EMU 030 MMU** (Zynq-UAE soft-030) | emu | 6,396.6 | — | ours |
+| **A4000D + Z3660 (ours)** | **EMU 040 MMU** (Zynq-UAE soft-040) | emu | 8,100 | — | ours |
+| A3000 + Mercury | 68040, caches OFF | 33 MHz | 5,366.7 | 163 | Antti (Mercury) |
+| A3000 + Mercury | 68040, I-cache on, D-cache off | 33 MHz | 11,538.5 | 350 | Antti |
+| A3000 + Mercury | 68040, I-cache + prelim D-cache | 33 MHz | 18,292.7 | 554 | Antti |
+| A3000 + Mercury | 68040, I+D cache + copyback | 33 MHz | 30,050.1 | 911 | Antti |
+| A3000 + Mercury | 68060, all caches + copyback | 66 MHz | 60,423.0 | 916 | Antti (Mercury) |
+| **A4000D + Z3660 (ours)** | real 68LC060, FPE, no FPU | 80 MHz | **70,257.6** | 878 | ours (2026-08-26; reproduced **exactly** 2026-08-31 on a different kernel) |
+| **A4000D + Z3660 (ours)** | real 68LC060, FPE, no FPU | 100 MHz | **87,976.5** | 880 | ours (2026-08-31, spread 0) |
+
+**Both EMU rows are the Zynq's ARM-hosted soft-68k** (UAE-derived) — ARM-bound, not 68k-clock-bound, so
+there's no meaningful per-MHz ✅. Current figures: **EMU 030 MMU = 6,396.6, EMU 040 MMU = 8,100**. Earlier
+pre-optimization runs were lower (an 08-18 soft-030 ≈ 4,615, an 08-21 soft-040 ≈ 3,818); the 030-MMU /
+emulation-speed work brought them to the current numbers ✅. The real-silicon FPE lane (70,257.6 @ 80 MHz)
+is ~11× the emulated modes — that gap is real hardware vs emulation, not a 68k-generation difference ✅.
+
+### Reading the numbers
+- The Mercury 68040 @ 33 MHz cache progression (5,367 → 11,539 → 18,293 → 30,050) shows the caches are
+  worth **~5.6×** end to end: instruction cache alone ~2.1×, +data cache ~1.6×, +copyback another ~1.6× 🟡
+  (arithmetic over the collaborator-reported rows — we have not reproduced any of them).
+- With full caches, Antti's 68040 and 68060 both land near **~911–916 dhry/MHz** 🟡; our real 68LC060 on
+  the Z3660 is **878/MHz** ✅ — slightly lower, consistent with the LC060 + Z3660 bus 🟡 (a plausible
+  reading of the difference, not an isolated measurement of the bus).
+- Dhrystone is **linear in PCLK** on this part at ≈875 ± 7 Dhry/MHz ✅ (measured, below); the small
+  867→880 rise with clock is timer quantisation (`hz=60` — fewer ticks per run at speed), not a real
+  effect 🟡 (a consistent explanation, not an isolated measurement).
+
+### Ours across clocks — real 68LC060, 2026-08-31 campaign
+
+FP-free `dhry` (sha256 `41f6755a…` — the fieldkit's shipped `dhry` dies `SIGSYS` on this FPU-less part),
+500,000 passes, 3 runs per row, multiuser verified by telnet `uname`/`who -r` before every row.
+
+| MHz | Dhrystones/s (3 runs) | spread | Dhry/MHz | boot reliability |
+|-----|----------------------|--------|----------|------------------|
+| 50  | 43,227.7 / 43,352.6 / 43,352.6 | 0.29 % | 867.1 | booted every time |
+| 70 ⚠ | 61,224.5 / 61,224.5 / 61,099.8 | 0.20 % | 874.6 | **NOT reliable — see below** |
+| 80  | 70,257.6 / 70,257.6 / 70,093.5 | 0.23 % | 878.2 | booted every time |
+| 100 | 87,976.5 / 87,976.5 / 87,976.5 | **0** | 879.8 | booted every time |
+
+- The 80 row reproduces the 2026-08-26 first-68060-Dhrystone **exactly** (70,257.6) — on a *different
+  kernel* than that row, i.e. cross-kernel repeatability ✅.
+- 70 runs a 20 MHz bus (the others 25) yet sits on the same Dhry/MHz line ✅ — bus frequency barely
+  affects a cache-resident integer loop 🟡 (one clock pair, offered as the explanation of the rows above).
+
+> ⚠ **70 MHz is not a dependable clock on current evidence** ✅ (rates) / 🔴 (cause) — 2026-08-31: boots **2/2** from a pristine
+> disk after a full power-cycle, but **0/4** when switched via the firmware console (`CCF`) from another
+> halted clock on the worked disk. Failure = kernel loads then hangs pre-root-mount. The two candidate
+> causes (disk state vs firmware/PLL reprogramming state) are confounded — every success had both a fresh
+> image *and* a fresh power-cycle. Its Dhrystone numbers are valid for the boots that succeeded; they are
+> not evidence the clock is dependable. 50/80/100 booted every time asked.
+
+## Disk I/O — SD card through piscsi (A4000D + Z3660, 2026-08-31)
+
+The "disk" on our box is the Z3660's **piscsi-backed `.hdf` image on the Zynq's SD card**, not a real
+hard drive. Sequential, 64 KB blocks, 8 MB extent; read = the raw root slice `/dev/rdsk/ced0s1`, write =
+a scratch *file* (never a raw device). Values in KB/s; repeats shown where taken.
+
+| MHz | seq read | seq write |
+|-----|----------|-----------|
+| 50  | 1,706.7 | 1,428.8 · 1,498.5 |
+| 70  | 2,056.6 | 1,768.1 · 1,840.9 |
+| 80  | 2,296.8 · 2,329.5 | 1,827.2 · 1,981.9 · 1,927.5 |
+| 100 | 2,614.5 · 2,628.4 | 2,100.5 · 2,174.9 · 2,174.9 |
+
+- **Both directions scale with CPU clock** ✅ → the path is CPU/driver-bound, not media-bound; the SD
+  card is not the limit at these rates (~2.6 MB/s read @ 100 MHz) ✅.
+- Small-block reference (80 MHz): sequential **512 B** reads = 409.6 KB/s ✅ — latency-bound, ~5.6× worse
+  per byte than 64 KB blocks.
+- Measurement note: the *first* write into a freshly created file pays allocation/metadata cost (one
+  early 100 MHz write read 851.9 KB/s and did not replicate — withdrawn; always repeat writes) ✅
+  (the outlier and its non-replication are measured; the allocation-cost explanation for it is 🟡).
+
+## Thermals — real 68LC060 under load (A4000D + Z3660, 2026-08-31)
+
+First thermal characterisation of our 68LC060, read from the Z3660's own CPU thermistor
+(LTC2990 path; THERM calibration at firmware defaults 800.0/27.0, so absolute values are
+approximate but self-consistent across all runs quoted here). Cooler state: a new
+heatsink + fan **merely resting on the CPU — no thermal paste, not clamped**. Ambient 22 °C.
+Load = the sustained mixed Dhrystone + disk-I/O soak loop.
+
+| clock | idle | load plateau (mean) | band | Δ load−idle |
+|-------|------|---------------------|------|-------------|
+| 80 MHz  | 50.1 °C | **53.8 °C** | 52.4–54.9 | +3.7 |
+| 100 MHz | 52.9 °C | **57.5 °C** | 55.6–58.9 | +4.6 |
+
+- Peak ever observed **58.9 °C**, against a 70 °C abort threshold ✅. The part reaches its load
+  band within ~5 min (80) / ≤4 min (100); the band oscillates ±0.9 °C with workload phase ✅.
+- Slope for this cooler: load ≈ **0.19 °C/MHz**, idle ≈ 0.14 °C/MHz 🟡 — two points, an
+  interpolation, not a demonstrated law.
+- **No thermal throttling on this part, demonstrated** ✅ — at 100 MHz, 56 of 176 Dhrystone runs
+  came in at or *above* the 87,976.5 reference (4 above it — a throttling part cannot beat
+  its own reference), and the slower timer-tick buckets split exactly evenly between the
+  first and second halves of the 38 min load at both clocks: OS scheduling noise, no thermal
+  trend.
+- Only prior data is the 2026-08-28 old-cooling record (53.2–56.4 °C at 80 MHz, still
+  climbing, lighter load, ambient unrecorded) 🟡: the new cooler is better in direction, but the
+  comparison is **uncontrolled** and must not be quoted as a measured delta. The controlled reference
+  is this run vs the future **properly-mounted** cooler re-run, whose protocol is pinned.
+
+All the figures above are ✅ first-party measurements; the °C/MHz slopes are a **two-point
+interpolation between them**, not a demonstrated law 🟡.
+
+### How the temperatures were read ✅
+
+The board measures the CPU itself: a firmware thread reads an **LTC2990** across a thermistor
+divider, converts the voltage ratio with the calibration constants from the board config, and stores
+the result in a small `Measures` struct in the ARM's DDR ✅. That thread runs in the firmware core's
+main loop, so the values are live *while the guest is running* — which is what makes a during-load
+reading possible at all. No serial command prints them; two **read-only** paths reach them:
+
+* a **memory dump on the firmware debug console** (`DM`), decoded against the struct layout — eight
+  32-bit fields, scaled by 10 or 100, of which the CPU thermistor is one ✅;
+* a **raw I²C register trace** (`DI2C`) of the LTC2990 itself, decoded host-side. It depends on **no
+  symbol address at all**, so it independently validates the dump-based decode ✅.
+
+Two method rules make those numbers trustworthy, and both generalise past this board:
+
+* **Locate the struct by its data signature, not by a symbol address you trust.** The address came
+  from `nm` on one firmware build, but the *flashed* image need not be that build. So each session
+  dumps a wide window and finds the struct by its **rail signature** — a 3.3 V field immediately
+  followed by a 4.9 V one — and every later sample re-checks those rails and **refuses to emit a
+  number if they are wrong** ✅. A mismatched build then fails loudly instead of publishing plausible
+  garbage decoded from the wrong bytes.
+* **Never instrument across a timed benchmark run.** Every firmware `printf` blocks the firmware core
+  on a polled UART, and that same core services the **emulated timer the guest's Dhrystone is
+  measured against** ✅ — so a temperature read taken during a timed run perturbs the very clock the
+  run is timed by. Sample between runs, and confine the chattier I²C trace (~2.5 lines/s) to idle,
+  load-stop and end-of-cooldown windows. Stated generally: **the instrument must not share a resource
+  with the thing being measured.**
+
+### Reading a thermal plateau — three corrections worth inheriting ✅
+
+* **The post-load-stop reading is a cooldown point, not a plateau.** The part sheds **3–4 °C in the
+  ~40 s** it takes to stop the load loop (53–55 °C under load versus 50.97 °C in the window just
+  after) ✅. Cross-validation of the two readout paths therefore rests on the **idle** comparison,
+  where they agree within a fraction of a degree — validating two sensors against a falling sample
+  would have "disagreed" for no reason at all.
+* **The plateau is a band, not a point.** The trace oscillates ±0.9 °C, and that is **workload-phase
+  aliasing** ✅: one loop iteration is ~14 s of CPU-bound Dhrystone (hot) followed by an I/O-bound
+  measurement (the CPU idles, and cools), so a 60 s sample catches a different phase each time.
+* **Time-to-plateau is therefore tolerance-sensitive**, and the sensitivity is published rather than
+  one flattering figure ✅ (80 MHz leg):
+
+| tolerance on the trailing-5 mean | time to plateau |
+|---|---|
+| ±0.36 °C (one thermistor LSB) | 18 min |
+| ±0.50 °C | 10 min |
+| ±0.75 °C | 5 min |
+| ±1.00 °C | 4 min |
+
+  The raw curve reaches 54.5–54.9 °C within 4–6 min and only oscillates afterwards, so *"the part
+  reaches its load band in about five minutes"* is the honest headline. Quantisation sets the floor:
+  distinct readings step by ≈0.355 °C — one LSB of the sensor's ADC through this divider — so a
+  tighter plateau criterion would merely be demanding five identical codes ✅.
+
+## Open items
+- **Mounted-cooler thermal re-run** — repeat the pinned 80+100 soak protocol after the
+  cooler is pasted/clamped; THERM calibration must stay at 800.0/27.0 for comparability.
+- **70 MHz boot-reliability confound** — needs one designed experiment: `CCF 70` on a worked disk *after*
+  a power-cycle, and on a pristine disk *without* one.
+- **60 MHz** — no working clock config found (2026-08-30 campaign, full negative matrix); untried lead:
+  duty cycles.
+
+## See also
+
+- [Z3660 board timings](z3660-timings.md) — why a clock that benchmarks well may still not boot, and
+  the per-unit timing law behind the clock column above.
+- [Load averages](load-averages.md) — why the box's own `uptime` cannot be used to score any of this.
+- [Quirks](quirks.md#47-halt-looks-like-failure) — the halt, reset and serial laws a metal benchmark
+  session runs on.
+
+## Sources
+
+- First-party **four-clock benchmark campaign**, real A4000D + Z3660 with a socketed MC68LC060 rev 4
+  (FPE, no FPU), 2026-08-31 ✅ — the Dhrystone rows at 50/70/80/100 MHz (three runs per row, one
+  FP-free `dhry` binary throughout, multiuser verified by `uname`/`who -r` before every row), the
+  sequential 64 KB disk-I/O table and its 512 B small-block reference, the withdrawn first-write
+  outlier, and the 70 MHz boot rates (2/2 pristine-after-power-cycle versus 0/4 switched on a worked
+  disk) with the two confounded causes stated rather than resolved.
+- First-party **thermal and stability soak**, same machine and campaign, 2026-08-31 ✅ — the 80 and
+  100 MHz idle and load figures at 22 °C ambient with the cooler resting unpasted and unclamped; the
+  LTC2990 readout method, its rail-signature guard and the I²C cross-check; the plateau-band and
+  time-to-plateau sensitivity; and the time-order analysis over 255 Dhrystone runs behind the
+  no-throttling result. The 2026-08-28 record is used only as a loose anchor, never as a control.
+- The **Mercury 68040 / 68060 rows** are collaborator-reported figures from a separate A3000 + Mercury
+  effort and are not first-party 🟡; the A3000 68030 baseline is a published reference figure 🟡.
+- The two **EMU** rows are the Z3660 firmware's ARM-hosted soft-68k cores (030-MMU and 040-MMU) on the
+  same machine ✅ — emulated modes on real hardware, which is why they are ARM-bound.
 
 
 ================================================================================
@@ -4799,6 +6025,20 @@ For the full hardware story — supported SCSI/graphics/network/serial cards, th
 
 **The Z3660's effective config is two layers — the preset overlay wins.** ✅ `z3660cfg.txt` declares the `hdfN` disk-image files, but the active `presets/presetN.txt` (chosen by `presets/preset.txt`) **overrides every key it sets** — boot mode, `amix_mode`, the Kickstart choice, and the `scsiN <hdf-index>` assignments — and the env parser handles only the `scsiN` indices, never `hdfN` declarations. The practical trap: editing `z3660cfg.txt` alone to re-map which image sits on which SCSI ID is **silently inert** when a preset carries `scsiN` lines. Change both layers (declare the image in the base, remap the SCSI ID in the active preset), and always confirm from the firmware's own boot print — it logs the effective join as `[CFG]`/`[ENV] SCSIn assigned to …`.
 
+**The Amiga's own keyboard is a second, live input into the accelerator's firmware boot menu** ✅ —
+and that menu is a *single-key* consumer, where one keystroke can start a destructive operation. A
+host-side console guard on the serial line can neither see nor mediate it: the guard's whole model is
+that serial is the only way in, and it is not, whenever someone is physically at the machine. **Rule:
+no scripted boot-menu operations while anyone is hands-on at the box.** The same property bites
+confirmation prompts — a firmware `overwrite? (y/n)` can be answered by a stray keyboard byte before
+the scripted answer arrives over the serial line, so a script that sends its command and its
+confirmation as *separate* writes has a race it cannot see. Send both in one write, so the answer is
+already in the serial FIFO when the prompt reads it.
+
+For the reset, halt and serial-capture laws that go with this — a warm reset is not a clean-state
+reset, a successful remote halt looks like a transport failure, and a stray reader eats the console
+stream — see [quirks 47–52](../how-it-works/quirks.md#47-halt-looks-like-failure).
+
 ### Why SCSI ID 6 and ID 4 matter so much
 
 The install scripts on the root floppy stream the distribution from the tape at the literal `/dev/rmt/4h` / `/dev/rmt/4hn`, and reference the disk through a `$SCSI` variable (`/dev/dsk/c${SCSI}d0s${BOOTPART}`). ✅ The **tape must be at ID 4** — the installer looks nowhere else for the distribution media. The **disk is ID 6 by convention**: the installer prompts for the disk target, so another ID would work, but pick 6 — the chosen ID is baked into the device names (`/etc/vfstab`) once installed, so changing it later means editing that file 🟡. **Set the tape to SCSI ID 4 and the disk to SCSI ID 6 before you start.** Getting the *tape* ID wrong is the single most common reason a real-hardware install can't find its distribution media. ✅/🟡
@@ -4851,6 +6091,8 @@ Beyond the community tape-free lore above, a **complete from-scratch install has
 - **Boot-priority does the post-install hand-off for free.** Give the source disk's bootable partition a *lower* RDB boot priority than the freshly-written target's; the Kickstart scan cleanly skips the target's *empty* bootable slice before install, then — once the installer has written the target's real boot chain — the target wins the next scan with no media swap or config edit.
 - **The device-name minor number is `(slice << 4) | id`** on the Z3660 SCSI stack, the same encoding as everywhere else — useful when hand-deriving `/dev` nodes on the metal box.
 - **The outcome is byte-identical to an emulator-built install**: the installed tree's attestation digest matched the bench reference exactly. Emulation-built install media produces a bit-for-bit identical result on real hardware.
+- **An installer-minted root can be attested end-to-end from the box's own package database** ✅ — the digest is computed over the installed standard package set as the box itself records it (`/var/sadm`), not over the media it came from. That is what separates a *golden* image from a disk that merely boots: its contents are provable against the installer's own manifest without trusting the host that built it.
+- **Budget minutes per iteration on metal.** A cold power-on to a networked multiuser box (run level 2, the ethernet interface up) takes **≈270 s** on this rig, reproduced over two cold boots ✅ — an order of magnitude slower than the emulator loop, and the single biggest cost in any metal test matrix.
 - Ops note: some large packages hold the console silently for many minutes during extraction — that is normal, not a hang; the metal Amix console is HDMI-only (the accelerator's serial log ends at the firmware→Amix handoff).
 
 ### Non-standard tape drives: `viper_kludge` 🟡
@@ -4903,6 +6145,12 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 - Research brief §8 (Emulation: WinUAE reference target; Amiberry 8.x adds A3000 SCSI + tape support — BlitterStudio/amiberry issue #1376, implemented). First-hand confirmation on Amiberry 8.1.6.
 - ZuluSCSI/flash-SCSI substitution, old hub / media-converter need, and the byte-level tape-free recipe: **community-reported (🟡)**, retro-Amiga community practice and comp.unix.amiga; not primary-verified in any Amix source.
 - The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window (`AMIX_A3000MEM_MB`), the dummy bank preventing coalescing past the ceiling, the `amix_mode`-forces-CPU-RAM-off contract, and the "not in section 1" panics coming only from >16 MB / split windows: read from `Z3660_emu/src/uae/uae_emulator.cpp`, `Z3660/src/config_file.c`, `AMIX_SCSI_design.md`, `docs/AMIX.md` ✅.
+- First-party **thermal soak session**, real A4000D + Z3660, 2026-08-31 ✅ — the Amiga keyboard as a
+  second live input into the accelerator's firmware boot menu, found when a stray keyboard byte
+  answered a firmware confirmation prompt ahead of the serial-side answer; and the single-write fix
+  that closes the race. Performance and temperature figures from the same session are on
+  [performance benchmarks](../how-it-works/performance-benchmarks.md).
+- The **2026-08-14/15 golden-regeneration event** (workspace record), real A4000 + Z3660 ✅ — the first root image minted **by** the installer rather than inherited, attested from the box's own package-contents database and cold-booted twice; and the ≈270 s cold-power-on-to-networked-multiuser figure measured across those two boots. Image names and digests are project bookkeeping and are deliberately not reproduced here.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
 
 
@@ -7364,15 +8612,15 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 🔴 **"Zorro II only" is imprecise about `autocon()` itself.** `autocon()` searches the same `bootinfo.autocon[NAUTO]` table for *any* AutoConfig board and returns the assigned base for a matched product id — **including Zorro III boards** ✅ (first-party, from the A4091-on-Amix project; `autocon()` in `amiga/kernel/support.c`). The match is purely on `(er_Manufacturer, er_Product)`; nothing in the table search rejects a Zorro III address. So a Zorro III board *does* AutoConfigure and `autocon()` *does* hand back its base.
 
-🔴 **The actual wall is the 68030 Transparent-Translation gap, not `autocon()`.** Amix maps physical space with two Transparent-Translation registers (`amiga/ml/ttrap.s`) ✅:
+🔴 **The actual wall is that Zorro III space falls outside the kernel's identity map, not `autocon()`.**
 
-| TT register | Value | Physical range it makes directly addressable |
-|---|---|---|
-| `tt0` | `0x003F0143` | `0x00000000`–`0x3FFFFFFF` |
-| `tt1` | `0x807F0143` | `0x80000000`–`0xFFFFFFFF` |
-| *(gap)* | — | `0x40000000`–`0x7FFFFFFF` **unmapped** |
+### How the low 1 GB is really mapped {#the-identity-map}
 
-A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside TT0, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped gap** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Widening TT0 is unsafe: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`.
+**AMIX does not use the 68030's Transparent-Translation registers at all** ✅. On a running kernel both TT registers read **E = 0 (disabled)** — the boot path zeroes them — and the identity mapping of the low **1 GB** (`0x00000000`–`0x3FFFFFFF`) is produced by the MMU instead: a **section-0 early-termination page descriptor in the root table**, which maps that whole span 1:1 without a second-level table ✅ (measured on a running kernel, 2026-08 RAM campaign). Everything at or below `0x3FFFFFFF` is therefore directly dereferenceable from kernel code; **`0x40000000`–`0x7FFFFFFF` is not mapped at all** ✅.
+
+> **Correction (2026-08-14).** This page — and roughly ten others across this site — previously attributed that identity map to `tt0 = 0x003F0143` / `tt1 = 0x807F0143`, values that do appear in `amiga/ml/ttrap.s`. The constants are in the source; the running kernel does not use them. **Every conclusion is unchanged** — a Zorro II board is still directly dereferenceable, a Zorro III board at `0x40000000` still is not, and `sptalloc()` is still the way across — only the mechanism differs ✅. Pages that discuss the boundary now say *"inside the identity-mapped low 1 GB"* and *"the unmapped region above the identity map"* and link here.
+
+A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`.
 
 The fix is the kernel primitive **`sptalloc(npages, prot, pfn, flag)`**, which page-table-maps physical pages into kernel VA ✅. A Zorro III driver takes the `autocon()` base and `sptalloc`-maps it before any register access:
 
@@ -7502,7 +8750,7 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 
 ## See also
 
-- [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board brought up over the TT gap with `sptalloc()`; the auto-detection consumer of `autocon()`.
+- [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board brought up over the unmapped region above the identity map with `sptalloc()`; the auto-detection consumer of `autocon()`.
 ## The phantom on a real A4000: a fabricated entry whose every I/O is fatal ✅
 
 On real A4000 metal the fabricated card-0 entry is worse than a mis-ordering. Nothing decodes
@@ -7550,8 +8798,9 @@ that byte does; **decode the byte before concluding anything** (see [quirks §37
 - `asokero/lszorro-amix` repo — `/dev/mem` `mmap()` scan, `0x80`-byte windows, I/O `0xE90000`–`0xEFFFFF` / mem `0x200000`–`0x9FFFFF`, AutoConfig nibble decode, 461-entry ID DB, register-only fingerprinting: <https://github.com/asokero/lszorro-amix>
 - `asokero/va2000-amix` repo — VA2000 AutoConfig mfr `0x6D6E` product `0x01`, 4 MB Zorro II window, `autocon()` usage: <https://github.com/asokero/va2000-amix>
 - `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x08490001` (2121/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
-- The A4091-on-Amix project — `NOTES.md` §2, §6, §7 (reproduced locally ✅; Zorro III + TT gap, `sptalloc()`, phantom-A3000, chipset-gated WD33C93 detection) and `src/`/`tools/`.
-- `src/kernel-patches/support.c` — the full `autocon()` with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (TT registers `tt0=0x003F0143` / `tt1=0x807F0143` from `amiga/ml/ttrap.s`; A4091 product id `0x02020054`).
+- The A4091-on-Amix project — `NOTES.md` §2, §6, §7 (reproduced locally ✅; Zorro III above the identity map, `sptalloc()`, phantom-A3000, chipset-gated WD33C93 detection) and `src/`/`tools/`.
+- `src/kernel-patches/support.c` — the full `autocon()` with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (A4091 product id `0x02020054`). The TT-register constants `tt0=0x003F0143` / `tt1=0x807F0143` also read from `amiga/ml/ttrap.s` there are **not** what the running kernel uses — see the 2026-08-14 correction above.
+- The **2026-08-12/14 RAM campaign** (workspace record): AMIX zeroes the 68030 TT registers (E = 0) and the low-1 GB identity map is a section-0 early-termination page descriptor in the MMU root table, measured on a running kernel ✅ — the correction to the TT0 mechanism carried across this site.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx` SCRIPTS assembler).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model and kernel API context (see [bibliography](../reference/bibliography.md)).
 - amigaunix.com — historical and hardware reference: <https://www.amigaunix.com/doku.php/home>
@@ -9412,19 +10661,20 @@ A4091 a first-class, auto-detected SCSI controller alongside them.
 
 The board is in **Zorro III** space, and that is exactly where the stock drivers' trick breaks down.
 
-🔴 **"Zorro III is unaddressable" — was thought absolute, is actually a TT-register gap with a
-work-around.** Amix's 68030 maps physical address space with two **Transparent Translation**
-registers (`amiga/ml/ttrap.s`) ✅:
+🔴 **"Zorro III is unaddressable" — was thought absolute, is actually an unmapped address range with
+a work-around.** Amix identity-maps only the **low 1 GB** of physical address space,
+`0x00000000`–`0x3FFFFFFF` ✅. That leaves **`0x40000000`–`0x7FFFFFFF` unmapped — and the A4091 sits
+in it** ✅. Zorro II boards are ≤ 24-bit (e.g. the A3000 SCSI at `0xDD0000`), so they fall inside the
+identity map; that is why the stock WD33C93 drivers can simply dereference the address `autocon()`
+returns. Extending the identity map upward to cover the gap is **unsafe** — `amiga/ml/syms.s` places
+the page-mapped u-area at `0x40000000` ✅.
 
-```
-tt0 = 0x003F0143   maps phys 0x00000000 - 0x3FFFFFFF
-tt1 = 0x807F0143   maps phys 0x80000000 - 0xFFFFFFFF
-```
-
-That leaves **`0x40000000 - 0x7FFFFFFF` an unmapped gap — and the A4091 sits in it** ✅. Zorro II
-boards are ≤ 24-bit (e.g. the A3000 SCSI at `0xDD0000`), so they fall inside TT0; that is why the
-stock WD33C93 drivers can simply dereference the address `autocon()` returns. Widening TT0 to cover
-the gap is **unsafe** — `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000` ✅.
+> **Correction (2026-08-14).** This section previously attributed that identity map to the 68030's
+> Transparent-Translation registers (`tt0 = 0x003F0143` / `tt1 = 0x807F0143`, from
+> `amiga/ml/ttrap.s`). AMIX does **not** use the TT registers — they read E = 0 on a running kernel,
+> the boot path zeroes them, and the identity map is a **section-0 early-termination page descriptor
+> in the MMU root table** ✅. Nothing below changes; see
+> [how the low 1 GB is really mapped](zorro-autoconfig.md#the-identity-map).
 
 **The fix** is the kernel primitive **`sptalloc(npages, prot, pfn, flag)`**, which page-table-maps
 physical pages into kernel virtual address space ✅. The driver maps the board's AutoConfig page and
@@ -9439,8 +10689,8 @@ siop = (volatile uchar *)sptalloc( 1, PG_V, phystopfn( (paddr_t)base + SIOP_OFF)
 
 Post-boot these return working kernel VAs (observed `siop = 0x401CA000`) and the 53C710 is fully
 addressable ✅. **DMA is unaffected:** the 53C710 bus-masters to Amix RAM at phys `0x07800000+`,
-which is inside TT0, so DMA targets are reachable no matter where the board's *registers* land in
-kernel VA ✅. (See [Zorro AUTOCONFIG](zorro-autoconfig.md) for `autocon()` and the Zorro III
+which is inside the identity-mapped low 1 GB, so DMA targets are reachable no matter where the
+board's *registers* land in kernel VA ✅. (See [Zorro AUTOCONFIG](zorro-autoconfig.md) for `autocon()` and the Zorro III
 detection that complements this mapping.)
 
 ## The 53C710 driver model — how it plugs into the Amix SCSI stack
@@ -9495,6 +10745,14 @@ ordering is the entire story behind booting root from the A4091** — see
 [the boot process: root on an A4091](../how-it-works/boot-process.md) and the phantom-A3000 fix in
 [Zorro AUTOCONFIG](zorro-autoconfig.md).
 
+> **Why the stock ordering cannot be trusted at all.** Stock `autocon()` decides whether the A3000
+> internal SCSI exists from the **RAM size** (`end > 0x07000000` in `support.c`), never from the
+> hardware ✅ — so it fabricates a card 0 where no controller exists *and*, on a machine whose RAM
+> does not reach the threshold, silently drops the real one (root disk included) while every
+> remaining card renumbers ✅. Both directions produce a machine that cannot find its disk and says
+> nothing. **Probe, don't guess** — see [quirks §41](../how-it-works/quirks.md#41-scsi-by-ram-size)
+> and the chipset-gated WD33C93 probe that replaces the special case.
+
 The matching build patch is `src/kernel-patches/alien-Makefile`, which adds `a4091.o` to the
 `amiga/alien` `OBJ` list.
 
@@ -9514,7 +10772,7 @@ The production driver is `src/a4091-wr.c` (the READ+WRITE driver) ✅. Its key p
   accesses are **8- or 32-bit only, never 16-bit** ✅.
 - **`a4091queue(c, cp)`** — drives **any** CDB from the caller's `sdcom` through a **table-indirect
   53C710 SCRIPTS program** (`inq_script[]`, a static `ulong[]` that lives in kernel `.data`, so its
-  bus address equals `&inq_script[0]` under the TT0 identity mapping). CDB length is derived from the
+  bus address equals `&inq_script[0]` under the low-1 GB identity mapping). CDB length is derived from the
   SCSI **group code** (top 3 bits of the opcode → 6 / 10 / 12 bytes). The **DSA** (`struct siop_ds`)
   binds IDENTIFY / CDB / status / message / data buffers; the DATA phase **dispatches on the live bus
   phase**, so *one* SCRIPTS program performs both READ(10) and WRITE(10). Data DMAs **straight into
@@ -9669,6 +10927,10 @@ also provides the A4091 autoboot ROM used by the emulator
   chipset-gated `autocon()`, the `a4091.o` OBJ entry).
 - `docs/a4091-53c710-reference.md` in the project repo — the verified 53C710 register/SCRIPTS detail
   behind this driver.
+- The **2026-08-12/14 RAM campaign** (workspace record) — the identity map's real mechanism (the TT
+  registers are disabled; a section-0 early-termination root-table descriptor maps the low 1 GB) and
+  the two-sided failure of the stock RAM-size SCSI inference in `support.c:305`, with real A3000s
+  above 16 MB inside the affected envelope ✅.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx`
   SCRIPTS assembler).
 
@@ -9761,9 +11023,10 @@ On the firmware side (`rtg/rtg.c`) these dispatch to `REG_ZZ_CONFIG` (~line 1150
 
 The frame buffers are real DDR reached through the Zorro III window, at fixed board-relative offsets
 (from the firmware `memorymap.h`) ✅. Note the board base is `0x10000000`, so these windows land
-**inside the 68030's TT0 range** (< `0x40000000`) and are directly mappable — this is *not* the
-[A4091's unmapped TT-gap](a4091-53c710-driver.md) case; `sptalloc` here is simply a clean way to map
-the full 128 KB region:
+**inside the [identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map)** (< `0x40000000`) and
+are directly reachable — this is *not* the [A4091's above-the-identity-map](a4091-53c710-driver.md)
+case; `sptalloc` here was simply a clean way to map the full 128 KB region (and, on a large-memory
+machine, the wrong trade — see [the >80 MB `sptmap` exhaustion](#sptmap-exhaustion) below):
 
 - **RX backlog ring** — `0x07ED0000`, 32 slots × 2048 bytes = 64 KB.
 - **TX staging frame** — `0x07EE0000`, one frame.
@@ -9900,7 +11163,7 @@ it), so the **bounded poll/drain callout keeps working**. **No firmware change w
   — **not** `uchar`/`ulong`/`ushort`, which are `rico.h`-only (included by the SCSI driver, not this
   one). Both showed up only at kernel-link time, as undefined symbols.
 - **The 030 data-cache flush — turned out *not* to be needed.** ✅ The eth DDR windows are cacheable
-  (under TT0), so a stale-cache TX/RX coherency hazard was the scoping's stated *top* risk. The driver
+  (they sit inside the identity map), so a stale-cache TX/RX coherency hazard was the scoping's stated *top* risk. The driver
   has an **optional** line-granular flush (`Z3660ETH_CACHE_FLUSH`, `cpushl %dc` over the TX/RX
   windows), **default OFF**. On real hardware it was **not required** — TX and RX are byte-correct with
   the flush off, confirming the 030 data cache is effectively transparent to these windows here. Left
@@ -9914,6 +11177,35 @@ it), so the **bounded poll/drain callout keeps working**. **No firmware change w
   once: the box reached `login:` but `zen0` never came up; cause inferred from the working manual
   bring-up, which always ran a bare `slink` first — not independently traced). The boot script now
   runs a bare `slink` first, then **retries** `slink addaen` in a loop (below).
+
+## The ">80 MB board not found" — `sptmap` exhaustion, not a map clash ✅ {#sptmap-exhaustion}
+
+On a machine with **more than 80 MB** of RAM the driver stopped finding its board, and the obvious
+suspect was the firmware memory map: a clash between the board's Zorro III banks and the enlarged
+guest memory. That was falsified directly — the board's banks read **byte-identical at every window**,
+and the host DDR behind them was **empty** ✅.
+
+The cause is on the kernel side, and it is the same arena [the RAM ceiling](../how-it-works/ram-ceiling.md)
+is about. `page[]`, `sptalloc()` and the u-areas are all handed out of one **fixed 4 MiB kernel arena**
+through the `sptmap` resource map. With ~80 MB of RAM described, `page[]` has taken that arena, and
+this driver's **65 pages** of `sptalloc()` mappings have nothing left to allocate from — the mapping
+fails and the board simply is not there ✅.
+
+**The fix was to stop mapping.** The board's fixed base `0x10000000` sits below `VSECT1` — already
+inside [the identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map) — so the register window
+and the frame windows are directly usable. Direct-mapping whenever `base < VSECT1` takes the driver
+from **65 `sptmap` pages to 0** ✅: the >80 MB failure disappears, and the driver stops competing with
+the kernel for the frame array's arena.
+
+**Verified live on metal.** On a running real A4000 + Z3660 the driver's `z3660eth_direct_map` flag
+and its SCSI sibling's `z3660_direct_map` both read *set* in the live kernel, so the **98 arena pages**
+the pair would otherwise have consumed are a measured reclaim, not a build-time intention ✅. Reading
+those flags has its own trap — they are one-byte objects and `adb`'s int format prints a set byte as
+`16777216`, not `1` ([quirk 46](../how-it-works/quirks.md#46-adb-byte-flag)).
+
+> The law worth carrying to any Amix driver: **a driver's mapping budget and the machine's RAM
+> ceiling are the same budget** ✅. `sptalloc()` is not free space — page-map only what you cannot
+> reach directly.
 
 ## Build & the `nm -u` clean-gate
 
@@ -9955,17 +11247,18 @@ out-of-band ✅. Two paths:
 2. **Full-image / firmware deploy (no-console)** — the Z3660 ARM firmware console has a **TFTP
    server**. Power-cycle into the ARM console (spam `C` at power-on), `P` to start TFTP at
    `192.168.2.29`, `PUT` the artifact, `R` to reboot: path **`0:`** (FAT32) holds `Z3660.bin` (the
-   firmware, ~12.3 MB, ~21 s TFTP; built with `cd ~/Devel/Omat/Amiga/Z3660 && ./docker/run.sh make
+   firmware, ~12.3 MB, ~21 s TFTP; built with `cd <your Z3660 checkout> && ./docker/run.sh make
    bootbin` → `…/Alfa/sd_card/BOOT.BIN`, incremental control-core builds in seconds); path **`1:`**
    (exFAT) holds `hdf/Amix.hdf` (the full root image, ~629 MB, ~20 min TFTP). The host↔box TFTP host is
    the laptop wired directly to the Z3660.
 
-> ⚠️ **Operational gotchas (✅, all hit this session).** Power control is a flaky HA webhook — verify
-> the serial actually goes silent before powering back on (often needs two tries). The **KVM video is
-> solid black** (an unusable video-converter), so you **cannot** read the Amiga console over it;
-> detect state via the **firmware serial `[PC]` heartbeat** (pinned PC = hung; varying = alive) and,
-> once up, **telnet/ftp over `zen0`**. The serial log is mirrored at
-> `kvm1w.alanara.fi:/userdata/media/z3660-serial.log`.
+> ⚠️ **Operational gotchas (✅, all hit this session).** Whatever switches power to the box, verify the
+> **serial has actually gone silent** before powering back on — a remote switch reporting success is not
+> proof the machine went down, and a cut on a still-running box costs you an `fsck` on the next boot.
+> Do not rely on remote video to read the Amiga console either: a video-capture path can show a solid
+> black frame while the machine is perfectly alive. Detect state from the **firmware serial `[PC]`
+> heartbeat** (pinned PC = hung; varying = alive) and, once `zen0` is up, over **telnet/ftp**. Keep the
+> serial stream logged to a file — a bring-up is reconstructed from the log, not from the screen.
 
 ### Boot auto-bring-up — `/etc/rc2.d/S99zen`
 
@@ -10073,6 +11366,15 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   breadcrumbs (a temporary `rtg.c` build, since reverted).
 - **Kernel build tooling** (✅): the **amix-kerntools** project — `tools/build-clean-net-kernel.sh`
   (the `nm -u` clean-gate), `tools/build-net-kernel.sh` (consumes `driver.conf`).
+- **The 2026-08-12/14 RAM campaign** (workspace record): the ">80 MB board not found" root cause —
+  `sptmap` exhaustion against the fixed 4 MiB kernel arena, with the firmware-map-clash hypothesis
+  falsified (banks byte-identical at every window, host DDR empty) — and the `base < VSECT1`
+  direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅. Kernel-side context on
+  [the RAM ceiling](../how-it-works/ram-ceiling.md).
+- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — both direct-map flags read
+  set in the live kernel on a real A4000 + Z3660 (98 arena pages reclaimed across the ethernet and
+  SCSI drivers), read with `adb -k` against the on-box native-linked kernel; and the byte-vs-int
+  `adb` format trap that makes a set flag print as `16777216`.
 - Magic numbers (✅): cdevsw major **48**; board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.168.2.39`; build box `192.168.2.38`; TFTP `192.168.2.29`; station MAC
   `00:80:51:01:02:03`.
@@ -10256,10 +11558,11 @@ window and the bounce buffer into kernel VA (`z3660.c:139-142`) — the **same `
 [A4091 driver](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution) uses** ✅. The
 meaningful difference from the A4091 is therefore **not** how the board is reached (both page-map their
 windows) but the bus protocol on the far side of the mapping — a synchronous register mailbox here, a
-53C710 SCRIPTS engine there. (The fixed base does fall inside the 68030's TT0 range documented for the
-[A4091's TT-gap analysis](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution),
+53C710 SCRIPTS engine there. (The fixed base does fall inside the
+[identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map) documented for the
+[A4091's addressing analysis](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution),
 so here the mapping is a clean convenience rather than being *forced* by the A4091's unmapped
-`0x40000000–0x7FFFFFFF` gap — but the board is mapped either way.)
+`0x40000000–0x7FFFFFFF` region — but the board is mapped either way.)
 
 > **The Z2 variant is unusable for Amix piscsi.** Its base is `0xE90000`; add the mandatory bounce
 > offset `0x80000` and you land at `0xF10000`, which the firmware/emulator decodes as **extended-ROM
@@ -10445,8 +11748,8 @@ reusable on any Amix bench, not just this one.
   combo board and firmware-mailbox model; the board, the Zynq SoC, and the `0x144B0001` identity are
   described there in full.
 - [A4091 / 53C710 SCSI driver](a4091-53c710-driver.md) — the *other* SCSI sibling and a true Zorro III
-  53C710 controller; contrast its SCRIPTS/DSA complexity and the `sptalloc` TT-gap mapping with this
-  driver's ~5-poke mailbox.
+  53C710 controller; contrast its SCRIPTS/DSA complexity and its `sptalloc` mapping across the
+  unmapped region above the identity map with this driver's ~5-poke mailbox.
 - [The Amix device-driver model](driver-model.md) — block vs char vs STREAMS; the `sd.c`/`scsicard[]`
   SCSI-stack path this driver registers into.
 - [Building & installing a kernel](kernel-build.md) — the `make` → `relocunix` → `make bootpart` flow
@@ -10776,7 +12079,7 @@ sha256: 890da5e52f00cae74b817b42d1b94c3438f57b8c13b3d2b055e8b116a3feac56
 ```
 ✅ (`tools/inspect-adf.sh` on `amix_21_root.adf`; cross-check against `sources/CHECKSUMS.txt`)
 
-## No bootblock — the body is a UFS filesystem
+## No bootblock — and the body is s5, not UFS
 
 The root floppy does **not** start with the AmigaDOS `DOS\0` signature that a [boot disk](anatomy-boot-adf.md) has. The boot area is zeroed, so any AmigaDOS-FS tool refuses it: ✅
 
@@ -10788,7 +12091,7 @@ detected disk type : root
     'list' FSError: Invalid Boot Block(1):block=BootBlock:@0
 ```
 
-That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **UFS** (Berkeley Fast File System) image, recognisable by its UFS fingerprints: a `lost+found` directory entry and `fsck`/`mkfs` string tables embedded in the image. ✅ (`inspect-adf.sh` keys off the `lost+found` string to classify the disk; see [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) lines 59–63.)
+That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **`s5`** filesystem, with its superblock at byte `0x200` (magic `0xfd187e20`) ✅ — see the 2026-07-05 correction at the top of this page. The `UFS miniroot` line the tool prints is **wrong**: `inspect-adf.sh` classifies by keying off the `lost+found` string, and `lost+found` plus the `fsck`/`mkfs` string tables are present here because the floppy *carries the UFS tools as installer binaries*, not because it is a UFS volume ✅ (see [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) lines 59–63). It is a good worked example of why a string heuristic is not a filesystem identification.
 
 **Note — reading the tree.** Linux's in-tree `ufs` driver generally **cannot** mount Amix's big-endian SVR4/m68k UFS, so a full file-tree traversal needs a UFS-aware reader (a *BSD host, or UFS Explorer). The bundled [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) does a *pragmatic carve* instead: it reports every ELF/script offset, carves the POSIX `tar` member(s), and dumps the install-script text — which is what you usually want when studying the installer. ✅
 
@@ -10897,13 +12200,15 @@ What file system type is this partition? [s5]
 
 The **prompt shows `[s5]` as the bracketed default**, and community guidance — and the brief — recommends **UFS** in practice; the s5 default is plausibly a 3B2-lineage hold-over. 🟡 (rationale unconfirmed; note: the research brief records the script's `ANS` variable as defaulting to `"ufs"` in at least some code paths — the exact fallback may depend on partition role)
 
-There is one hard exception the script enforces for the **root** partition: ✅
+There is one exception the script can enforce for the **root** partition: ✅
 
 ```sh
 ROOT_FSYS="s5"     # Johann ROM can only boot s5 filesystem
 ```
 
-After offering the s5/ufs choice for the root, the script *overrides* it back to `s5`, with the comment that the "Johann ROM" can only boot an s5 root. So even when you pick UFS elsewhere, the bootable root ends up s5 on this installer. ✅ (root.adf script text; the "Johann" name appears verbatim in the installer comment; its relationship to the Superkickstart boot ROM is 🔴 unconfirmed in the research brief — see the [boot process](../how-it-works/boot-process.md).)
+Here the script overrides the s5/ufs choice back to `s5`, with the comment that the "Johann ROM" can only boot an s5 root. ✅ (root.adf script text; the "Johann" name appears verbatim in the installer comment; its relationship to the Superkickstart boot ROM is 🔴 unconfirmed in the research brief — see the [boot process](../how-it-works/boot-process.md).)
+
+**Scope correction (2026-08-14).** That force is **not** unconditional: it is reached only on the stock `OLD_BOOT` / Johann-ROM path ✅. It is therefore not the reason a given disk is s5 — a modern install path can and does produce a **UFS** root, and the surviving 2.1 install lineage examined by this project is UFS-rooted (superblock fingerprint `-o free=2,opt=s`, 8192/8) ✅. What actually makes the *typical* root s5 is the plain `[s5]` prompt default above, not this override. And nothing in the kernel insists either way — [root filesystem selection is by probe, not by configuration](../how-it-works/boot-process.md#how-the-kernel-picks-the-root-filesystem).
 
 ### RDB partition type tags
 
@@ -12430,9 +13735,9 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 
 ## Supported expansion cards
 
-Everything **stock** here is **Zorro II only** — Amix's stock drivers just dereference the `autocon()` address, and Zorro II boards (≤ 24-bit, inside the 68030's TT0 transparent-translation window) are directly reachable while Zorro III space is not, by default ✅. That source was never shipped, so the *stock* card set cannot be community-fixed in place ✅. Cards are grouped by function. Tags follow the brief.
+Everything **stock** here is **Zorro II only** — Amix's stock drivers just dereference the `autocon()` address, and Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)) are directly reachable while Zorro III space is not, by default ✅. That source was never shipped, so the *stock* card set cannot be community-fixed in place ✅. Cards are grouped by function. Tags follow the brief.
 
-> 🔴 **Correction (Zorro III is reachable after all):** "Amix can never drive a Zorro III board" was the long-standing belief, and it is **wrong for a driver that maps the board explicitly.** The A4091-on-Amix project drove the **Zorro III A4091** by page-table-mapping its register block with the kernel's own `sptalloc()` primitive (the board sits in the unmapped `0x40000000–0x7FFFFFFF` TT gap, so a plain pointer deref *does* fail — but `sptalloc()` gets a working kernel VA) 🟡 (reproduced in Amiberry; real-hardware confirmation pending). See [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md). A second, **real-hardware** data point: the **Z3660** accelerator presents a Zorro III AutoConfig identity (`0x144B0001`) and Amix now drives its **onboard ethernet** (`zen0`) via the `z3660eth` driver, `sptalloc`-mapping the firmware register page + frame windows ✅ — though here the windows sit at `0x10000000` (inside TT0), so the mechanism is the firmware mailbox rather than the A4091's TT-gap mapping. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md). The **same board's onboard "SCSI"** (the PiStorm `piscsi` mailbox, not a 53C710) is driven the same mailbox way — Amix boots **multiuser with root** on it on real hardware (2026-06); see [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
+> 🔴 **Correction (Zorro III is reachable after all):** "Amix can never drive a Zorro III board" was the long-standing belief, and it is **wrong for a driver that maps the board explicitly.** The A4091-on-Amix project drove the **Zorro III A4091** by page-table-mapping its register block with the kernel's own `sptalloc()` primitive (the board sits in the unmapped `0x40000000–0x7FFFFFFF` region above the identity map, so a plain pointer deref *does* fail — but `sptalloc()` gets a working kernel VA) 🟡 (reproduced in Amiberry; real-hardware confirmation pending). See [the A4091 53C710 driver](../drivers/a4091-53c710-driver.md). A second, **real-hardware** data point: the **Z3660** accelerator presents a Zorro III AutoConfig identity (`0x144B0001`) and Amix now drives its **onboard ethernet** (`zen0`) via the `z3660eth` driver, `sptalloc`-mapping the firmware register page + frame windows ✅ — though here the windows sit at `0x10000000` (inside the identity map), so the mechanism is the firmware mailbox rather than the A4091's above-the-identity-map mapping. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md). The **same board's onboard "SCSI"** (the PiStorm `piscsi` mailbox, not a 53C710) is driven the same mailbox way — Amix boots **multiuser with root** on it on real hardware (2026-06); see [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 
 ### SCSI host adapters
 

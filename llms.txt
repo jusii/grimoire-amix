@@ -12,7 +12,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 ## How Amix works
 - [What Amix Is](docs/how-it-works/overview.md): SVR4/3B2 lineage, what it is and isn't, version timeline.
 - [Supported Hardware & Requirements](docs/how-it-works/hardware.md): machines, MMU/FPU, the 16 MB ceiling, SCSI ID rules, Zorro II only.
-- [The Amix RAM Ceiling](docs/how-it-works/ram-ceiling.md): the separate total-describable-RAM limit (~128 MB computed) — an unchecked rmalloc in page_init wild-writes from address 0, silently; detection fingerprint and per-rig RAM guidance.
+- [The Amix RAM Ceiling](docs/how-it-works/ram-ceiling.md): the separate total-describable-RAM limit (≈64 MB on a stock 030 kernel, set by a fixed 4 MiB kernel arena) — an unchecked rmalloc in page_init wild-writes from address 0, silently; detection fingerprint and per-rig RAM guidance.
 - [Amix on 68040 and 68060 — Current Status](docs/how-it-works/68040-68060-status.md): why stock Amix is 030-only, what a port would require, what is being worked on, and what nobody should claim yet.
 - [How Amix Boots](docs/how-it-works/boot-process.md): Superkickstart → bootblock → compressed kernel; RDB layout.
 - [Kernel Architecture](docs/how-it-works/kernel-architecture.md): monolithic SVR4, /usr/sys, switch tables, MMU, STREAMS.
@@ -22,9 +22,10 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [Package Management](docs/how-it-works/package-management.md): the stock SVR4 pkg system — /var/sadm contents(4) DB, media formats, pkgadd mechanics, and a space-in-pathname defect that breaks pkgrm/pkginfo on the shipped image.
 - [The Amix Package Repository Format](docs/how-it-works/package-repository.md): the static repo tree, the pipe-delimited catalog v1 grammar, md5+size integrity, the apkg client's three sources (HTTP / mounted medium / raw slice), and the fail-closed publish gates.
 - [Quirks & Gotchas](docs/how-it-works/quirks.md): the Amiga-port surprises.
+- [Emulation Fidelity](docs/how-it-works/emulation-fidelity.md): what a 68030/MMU/interrupt emulator must implement — format-$B bus-error frames, SCSI INT2 latency — or Amix's demand-paging boot fails, sometimes silently.
 - [Z3660 board timings](docs/how-it-works/z3660-timings.md): CPLD clock rows are per-unit and per-clock — the laws, the 25.000 MHz edge, and the config-vs-failing-card diagnostic.
 - [Load averages](docs/how-it-works/load-averages.md): why uptime and w print garbage (two independent stock defects) and how to read the real value.
-- [Emulation Fidelity](docs/how-it-works/emulation-fidelity.md): what a 68030/MMU/interrupt emulator must implement — format-$B bus-error frames, SCSI INT2 latency — or Amix's demand-paging boot fails, sometimes silently.
+- [Performance benchmarks](docs/how-it-works/performance-benchmarks.md): measured Dhrystone, sequential disk-I/O and CPU-temperature figures for Amix on real and emulated 68k, with the method behind each set of numbers.
 - [Glossary](docs/how-it-works/glossary.md): terms used across the docs.
 
 ## Getting started (emulation-first)
@@ -59,7 +60,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 
 ## Custom boot & install disks
 - [Anatomy of the Boot Floppy](docs/boot-disks/anatomy-boot-adf.md): bootblock + compressed kernel.
-- [Anatomy of the Root (miniroot) Floppy](docs/boot-disks/anatomy-root-adf.md): UFS installer + scripts.
+- [Anatomy of the Root (miniroot) Floppy](docs/boot-disks/anatomy-root-adf.md): the s5 miniroot — installer binaries + scripts (the UFS label is a string-heuristic artefact).
 - [Anatomy of the Patch Floppy](docs/boot-disks/anatomy-patch-adf.md): self-extracting sh + cpio.
 - [Reverse-Engineering the Boot Floppy](docs/boot-disks/reverse-engineering-boot-adf.md): the kernel is Unix compress/LZW → m68k ELF; the checksum is non-fatal; how to extract and rebuild.
 - [Adding Drivers to a Custom Boot Disk](docs/boot-disks/adding-drivers-to-boot-disk.md): three delivery surfaces (boot partition, bootable floppy, add-on disk).
