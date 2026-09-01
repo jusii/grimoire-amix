@@ -1,8 +1,19 @@
+---
+title: "Performance benchmarks: Dhrystone, disk I/O and thermals"
+summary: Measured Dhrystone, sequential disk-I/O and CPU-temperature figures for Amix on real and emulated 68k, together with the method each set of numbers was taken by.
+status: draft
+---
+
 # Performance benchmarks — Dhrystone, disk I/O & thermals
 
 Living reference for Amix performance on real and emulated 68k. **Our reference machine is the
 A4000D + Z3660 accelerator** (real 68LC060, no FPU → software FPE); every row marked *ours* is that
 box unless stated otherwise. This page is updated as new benchmark runs land.
+
+**Provenance, once for the whole page:** rows marked *ours* are first-party measurements on that one
+machine ✅; the **Mercury** rows are collaborator-reported and not reproduced by us 🟡; the A3000
+68030 row is a published reference figure 🟡. Individual claims that are weaker than their
+surrounding section carry their own tag inline.
 
 ## Dhrystone 2.1 (Dhrystones per second)
 
@@ -23,7 +34,7 @@ Higher is faster; `per-MHz` = Dhrystones/s ÷ CPU clock (clock-independent effic
 | **A4000D + Z3660 (ours)** | real 68LC060, FPE, no FPU | 100 MHz | **87,976.5** | 880 | ours (2026-08-31, spread 0) |
 
 **Both EMU rows are the Zynq's ARM-hosted soft-68k** (UAE-derived) — ARM-bound, not 68k-clock-bound, so
-there's no meaningful per-MHz. Current figures: **EMU 030 MMU = 6,396.6, EMU 040 MMU = 8,100**. Earlier
+there's no meaningful per-MHz ✅. Current figures: **EMU 030 MMU = 6,396.6, EMU 040 MMU = 8,100**. Earlier
 pre-optimization runs were lower (an 08-18 soft-030 ≈ 4,615, an 08-21 soft-040 ≈ 3,818); the 030-MMU /
 emulation-speed work brought them to the current numbers. The real-silicon FPE lane (70,257.6 @ 80 MHz) is
 ~11× the emulated modes — that gap is real hardware vs emulation, not a 68k-generation difference.
@@ -33,8 +44,9 @@ emulation-speed work brought them to the current numbers. The real-silicon FPE l
   worth **~5.6×** end to end: instruction cache alone ~2.1×, +data cache ~1.6×, +copyback another ~1.6×.
 - With full caches, Antti's 68040 and 68060 both land near **~911–916 dhry/MHz**; our real 68LC060 on the
   Z3660 is **878/MHz** — slightly lower, consistent with the LC060 + Z3660 bus.
-- Dhrystone is **linear in PCLK** on this part at ≈875 ± 7 Dhry/MHz (measured, below); the small 867→880
-  rise with clock is timer quantisation (`hz=60` — fewer ticks per run at speed), not a real effect.
+- Dhrystone is **linear in PCLK** on this part at ≈875 ± 7 Dhry/MHz ✅ (measured, below); the small
+  867→880 rise with clock is timer quantisation (`hz=60` — fewer ticks per run at speed), not a real
+  effect 🟡 (a consistent explanation, not an isolated measurement).
 
 ### Ours across clocks — real 68LC060, 2026-08-31 campaign
 
@@ -53,7 +65,7 @@ FP-free `dhry` (sha256 `41f6755a…` — the fieldkit's shipped `dhry` dies `SIG
 - 70 runs a 20 MHz bus (the others 25) yet sits on the same Dhry/MHz line — bus frequency barely affects
   a cache-resident integer loop.
 
-> ⚠ **70 MHz is not a dependable clock on current evidence** (2026-08-31): boots **2/2** from a pristine
+> ⚠ **70 MHz is not a dependable clock on current evidence** ✅ (rates) / 🔴 (cause) — 2026-08-31: boots **2/2** from a pristine
 > disk after a full power-cycle, but **0/4** when switched via the firmware console (`CCF`) from another
 > halted clock on the worked disk. Failure = kernel loads then hangs pre-root-mount. The two candidate
 > causes (disk state vs firmware/PLL reprogramming state) are confounded — every success had both a fresh
@@ -103,11 +115,65 @@ Load = the sustained mixed Dhrystone + disk-I/O soak loop.
   first and second halves of the 38 min load at both clocks: OS scheduling noise, no thermal
   trend.
 - Only prior data is the 2026-08-28 old-cooling record (53.2–56.4 °C at 80 MHz, still
-  climbing, lighter load, ambient unrecorded): the new cooler is better in direction, but the
-  comparison is uncontrolled. The controlled reference is this run vs the future
-  **properly-mounted** cooler re-run, whose protocol is pinned in the results file.
+  climbing, lighter load, ambient unrecorded) 🟡: the new cooler is better in direction, but the
+  comparison is **uncontrolled** and must not be quoted as a measured delta. The controlled reference
+  is this run vs the future **properly-mounted** cooler re-run, whose protocol is pinned.
 
-Full write-up: workspace `tmp/2026-08-31-thermal/RESULTS-THERMAL-2026-08-31.md`.
+All the figures above are ✅ first-party measurements; the °C/MHz slopes are a **two-point
+interpolation between them**, not a demonstrated law 🟡.
+
+### How the temperatures were read ✅
+
+The board measures the CPU itself: a firmware thread reads an **LTC2990** across a thermistor
+divider, converts the voltage ratio with the calibration constants from the board config, and stores
+the result in a small `Measures` struct in the ARM's DDR ✅. That thread runs in the firmware core's
+main loop, so the values are live *while the guest is running* — which is what makes a during-load
+reading possible at all. No serial command prints them; two **read-only** paths reach them:
+
+* a **memory dump on the firmware debug console** (`DM`), decoded against the struct layout — eight
+  32-bit fields, scaled by 10 or 100, of which the CPU thermistor is one ✅;
+* a **raw I²C register trace** (`DI2C`) of the LTC2990 itself, decoded host-side. It depends on **no
+  symbol address at all**, so it independently validates the dump-based decode ✅.
+
+Two method rules make those numbers trustworthy, and both generalise past this board:
+
+* **Locate the struct by its data signature, not by a symbol address you trust.** The address came
+  from `nm` on one firmware build, but the *flashed* image need not be that build. So each session
+  dumps a wide window and finds the struct by its **rail signature** — a 3.3 V field immediately
+  followed by a 4.9 V one — and every later sample re-checks those rails and **refuses to emit a
+  number if they are wrong** ✅. A mismatched build then fails loudly instead of publishing plausible
+  garbage decoded from the wrong bytes.
+* **Never instrument across a timed benchmark run.** Every firmware `printf` blocks the firmware core
+  on a polled UART, and that same core services the **emulated timer the guest's Dhrystone is
+  measured against** ✅ — so a temperature read taken during a timed run perturbs the very clock the
+  run is timed by. Sample between runs, and confine the chattier I²C trace (~2.5 lines/s) to idle,
+  load-stop and end-of-cooldown windows. Stated generally: **the instrument must not share a resource
+  with the thing being measured.**
+
+### Reading a thermal plateau — three corrections worth inheriting ✅
+
+* **The post-load-stop reading is a cooldown point, not a plateau.** The part sheds **3–4 °C in the
+  ~40 s** it takes to stop the load loop (53–55 °C under load versus 50.97 °C in the window just
+  after) ✅. Cross-validation of the two readout paths therefore rests on the **idle** comparison,
+  where they agree within a fraction of a degree — validating two sensors against a falling sample
+  would have "disagreed" for no reason at all.
+* **The plateau is a band, not a point.** The trace oscillates ±0.9 °C, and that is **workload-phase
+  aliasing** ✅: one loop iteration is ~14 s of CPU-bound Dhrystone (hot) followed by an I/O-bound
+  measurement (the CPU idles, and cools), so a 60 s sample catches a different phase each time.
+* **Time-to-plateau is therefore tolerance-sensitive**, and the sensitivity is published rather than
+  one flattering figure ✅ (80 MHz leg):
+
+| tolerance on the trailing-5 mean | time to plateau |
+|---|---|
+| ±0.36 °C (one thermistor LSB) | 18 min |
+| ±0.50 °C | 10 min |
+| ±0.75 °C | 5 min |
+| ±1.00 °C | 4 min |
+
+  The raw curve reaches 54.5–54.9 °C within 4–6 min and only oscillates afterwards, so *"the part
+  reaches its load band in about five minutes"* is the honest headline. Quantisation sets the floor:
+  distinct readings step by ≈0.355 °C — one LSB of the sensor's ADC through this divider — so a
+  tighter plateau criterion would merely be demanding five identical codes ✅.
 
 ## Open items
 - **Mounted-cooler thermal re-run** — repeat the pinned 80+100 soak protocol after the
@@ -116,5 +182,29 @@ Full write-up: workspace `tmp/2026-08-31-thermal/RESULTS-THERMAL-2026-08-31.md`.
   a power-cycle, and on a pristine disk *without* one.
 - **60 MHz** — no working clock config found (2026-08-30 campaign, full negative matrix); untried lead:
   duty cycles.
-- Full campaign write-ups: the 2026-08-30 clock campaign and 2026-08-31 benchmark results files
-  (workspace `tmp/`, station logs alongside).
+
+## See also
+
+- [Z3660 board timings](z3660-timings.md) — why a clock that benchmarks well may still not boot, and
+  the per-unit timing law behind the clock column above.
+- [Load averages](load-averages.md) — why the box's own `uptime` cannot be used to score any of this.
+- [Quirks](quirks.md#47-halt-looks-like-failure) — the halt, reset and serial laws a metal benchmark
+  session runs on.
+
+## Sources
+
+- First-party **four-clock benchmark campaign**, real A4000D + Z3660 with a socketed MC68LC060 rev 4
+  (FPE, no FPU), 2026-08-31 ✅ — the Dhrystone rows at 50/70/80/100 MHz (three runs per row, one
+  FP-free `dhry` binary throughout, multiuser verified by `uname`/`who -r` before every row), the
+  sequential 64 KB disk-I/O table and its 512 B small-block reference, the withdrawn first-write
+  outlier, and the 70 MHz boot rates (2/2 pristine-after-power-cycle versus 0/4 switched on a worked
+  disk) with the two confounded causes stated rather than resolved.
+- First-party **thermal and stability soak**, same machine and campaign, 2026-08-31 ✅ — the 80 and
+  100 MHz idle and load figures at 22 °C ambient with the cooler resting unpasted and unclamped; the
+  LTC2990 readout method, its rail-signature guard and the I²C cross-check; the plateau-band and
+  time-to-plateau sensitivity; and the time-order analysis over 255 Dhrystone runs behind the
+  no-throttling result. The 2026-08-28 record is used only as a loose anchor, never as a control.
+- The **Mercury 68040 / 68060 rows** are collaborator-reported figures from a separate A3000 + Mercury
+  effort and are not first-party 🟡; the A3000 68030 baseline is a published reference figure 🟡.
+- The two **EMU** rows are the Z3660 firmware's ARM-hosted soft-68k cores (030-MMU and 040-MMU) on the
+  same machine ✅ — emulated modes on real hardware, which is why they are ARM-bound.

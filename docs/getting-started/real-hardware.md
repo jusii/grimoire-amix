@@ -59,6 +59,20 @@ For the full hardware story — supported SCSI/graphics/network/serial cards, th
 
 **The Z3660's effective config is two layers — the preset overlay wins.** ✅ `z3660cfg.txt` declares the `hdfN` disk-image files, but the active `presets/presetN.txt` (chosen by `presets/preset.txt`) **overrides every key it sets** — boot mode, `amix_mode`, the Kickstart choice, and the `scsiN <hdf-index>` assignments — and the env parser handles only the `scsiN` indices, never `hdfN` declarations. The practical trap: editing `z3660cfg.txt` alone to re-map which image sits on which SCSI ID is **silently inert** when a preset carries `scsiN` lines. Change both layers (declare the image in the base, remap the SCSI ID in the active preset), and always confirm from the firmware's own boot print — it logs the effective join as `[CFG]`/`[ENV] SCSIn assigned to …`.
 
+**The Amiga's own keyboard is a second, live input into the accelerator's firmware boot menu** ✅ —
+and that menu is a *single-key* consumer, where one keystroke can start a destructive operation. A
+host-side console guard on the serial line can neither see nor mediate it: the guard's whole model is
+that serial is the only way in, and it is not, whenever someone is physically at the machine. **Rule:
+no scripted boot-menu operations while anyone is hands-on at the box.** The same property bites
+confirmation prompts — a firmware `overwrite? (y/n)` can be answered by a stray keyboard byte before
+the scripted answer arrives over the serial line, so a script that sends its command and its
+confirmation as *separate* writes has a race it cannot see. Send both in one write, so the answer is
+already in the serial FIFO when the prompt reads it.
+
+For the reset, halt and serial-capture laws that go with this — a warm reset is not a clean-state
+reset, a successful remote halt looks like a transport failure, and a stray reader eats the console
+stream — see [quirks 47–52](../how-it-works/quirks.md#47-halt-looks-like-failure).
+
 ### Why SCSI ID 6 and ID 4 matter so much
 
 The install scripts on the root floppy stream the distribution from the tape at the literal `/dev/rmt/4h` / `/dev/rmt/4hn`, and reference the disk through a `$SCSI` variable (`/dev/dsk/c${SCSI}d0s${BOOTPART}`). ✅ The **tape must be at ID 4** — the installer looks nowhere else for the distribution media. The **disk is ID 6 by convention**: the installer prompts for the disk target, so another ID would work, but pick 6 — the chosen ID is baked into the device names (`/etc/vfstab`) once installed, so changing it later means editing that file 🟡. **Set the tape to SCSI ID 4 and the disk to SCSI ID 6 before you start.** Getting the *tape* ID wrong is the single most common reason a real-hardware install can't find its distribution media. ✅/🟡
@@ -165,5 +179,10 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 - Research brief §8 (Emulation: WinUAE reference target; Amiberry 8.x adds A3000 SCSI + tape support — BlitterStudio/amiberry issue #1376, implemented). First-hand confirmation on Amiberry 8.1.6.
 - ZuluSCSI/flash-SCSI substitution, old hub / media-converter need, and the byte-level tape-free recipe: **community-reported (🟡)**, retro-Amiga community practice and comp.unix.amiga; not primary-verified in any Amix source.
 - The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window (`AMIX_A3000MEM_MB`), the dummy bank preventing coalescing past the ceiling, the `amix_mode`-forces-CPU-RAM-off contract, and the "not in section 1" panics coming only from >16 MB / split windows: read from `Z3660_emu/src/uae/uae_emulator.cpp`, `Z3660/src/config_file.c`, `AMIX_SCSI_design.md`, `docs/AMIX.md` ✅.
+- First-party **thermal soak session**, real A4000D + Z3660, 2026-08-31 ✅ — the Amiga keyboard as a
+  second live input into the accelerator's firmware boot menu, found when a stray keyboard byte
+  answered a firmware confirmation prompt ahead of the serial-side answer; and the single-write fix
+  that closes the race. Performance and temperature figures from the same session are on
+  [performance benchmarks](../how-it-works/performance-benchmarks.md).
 - The **2026-08-14/15 golden-regeneration event** (workspace record), real A4000 + Z3660 ✅ — the first root image minted **by** the installer rather than inherited, attested from the box's own package-contents database and cold-booted twice; and the ≈270 s cold-power-on-to-networked-multiuser figure measured across those two boots. Image names and digests are project bookkeeping and are deliberately not reproduced here.
 - The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
