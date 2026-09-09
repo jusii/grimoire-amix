@@ -54,6 +54,24 @@ Hostname and host/network databases live where SVR4 keeps them:
 /etc/netconfig    # STREAMS/TLI transport provider table
 ```
 
+**The node name lives in a file, not in the kernel — check before you believe otherwise.** A boot
+applies the host's name at **runtime from `/etc/nodename`** ✅, and on a kernel line whose
+boot-slice kernel is loaded from the boot partition, that kernel contains no hostname at all —
+measured 2026-09-09: neither the old nor the new name appears anywhere in the running kernel's bytes,
+yet the box reports the new one. SVR4's `setuname -n` patches **`/stand/unix`**, which on such a line
+is *not the kernel that boots*, so running it neither persists a rename nor invalidates the running
+kernel's checksums 🟡.
+
+The nuance matters because the opposite is true of some images: where `/stand/unix` **is** what boots,
+a `setuname -n` rename does live in that kernel file and must be re-applied after replacing it. Both
+behaviours are real; they belong to different image lineages, and a note describing one is not a fact
+about the other ✅. Establish which applies to the image in front of you before relying on either —
+`strings` the kernel that actually boots for the name.
+
+Renaming a host also touches `/etc/inet/hosts` (the entry the interface's own address resolves
+through) and `/etc/net/{ticlts,ticots,ticotsord}/hosts` (the RPC transport names, a manual step no
+first-boot script performs) ✅.
+
 **Default route — the metric is mandatory.** Amix requires a metric (hop count) argument on `route add default`; omit it and the route is rejected ✅/🟡:
 
 ```sh
@@ -414,3 +432,11 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   ~550–575/min → trip at 40/61/77); three self-recoveries at 9m48s / 10m11s / 10m00s; FTP up throughout;
   and the box verified healthy *while refusing* (28 processes, zero `in.telnetd`, STREAMS `fail=0` in
   every class, the cdfs mount still traversable).
+- The **2026-09-08/09 Z3660 hand-over campaign**, first-party, real A4000 + Z3660 (workspace record)
+  ✅ — the node-name mechanism: on the 040/060-port kernel line the name is applied at runtime from
+  `/etc/nodename` (a `strings` scan of the booting boot-slice kernel found neither the old nor the new
+  name, while the running system reported the new one), so `setuname -n` — which patches
+  `/stand/unix`, the untouched stock kernel on that line — is neither required nor effective there.
+  The contrary behaviour is real on other image lineages 🟡 and the two must not be generalised across
+  each other. Same session: `/etc/net/{ticlts,ticots,ticotsord}/hosts` confirmed as a manual rename
+  step that no first-boot script performs.

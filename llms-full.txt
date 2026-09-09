@@ -1653,6 +1653,24 @@ Hostname and host/network databases live where SVR4 keeps them:
 /etc/netconfig    # STREAMS/TLI transport provider table
 ```
 
+**The node name lives in a file, not in the kernel — check before you believe otherwise.** A boot
+applies the host's name at **runtime from `/etc/nodename`** ✅, and on a kernel line whose
+boot-slice kernel is loaded from the boot partition, that kernel contains no hostname at all —
+measured 2026-09-09: neither the old nor the new name appears anywhere in the running kernel's bytes,
+yet the box reports the new one. SVR4's `setuname -n` patches **`/stand/unix`**, which on such a line
+is *not the kernel that boots*, so running it neither persists a rename nor invalidates the running
+kernel's checksums 🟡.
+
+The nuance matters because the opposite is true of some images: where `/stand/unix` **is** what boots,
+a `setuname -n` rename does live in that kernel file and must be re-applied after replacing it. Both
+behaviours are real; they belong to different image lineages, and a note describing one is not a fact
+about the other ✅. Establish which applies to the image in front of you before relying on either —
+`strings` the kernel that actually boots for the name.
+
+Renaming a host also touches `/etc/inet/hosts` (the entry the interface's own address resolves
+through) and `/etc/net/{ticlts,ticots,ticotsord}/hosts` (the RPC transport names, a manual step no
+first-boot script performs) ✅.
+
 **Default route — the metric is mandatory.** Amix requires a metric (hop count) argument on `route add default`; omit it and the route is rejected ✅/🟡:
 
 ```sh
@@ -2013,6 +2031,14 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   ~550–575/min → trip at 40/61/77); three self-recoveries at 9m48s / 10m11s / 10m00s; FTP up throughout;
   and the box verified healthy *while refusing* (28 processes, zero `in.telnetd`, STREAMS `fail=0` in
   every class, the cdfs mount still traversable).
+- The **2026-09-08/09 Z3660 hand-over campaign**, first-party, real A4000 + Z3660 (workspace record)
+  ✅ — the node-name mechanism: on the 040/060-port kernel line the name is applied at runtime from
+  `/etc/nodename` (a `strings` scan of the booting boot-slice kernel found neither the old nor the new
+  name, while the running system reported the new one), so `setuname -n` — which patches
+  `/stand/unix`, the untouched stock kernel on that line — is neither required nor effective there.
+  The contrary behaviour is real on other image lineages 🟡 and the two must not be generalised across
+  each other. Same session: `/etc/net/{ticlts,ticots,ticotsord}/hosts` confirmed as a manual rename
+  step that no first-boot script performs.
 
 
 ================================================================================
@@ -2737,9 +2763,64 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 52 | **A run whose boot path was not examined is not evidence** — gate every run on the boot log's *positive* start lines, not on the absence of an error; a run booted by a failed warm reset produced a full set of plausible, worthless results | ✅ | [Quirks §52](#52-boot-path-evidence) |
 | 53 | **68060: the unimplemented 64-bit integer instructions trap to a vector the stock SVR4 trap table never populated** — the 64-bit `MULU.L`/`MULS.L`/`DIVU.L`/`DIVS.L` forms are left to software by the CPU, the stock trap-dispatch table has no entry for them, and the process is killed with no diagnostic at all (a bare `Killed`, rc 137 — no SIGILL, no SIGFPE, no core). Integer ops, so it is not an FPU matter; constrain a 68060 toolchain to the **32-bit** `MULU.L`/`DIVU.L`/`DIVUL.L` forms | ✅ | [Quirks §53](#53-unimplemented-integer-vector), [040/060 status](68040-68060-status.md) |
 
+| 54 | **On the Z3660, `amix_mode YES` under `bootmode CPU` silently disables SCSI boot** — the firmware forces `cpu_ram = 0`, and the boot device then disappears with one line of serial as the only warning. A real-CPU Amix preset must set `amix_mode NO` | ✅ | [Quirks §54](#54-amix-mode-scsi-boot) |
+| 55 | **A Kickstart proven under emulation is not proven on silicon, and the *file* matters more than the generation** — a 2.04 ROM booted an emulated preset to multiuser and left the real 68060 in a reset loop. Identify a ROM by CRC-32, never by filename or slot | ✅ | [Quirks §55](#55-kickstart-file-not-generation) |
+| 56 | **A firmware CRC manifest does not tell you which image ran** — the loader picks at boot time and only its own serial line records the choice; and the boot menu is a single-keystroke consumer where six keys copy firmware images over each other | ✅ | [Quirks §56](#56-which-image-ran) |
+
 The rest of this page expands each item.
 
 ## Hardware & addressing quirks
+
+### 54. On the Z3660, `amix_mode YES` under `bootmode CPU` silently disables SCSI boot ✅ {#54-amix-mode-scsi-boot}
+
+On a Z3660 preset that releases the **real** CPU (`bootmode CPU`), setting `amix_mode YES` makes the
+firmware force `cpu_ram = 0` ✅. SCSI boot is then enabled only when `scsiboot && cpu_ram` holds, so
+the boot device silently disappears and the machine never finds its disk. **The only warning is one
+line on the serial console** — `CPURAM disabled -> SCSI boot disabled` — with nothing on screen.
+
+It reads backwards: the *Amix* preset is the one that must set `amix_mode NO`. The rule is
+**`amix_mode NO` on any real-CPU Amix preset**. An emulated preset (`UAE_040_MMU`) keeps
+`amix_mode YES` safely, because CPU RAM and autoconfig are emulated in the CPU emulator there, so
+the forcing costs nothing — which is why the two preset shapes legitimately differ and should not be
+"made consistent" ✅. A companion trap: `amix_ram` is a construct of the emulator core and is inert
+under `bootmode CPU`; the firmware says so at boot (`amix_ram 128 ignored: amix_mode is NO`), so
+leave the line alone rather than "fixing" it ✅.
+
+### 55. A Kickstart proven under emulation is not proven on silicon ✅ {#55-kickstart-file-not-generation}
+
+Measured on a real A4000 + Z3660 in 2026-09 ✅: a **Kickstart 2.04 (A3000)** ROM booted the
+*emulated*-040 Amix preset all the way to a multiuser login, and left the **real 68060** preset in a
+~3 second reset loop with zero disk I/O. Changing that one preset key to an **A4000 3.2.x** ROM fixed
+the real-060 boot outright. The asymmetry is the finding: **success under a UAE core is not evidence
+for the same ROM on silicon**, and a ROM that "works" may only have been shown to work on the easier
+path.
+
+Two things it is **not**, both checked rather than assumed ✅:
+
+- **Not a generation requirement.** The Unix dostype constant `UNI\1` (`0x554E4901`) appears exactly
+  twice in every ROM from 2.04 through 3.2.3 — the code moves address between generations, it does
+  not disappear. The boot chain is generic RDB autoboot; the ROM only has to recognise the dostype
+  and load the boot block.
+- **Not a mislabelled file** in this instance — both ROMs were honest and valid.
+
+**Identify a Kickstart by CRC-32, never by filename or by slot number** ✅. Slot numbers are per-card
+config indices and mean nothing across machines, and filenames lie: a file named `a3k204.rom` on one
+card was measured to contain a 3.2/47.111 ROM.
+
+### 56. A firmware CRC manifest does not tell you which image ran ✅ {#56-which-image-ran}
+
+The Z3660 carries three firmware images on its boot volume. `BOOT.BIN` is the **loader**: it loads
+`Z3660.bin` when that file is present and valid, falling back to `FAILSAFE.bin` and then to itself
+✅. So a checksum inventory of the three files records **what exists**, not **what the loader chose**
+— the only record of the actual choice is the firmware's own `[SD Init] Done (…)` serial line. A
+causal timeline built from the manifest instead of the log will be confidently wrong.
+
+The same page of the story: **the firmware boot menu is a single-keystroke consumer** ✅. There is no
+Enter; every character acts immediately, several are destructive, and typing a word executes it one
+letter at a time. Six keys (`M`, `B`, `N`, `J`, `K`, `L`) each copy one of the three boot images over
+another, and `D` reflashes the CPLD. A single line of text sent to that console in 2026-09 executed
+seven destructive menu commands and destroyed a card's stock firmware fallbacks ✅. **Send keys one
+at a time; never send a line.**
 
 ### 1. SCSI IDs: tape fixed at 4, disk 6 by convention ✅/🟡
 
@@ -3647,6 +3728,18 @@ Append these bullets to the page's `## Sources` list (after the amiberry cycle-e
   [040/060 status](68040-68060-status.md#what-a-soft-fpu-port-would-require); the unrelated GNU `as`
   2.8.1 mis-encode that produces a 64-bit divide form on a 68030 is on
   [the toolchain page](../drivers/toolchain.md).
+- The **2026-09-08/09 Z3660 card hand-over campaign**, first-party, real A4000 + Z3660 with a real
+  68LC060 (workspace record) ✅ — quirks 54, 55 and 56. Quirk 54 read from the firmware source (the
+  `amix_mode` → `cpu_ram = 0` forcing, and the `scsiboot && cpu_ram` gate whose else-arm prints
+  `CPURAM disabled -> SCSI boot disabled`), with both preset shapes booting on the metal the same
+  evening. Quirk 55 measured on the metal — the same Amix disk booting to multiuser under
+  `UAE_040_MMU` on a KS 2.04 A3000 ROM and reset-looping on the real 68060 until the preset named an
+  A4000 3.2.x ROM instead — with the "not a generation requirement" half established by scanning the
+  `UNI\1` dostype constant across every ROM from 2.04 to 3.2.3, and the CRC-not-filename rule from a
+  prior incident in which a file named `a3k204.rom` was found to contain a 3.2/47.111 ROM. Quirk 56's
+  loader behaviour from the firmware's own `[SD Init]` lines across a deploy (`FAIL (Z3660.BIN) /
+  FAIL (FAILSAFE.BIN) / Done (BOOT.BIN)` before, `Done (Z3660.BIN)` after), and its menu half from an
+  incident the same day in which one line sent to the boot menu ran seven destructive commands.
 
 
 ================================================================================
