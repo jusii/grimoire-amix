@@ -11260,6 +11260,40 @@ out-of-band ✅. Two paths:
 > heartbeat** (pinned PC = hung; varying = alive) and, once `zen0` is up, over **telnet/ftp**. Keep the
 > serial stream logged to a file — a bring-up is reconstructed from the log, not from the screen.
 
+### ★ Why the stock `aen0` driver cannot substitute for `zen0` — and why that depends on the firmware build {#aen0-vs-zen0}
+
+Amix ships a stock ethernet driver, `aen`, and on a Z3660 box it is tempting to reach for it instead
+of installing `zen0`. **Under an Amix-interop Z3660 firmware build it can never work**, and the
+reason is a board-ID mismatch that no configuration key can bridge ✅:
+
+- The Amix kernel's `aenautoconfig` probes the Zorro chain for **manufacturer 514 (Commodore),
+  product 112 — the A2065** — pushing the packed id `0x02020070` to `autocon()` ✅ (read from the
+  linked kernel's disassembly).
+- The Amix-interop firmware presents **every** emulated autoconfig board under `MANUF_ID 0x144B`
+  (Double H Tech), and has **A2065 emulation commented out of its embedded UAE core** ✅
+  (`cpu_emulator.cpp`; `uae/include/sysconfig.h`).
+
+So the probe hunts an id the firmware never offers. **A manufacturer id is not settable by any
+`autoconfig_*` option**, which is why the probe fails identically with `autoconfig_rtg` NO and YES —
+measured on real hardware, both values, 2026-09-09 ✅. `zen0`/`z3660eth` instead binds the Z3660's
+own product id `0x144B0001` — the same id the sibling `z3660scsi` driver uses to find its board, so
+if root mounted, the board is demonstrably in the chain ✅.
+
+> 🟡 **The corollary that costs the most time: this is a property of the firmware build, not of the
+> hardware.** Other Z3660 firmware builds *do* present an A2065 façade, and a box running one of them
+> networks perfectly on `aen0` — observed on a second SD carrying a different build, same machine,
+> same card, 2026-09-09. **An observation that "that box networks on `aen0`" therefore never transfers
+> across a firmware boundary.** Establish which build is running before concluding anything about
+> which interface can work; the runtime proof is the firmware's own `[SD Init] Done (…)` line, not a
+> checksum of the files on the card.
+
+**Diagnosing it takes one command.** `/etc/inet/network-config` brings the stock path up as a single
+`&&` chain — `aen -S && slink addaen /dev/aen0 aen0 && ifconfig aen0 …` — so a failed probe
+**short-circuits at step one and prints nothing at all** ✅. A box whose network is dead this way
+produces *no* console output during boot, which reads convincingly like "the startup script never
+ran". Run `/usr/amiga/bin/aen -S; echo $?` by hand: a return of `1` is the board probe failing, and
+`netstat -in` will show `aen0` with address and network `none`.
+
 ### Boot auto-bring-up — `/etc/rc2.d/S99zen`
 
 The amix-z3660net repo ships `userland/S99zen` (installed as `/etc/rc2.d/S99zen`). It is
@@ -11371,6 +11405,15 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   falsified (banks byte-identical at every window, host DDR empty) — and the `base < VSECT1`
   direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅. Kernel-side context on
   [the RAM ceiling](../how-it-works/ram-ceiling.md).
+- **The 2026-09-09 `aen0`-vs-`zen0` determination** (workspace record) ✅ — the board-ID mismatch read
+  from both ends of the interface: the Amix kernel's `aenautoconfig` pushing the packed A2065 id
+  `0x02020070` to `autocon()` (disassembled from the linked kernel), against the Amix-interop
+  firmware's `MANUF_ID 0x144B` for every emulated board with A2065 emulation commented out of the
+  embedded UAE core (`cpu_emulator.cpp`, `uae/include/sysconfig.h`). Confirmed on real hardware the
+  same day: `aen -S` returning 1 under `autoconfig_rtg` both NO and YES, and the five-command `zen0`
+  bring-up succeeding first try on a real 68LC060 — while a second SD carrying a *different* firmware
+  build networked on `aen0` on the same machine and card, which is the evidence for the
+  firmware-build dependency (🟡 for that build's façade, which we did not read).
 - The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — both direct-map flags read
   set in the live kernel on a real A4000 + Z3660 (98 arena pages reclaimed across the ethernet and
   SCSI drivers), read with `adb -k` against the on-box native-linked kernel; and the byte-vs-int
