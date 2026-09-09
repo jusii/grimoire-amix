@@ -49,7 +49,7 @@ firmware and the driver talks to it over a register protocol.
 | Property | Value | Tag |
 |---|---|---|
 | Driver tag / interface | `zen` → **`zen0`** | ✅ |
-| `cdevsw` major | **48** (the free `nostr` slot on the stock / A4091 kernel) | ✅ |
+| `cdevsw` major | **51** — originally 48 (the free `nostr` slot on the stock / A4091 kernel), renumbered 2026-07-30; 51 verified in a shipped kernel on real hardware 2026-09-09 | ✅ |
 | Board AutoConfig id | **`0x144B0001`** | ✅ |
 | Fixed combo base (AGA fallback) | **`0x10000000`** | ✅ |
 | Station MAC observed on the wire | `00:80:51:01:02:03` | ✅ |
@@ -167,7 +167,7 @@ plus the subtree ✅:
 
 1. **`/usr/sys/amiga/driver/z3660eth/`** — `z3660eth.c`, `z3660eth.h`, `z3660ethuser.h`, `Makefile`.
 2. **`master.d/kernel.c`:** add `extern struct streamtab z3660ethinfo;` after the stock `aeninfo`, then
-   claim cdevsw slot **48** (verify it is still the empty `/*48*/ … notty,nostr,…` row) by replacing
+   claim cdevsw slot **51** (verify it is still the empty `/*51*/ … notty,nostr,…` row) by replacing
    `nostr` with `&z3660ethinfo`.
 3. **`amiga/driver/Makefile`:** add `z3660eth/exp` to `OBJ` and a `z3660eth/exp:` build rule.
 
@@ -175,14 +175,14 @@ The machine-readable form is `driver.conf`, consumed by the `build-net-kernel.sh
 **amix-kerntools** project ✅:
 
 ```text
-net  z3660eth  z3660eth.c  z3660ethinfo  48  zen  "Z3660 Ethernet"
+net  z3660eth  z3660eth.c  z3660ethinfo  51  zen  "Z3660 Ethernet"
 ```
 
 Create the node and bring the interface up. As on [hydra](case-studies/hydra.md), Amix is SVR4.0 so
 there is **no `ifconfig plumb`** — you link the stream in with `slink`, then `ifconfig` ✅:
 
 ```sh
-mknod /dev/zen0 c 48 0
+mknod /dev/zen0 c 51 0                                      # major 51 since 2026-07-30 (was 48)
 slink                                                       # ensure the base inet streams are linked
 slink addaen /dev/zen0 zen0                                 # STREAMS multiplexor link
 ifconfig zen0 192.168.2.39 netmask 255.255.255.0 up -trailers
@@ -192,7 +192,7 @@ route add default 192.168.2.1 1                             # trailing 1 = the (
 ## ★ The INT6 interrupt storm — *the* real-hardware blocker
 
 The single most important lesson of the project ✅. On the **WinUAE build box** (no Z3660 GEM) the
-whole integration and build path worked — the kernel boots, `z3660eth` registers at cdevsw 48, and
+whole integration and build path worked — the kernel boots, `z3660eth` registers at its cdevsw slot (48 at the time; 51 today), and
 `open(/dev/zen0)` returns `ENXIO` with **no panic**. But on the real A4000 + Z3660:
 
 **Symptom.** The kernel booted with the driver and reached `login:`, but the moment the interface was
@@ -364,8 +364,8 @@ The amix-z3660net repo ships `userland/S99zen` (installed as `/etc/rc2.d/S99zen`
 
 ```sh
 #!/bin/sh
-# S99zen -- bring up zen0 at boot, backgrounded; cdevsw major 48.
-[ -c /dev/zen0 ] || mknod /dev/zen0 c 48 0
+# S99zen -- bring up zen0 at boot, backgrounded; cdevsw major 51 (was 48 before 2026-07-30).
+[ -c /dev/zen0 ] || mknod /dev/zen0 c 51 0
 (
   sleep 5
   /usr/sbin/slink                       # ensure the base inet streams are linked
@@ -439,14 +439,15 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   INT2-latency requirements of the **same Z3660 UAE-derived emulator** this driver runs on.
 - [Building and installing a kernel](kernel-build.md) — the relink → `relocunix` cycle and the D245
   clean-gate this driver's build depends on.
-- [Device & card list](../reference/device-list.md) — the `cdevsw` major 48 / `zen` assignment.
+- [Device & card list](../reference/device-list.md) — the `cdevsw` major 51 / `zen` assignment
+  (renumbered from 48 on 2026-07-30).
 - [Quirks](../how-it-works/quirks.md) — the firmware-INT6/polled-RX gotcha in the checklist.
 
 ## Sources
 
 - **Driver source we wrote** (primary, ✅): the **amix-z3660net** project (git, branch `master`) —
   `src/z3660eth.c` (~1034 lines), `src/z3660eth.h` (register map, frame-window layout, the `spl`
-  no-ops), `src/z3660ethuser.h`, `src/Makefile`, `driver.conf` (the `net z3660eth … 48 zen` stanza),
+  no-ops), `src/z3660ethuser.h`, `src/Makefile`, `driver.conf` (the `net z3660eth … 51 zen` stanza; 48 until the 2026-07-30 renumber),
   `userland/S99zen` (boot auto-bring-up), `userland/{bringup.sh,network-config.zen,zen.c}`,
   `README.md`, `BUILD.md`; commits `f04d283` (initial STREAMS/DLPI driver), `2d26315` (on-box
   integration scripts), `84c9a4f` (fix `spl6`/`splx` + `rico.h`-isms — Phase-1 gate), `b06cf45`
@@ -481,6 +482,6 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   set in the live kernel on a real A4000 + Z3660 (98 arena pages reclaimed across the ethernet and
   SCSI drivers), read with `adb -k` against the on-box native-linked kernel; and the byte-vs-int
   `adb` format trap that makes a set flag print as `16777216`.
-- Magic numbers (✅): cdevsw major **48**; board autocon `0x144B0001`; fixed combo base `0x10000000`;
+- Magic numbers (✅): cdevsw major **51** (48 until 2026-07-30); board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.168.2.39`; build box `192.168.2.38`; TFTP `192.168.2.29`; station MAC
   `00:80:51:01:02:03`.

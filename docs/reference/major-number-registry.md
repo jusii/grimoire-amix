@@ -86,7 +86,7 @@ between the two shows **five hunks, all of them hydra** — so both trees agree 
 | **48** | `random` (isoriano1968 dev tree, unpublished) — **vacated by `z3660eth` 2026-07-30** | — | 🟡 dev-tree prose only; collision resolved — see §2.2 |
 | **49** | **`zz9000`** (isoriano1968) | community | claimed ✅ |
 | 50 | `sad` — STREAMS administrative driver | stock | occupied ✅ |
-| **51** | **`z3660eth`/`zen0`** (this family) — renumbered from 48, 2026-07-30 | community | claimed ✅ — source-side; **shipped kernels and `/dev/zen0` nodes carry 48 until the next kernel rebuild** |
+| **51** | **`z3660eth`/`zen0`** (this family) — renumbered from 48, 2026-07-30 | community | claimed ✅ — **live in shipped kernels: `mknod /dev/zen0 c 51 0` verified on real hardware 2026-09-09** (A4000 + Z3660, kernel `68060-260828-50`, `zen0` up at 0 % packet loss). The "48 until the next kernel rebuild" caveat is now discharged |
 | **52–67** | — | — | ✅ **FREE** — verified row-by-row in two trees; **take a slot here** |
 | **68** | **`va2000`** (asokero) | community | claimed ✅ |
 | **69** | — | — | ✅ **FREE** — the last slot in the array |

@@ -24,10 +24,10 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 | `/dev/dsk/c0d0s1` | block | **18** | encoded (see below) | SCSI hard-disk driver | ✅ |
 | `/dev/va2000` | char | **68** | 0 | MNT VA2000 RTG framebuffer (`asokero/va2000-amix`) | ✅ |
 | `/dev/<hya>` | char | **47** | — | Hydra AmigaNet STREAMS/DLPI driver, tag `hya` (`isoriano1968/hydra-amix`) | ✅ |
-| `/dev/zen0` | char | **48** | 0 | Z3660 onboard-ethernet STREAMS/DLPI driver, tag `zen` (amix-z3660net) | ✅ |
+| `/dev/zen0` | char | **51** | 0 | Z3660 onboard-ethernet STREAMS/DLPI driver, tag `zen` (amix-z3660net) — renumbered from 48 on 2026-07-30; 51 verified on real hardware 2026-09-09 | ✅ |
 | `/dev/zz9000` | char | **49** | 0 | MNT ZZ9000 RTG framebuffer (`isoriano1968/zz9000-amix`) — ⚠ see the collision note below | ✅ |
 
-**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 48, zz9000 took char 49) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
+**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 51 — originally 48, zz9000 took char 49) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
 
 > ⚠ **Community majors collide across trees.** The `zz9000-amix` author's development kernel assigns
 > **47 hydra, 48 `random`, 49 zz9000, 50 `sad`** ✅ — while this project's family tree assigns **48 to
@@ -40,8 +40,9 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 
 The cross-tree claim map outgrew this page. **[The Major-Number Registry](major-number-registry.md)**
 now carries every known `cdevsw[]`/`bdevsw[]`/`vfssw[]`/AutoConfig claim across the community trees —
-including the **two live collisions** (stock `mx` vs `hydra` at char 47; `z3660eth` vs the unpublished
-`random` at char 48), the free ranges (51–67, 69; `CDEVSIZE` = 70 so nothing above 69 exists), and the
+including the live collision (stock `mx` vs `hydra` at char 47; the `z3660eth`-vs-unpublished-`random`
+collision at char 48 was **resolved** when `z3660eth` moved to 51 on 2026-07-30), the free ranges
+(52–67, 69; `CDEVSIZE` = 70 so nothing above 69 exists), and the
 conventions for adding a driver ✅. Pick your slot there.
 
 ### Minor-number encoding for the SCSI disk (major 18)
@@ -94,12 +95,12 @@ ifconfig hya0 <ip> netmask <mask> up -trailers
 
 hydra has a boot-time `init_tbl[]` entry (`hydrainit`) that only *probes* for the board; the full init (MAC read, DP8390 programming) is deferred to open (`slink`) time ✅. For the full driver internals see [the Hydra case study](../drivers/case-studies/hydra.md); for the networking stack it plugs into see [Networking](../how-it-works/networking.md).
 
-### The z3660eth STREAMS driver (char 48)
+### The z3660eth STREAMS driver (char 51)
 
-`z3660eth` is the second modern STREAMS/DLPI network driver, for the **Z3660 accelerator's onboard ethernet** — interface **`zen0`**, tag **`zen`**, at **`cdevsw` slot 48** (the free `nostr` slot above hydra's 47 on the stock / A4091 kernel) ✅. Like hydra it is a character driver carrying a `streamtab`, brought up with `slink` (no `ifconfig plumb` on SVR4.0):
+`z3660eth` is the second modern STREAMS/DLPI network driver, for the **Z3660 accelerator's onboard ethernet** — interface **`zen0`**, tag **`zen`**, at **`cdevsw` slot 51** ✅ — originally 48 (the free `nostr` slot above hydra's 47), **renumbered to 51 on 2026-07-30** to vacate a collision, and 51 confirmed live in a shipped kernel on real hardware 2026-09-09. Like hydra it is a character driver carrying a `streamtab`, brought up with `slink` (no `ifconfig plumb` on SVR4.0):
 
 ```sh
-mknod /dev/zen0 c 48 0
+mknod /dev/zen0 c 51 0
 slink addaen /dev/zen0 zen0
 ifconfig zen0 <ip> netmask <mask> up -trailers
 ```
@@ -143,7 +144,7 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (an `ifconfig` name, not a `/dev` node — but the underlying `aen` LANCE driver **does occupy char major 18** in `cdevsw[]`; see the [registry](major-number-registry.md)) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
-| `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-48 driver) ✅ | ✅ |
+| `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-51 driver) ✅ | ✅ |
 
 **Note:** `aen0`, `hya0` and `zen0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (both the hydra and z3660eth drivers were modelled on it) ✅.
 
@@ -191,7 +192,7 @@ The A2410 is the *officially* supported color option; the VA2000 (X11R5) and ZZ9
 | **A2065** | `aen0` | Native Ethernet (LANCE); the A3000UX ships with it | ✅ |
 | **Ariadne I** | — | Via Gateway! Vol.2 drivers | 🟡 |
 | **Hydra AmigaNet** | `hya0` (char 47) | Via the modern `hydra-amix` STREAMS/DLPI driver (NE2000/DP8390); **works on real hardware (2026-06)** — ARP + ICMP ping verified | ✅ |
-| **Z3660** (accelerator onboard ethernet) | `zen0` (char 48) | Via the modern `z3660eth` STREAMS/DLPI driver (Zynq GEM over the firmware mailbox, **not** chip-level); **works on real hardware (2026-06)** — full bidirectional TCP/IP, telnet/ftp | ✅ |
+| **Z3660** (accelerator onboard ethernet) | `zen0` (char 51) | Via the modern `z3660eth` STREAMS/DLPI driver (Zynq GEM over the firmware mailbox, **not** chip-level); **works on real hardware (2026-06)** — full bidirectional TCP/IP, telnet/ftp | ✅ |
 
 Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. The Z3660 accelerator's AutoConfig id is **`0x144B0001`** (combo base `0x10000000` on AGA), station MAC `00:80:51:01:02:03` observed on the wire ✅. See [Networking](../how-it-works/networking.md).
 
@@ -226,5 +227,5 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - `src/kernel-patches/sd.c` — the `0x02020054, &a4091queue, "A4091 SCSI"` `scsicard[]` row and the base-address-sorted `queue[]` insertion.
 - `src/a4091-wr.c` — `A4091_PROD = 0x02020054`, phys base `0x40000000`; the `sptalloc()`-mapped 53C710 driver.
 - a4091.device open-source project: [`A4091/a4091-software`](https://github.com/A4091/a4091-software) (A4091 ROM + SCRIPTS assembler).
-- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`src/z3660eth.{c,h}`, `driver.conf`'s `net z3660eth … 48 zen` stanza), **validated on a real A4000 + Z3660, 2026-06-21** ✅: `cdevsw` char major **48**, tag `zen` / interface `zen0`, AutoConfig `0x144B0001`, combo base `0x10000000`, MAC `00:80:51:01:02:03`. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
+- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`src/z3660eth.{c,h}`, `driver.conf`'s `net z3660eth … 51 zen` stanza, 48 until 2026-07-30), **validated on a real A4000 + Z3660, 2026-06-21** ✅: `cdevsw` char major **51** (48 at the time of that validation), tag `zen` / interface `zen0`, AutoConfig `0x144B0001`, combo base `0x10000000`, MAC `00:80:51:01:02:03`. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
 - The amix-z3660scsi project @ `8ea1605` — the native `z3660` piscsi **block** driver (`src/z3660.c`, `src/kernel-patches/sd.c`, `driver.conf`'s `0x144B0001 z3660queue "Z3660 SCSI" z3660.c probe=z3660present` stanza), **validated on a real A4000 + Z3660, 2026-06-12/13** ✅: registers in `sd.c`'s `scsicard[]` (block major 18 / char major 40), root disk `/dev/rdsk/c6d0s1`, AutoConfig `0x144B0001`, fixed combo base `0x10000000`. See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).

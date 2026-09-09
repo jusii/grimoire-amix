@@ -228,7 +228,7 @@ board reads back garbage outside `{0,1}`). The driver is also defensive about ge
 
 ## Kernel integration
 
-Unlike the ethernet driver — a STREAMS char driver wired into `cdevsw[]` at major 48 — the piscsi
+Unlike the ethernet driver — a STREAMS char driver wired into `cdevsw[]` at major 51 (48 until 2026-07-30) — the piscsi
 driver is a **block disk driver that plugs into the existing Amix SCSI stack**, exactly like the
 [A4091](a4091-53c710-driver.md#the-card-registry-in-sdc). It registers a **queue function in `sd.c`'s
 `scsicard[]` registry**, keyed by AutoConfig product id, and the disk then appears under the stock

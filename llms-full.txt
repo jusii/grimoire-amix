@@ -1947,7 +1947,7 @@ Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card 
 
 Full detail — the build line, the DLPI flow, and the LANCE-mirroring design — is on [the Hydra case study](../drivers/case-studies/hydra.md). The general procedure for writing this class of driver is on [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md), and the relink/boot-partition steps are on [the kernel build page](../drivers/kernel-build.md).
 
-A second real-hardware-verified example is the **`z3660eth`** driver for the **Z3660 accelerator's onboard ethernet** (interface `zen0`) — the network analogue of the [A4091 SCSI work](../drivers/a4091-53c710-driver.md), giving Amix full bidirectional TCP/IP on a physical A4000 + Z3660 (2026-06) ✅. It is a contrasting design to hydra: instead of programming a NIC chip directly it speaks the Z3660 firmware's **frame mailbox** over MMIO, registers at **`cdevsw` slot 48** (tag `zen`), and **services RX from a polled `timeout()` callout — no `int2_tbl`/`init_tbl` edit**. The one real-hardware blocker was an **INT6 interrupt storm** (the firmware raised level-6 on every received frame, but Amix has no eth INT6 handler, so ARP broadcasts hard-locked the box); the fix was to disable the firmware interrupt and keep the polled drain. Bring-up is the same `slink` plumbing as hydra (`slink addaen /dev/zen0 zen0`, then `ifconfig zen0 … up -trailers`). See [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) for the mailbox protocol, the storm, and the build/deploy story.
+A second real-hardware-verified example is the **`z3660eth`** driver for the **Z3660 accelerator's onboard ethernet** (interface `zen0`) — the network analogue of the [A4091 SCSI work](../drivers/a4091-53c710-driver.md), giving Amix full bidirectional TCP/IP on a physical A4000 + Z3660 (2026-06) ✅. It is a contrasting design to hydra: instead of programming a NIC chip directly it speaks the Z3660 firmware's **frame mailbox** over MMIO, registers at **`cdevsw` slot 51** (tag `zen`; 48 until 2026-07-30), and **services RX from a polled `timeout()` callout — no `int2_tbl`/`init_tbl` edit**. The one real-hardware blocker was an **INT6 interrupt storm** (the firmware raised level-6 on every received frame, but Amix has no eth INT6 handler, so ARP broadcasts hard-locked the box); the fix was to disable the firmware interrupt and keep the polled drain. Bring-up is the same `slink` plumbing as hydra (`slink addaen /dev/zen0 zen0`, then `ifconfig zen0 … up -trailers`). See [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) for the mailbox protocol, the storm, and the build/deploy story.
 
 > **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (a pkg on amigaunix.com). As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — so you can build driver objects on a modern host too ✅. Either way you need a licensed Amix install (its headers/libs aren't redistributable; the cross-toolchain consumes them as a sysroot). See [the toolchain page](../drivers/toolchain.md).
 
@@ -1957,7 +1957,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 |---|---|---|
 | Bring A2065 up | `ifconfig aen0 <ip> netmask <mask> up` | ✅ |
 | Bring Hydra up | `slink addaen /dev/hya0 hya0`, then `ifconfig hya0 <ip> … up -trailers` (no `ifconfig plumb` on SVR4.0) | ✅ |
-| Bring Z3660 (`zen0`) up | `slink addaen /dev/zen0 zen0`, then `ifconfig zen0 <ip> … up -trailers` (cdevsw 48; real-HW) | ✅ |
+| Bring Z3660 (`zen0`) up | `slink addaen /dev/zen0 zen0`, then `ifconfig zen0 <ip> … up -trailers` (cdevsw 51; real-HW) | ✅ |
 | Default route (metric required) | `route add default <gw> 1` | ✅/🟡 |
 | Static name→IP, resolver fallback | `/etc/hosts` | ✅ |
 | Enable DNS (1/2) | `ln -f /usr/lib/libsockdns.so /usr/lib/libsocket.so` + `/etc/resolv.conf` (nameservers only) | ✅ |
@@ -1995,7 +1995,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [github.com/isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix)
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.
-- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`zen0`, cdevsw 48) for the Z3660's onboard ethernet, **validated on a real A4000 + Z3660, 2026-06-21** ✅ (`ifconfig zen0`, `netstat -in` zero-error, laptop↔box `ping`/`ftp`); the firmware-mailbox protocol, the INT6 storm, and the polled-RX design are on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
+- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`zen0`, cdevsw 51 — 48 until 2026-07-30) for the Z3660's onboard ethernet, **validated on a real A4000 + Z3660, 2026-06-21** ✅ (`ifconfig zen0`, `netstat -in` zero-error, laptop↔box `ping`/`ftp`); the firmware-mailbox protocol, the INT6 storm, and the polled-RX design are on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
 - The **amix-kerntools** bench forensics @ `8a76775` — STREAMS `mblk`-arena exhaustion wedges the box (`ldterm: (ldtermsrv) out of blocks`, `console_get_buffer: out of blocks`; TCP then console echo die) while `freemem` stays ~2100 pages, tracking telnet/FTP session count rather than filesystem load; suspected per-connection/per-packet leak on the network path, driver not yet isolated — real A4000 + Z3660, 2026-07-12, carried **🟡**.
 - The **amix-kerntools** inetd investigation @ `f7d741d` (`docs/inetd-telnet-throttle.md`), 2026-07-27 ✅ —
   the throttle's constants read out of the shipped `/usr/sbin/inetd` (md5 `ddfbd40aaaa02a1935a5ef6a37879337`):
@@ -8459,7 +8459,7 @@ hydra registers a **boot-time `init_tbl[]` entry** (`hydrainit`) that calls the 
 
 The practical consequence: the table edits in `kernel.c` for hydra add a `cdevsw[]` slot (47) with a `streamtab`, an `int2_tbl[]` entry for `hydraintr`, **and** an `init_tbl[]`/`io_init[]` entry (`hydrainit`) — like the [VA2000 framebuffer driver](case-studies/va2000.md) (`va2000init`). The difference from VA2000 is *what* the init does: hydra's boot init only *probes*; it defers the real programming to open, whereas VA2000 must claim its Zorro window at boot ✅.
 
-> **A simpler variant — no `init_tbl`/`int2_tbl` at all.** The [`z3660eth` driver](z3660-ethernet-driver.md) (interface `zen0`) takes hydra's "init on open" idea one step further: it autoconfigs entirely on first `open` and services received frames from a **polled clock-level `timeout()` callout** instead of an interrupt — so its only `kernel.c` edit is the single `cdevsw[48]` `streamtab` slot ✅. That keeps a board-less build kernel safe (a missing board just makes `open()` return `ENXIO`, never a boot-time panic), and on the Z3660 it was the *necessary* design: the board's firmware raises Amiga **INT6** on every received frame, but Amix has no level-6 ethernet handler, so leaving interrupts on storms the kernel. Polled RX with the firmware interrupt disabled is the robust path when you can't safely own the IRQ. See [the Z3660 ethernet driver case study](z3660-ethernet-driver.md).
+> **A simpler variant — no `init_tbl`/`int2_tbl` at all.** The [`z3660eth` driver](z3660-ethernet-driver.md) (interface `zen0`) takes hydra's "init on open" idea one step further: it autoconfigs entirely on first `open` and services received frames from a **polled clock-level `timeout()` callout** instead of an interrupt — so its only `kernel.c` edit is the single `cdevsw[51]` `streamtab` slot ✅ (48 until 2026-07-30). That keeps a board-less build kernel safe (a missing board just makes `open()` return `ENXIO`, never a boot-time panic), and on the Z3660 it was the *necessary* design: the board's firmware raises Amiga **INT6** on every received frame, but Amix has no level-6 ethernet handler, so leaving interrupts on storms the kernel. Polled RX with the firmware interrupt disabled is the robust path when you can't safely own the IRQ. See [the Z3660 ethernet driver case study](z3660-ethernet-driver.md).
 
 ## Bringing the interface up: slink
 
@@ -10267,7 +10267,7 @@ make install-tools                       # zz9k_test, colorls, … → /usr/amig
 
 > ⚠ **Major 49 is a convention of the author's tree, not a registry.** His development kernel uses
 > **47 hydra, 48 `random`, 49 zz9000, 50 `sad`** — while this project's family puts
-> [`z3660eth`/`zen0` at 48](../z3660-ethernet-driver.md) ✅. Community drivers self-assign free
+> [`z3660eth`/`zen0` at 51](../z3660-ethernet-driver.md) ✅ (48 until 2026-07-30). Community drivers self-assign free
 > `cdevsw[]` slots, so **collisions between community trees are real**; INSTALL.md itself says to
 > verify 49 is free in *your* `kernel.c` before wiring it (see
 > [the device list](../../reference/device-list.md)).
@@ -10990,7 +10990,7 @@ firmware and the driver talks to it over a register protocol.
 | Property | Value | Tag |
 |---|---|---|
 | Driver tag / interface | `zen` → **`zen0`** | ✅ |
-| `cdevsw` major | **48** (the free `nostr` slot on the stock / A4091 kernel) | ✅ |
+| `cdevsw` major | **51** — originally 48 (the free `nostr` slot on the stock / A4091 kernel), renumbered 2026-07-30; 51 verified in a shipped kernel on real hardware 2026-09-09 | ✅ |
 | Board AutoConfig id | **`0x144B0001`** | ✅ |
 | Fixed combo base (AGA fallback) | **`0x10000000`** | ✅ |
 | Station MAC observed on the wire | `00:80:51:01:02:03` | ✅ |
@@ -11108,7 +11108,7 @@ plus the subtree ✅:
 
 1. **`/usr/sys/amiga/driver/z3660eth/`** — `z3660eth.c`, `z3660eth.h`, `z3660ethuser.h`, `Makefile`.
 2. **`master.d/kernel.c`:** add `extern struct streamtab z3660ethinfo;` after the stock `aeninfo`, then
-   claim cdevsw slot **48** (verify it is still the empty `/*48*/ … notty,nostr,…` row) by replacing
+   claim cdevsw slot **51** (verify it is still the empty `/*51*/ … notty,nostr,…` row) by replacing
    `nostr` with `&z3660ethinfo`.
 3. **`amiga/driver/Makefile`:** add `z3660eth/exp` to `OBJ` and a `z3660eth/exp:` build rule.
 
@@ -11116,14 +11116,14 @@ The machine-readable form is `driver.conf`, consumed by the `build-net-kernel.sh
 **amix-kerntools** project ✅:
 
 ```text
-net  z3660eth  z3660eth.c  z3660ethinfo  48  zen  "Z3660 Ethernet"
+net  z3660eth  z3660eth.c  z3660ethinfo  51  zen  "Z3660 Ethernet"
 ```
 
 Create the node and bring the interface up. As on [hydra](case-studies/hydra.md), Amix is SVR4.0 so
 there is **no `ifconfig plumb`** — you link the stream in with `slink`, then `ifconfig` ✅:
 
 ```sh
-mknod /dev/zen0 c 48 0
+mknod /dev/zen0 c 51 0                                      # major 51 since 2026-07-30 (was 48)
 slink                                                       # ensure the base inet streams are linked
 slink addaen /dev/zen0 zen0                                 # STREAMS multiplexor link
 ifconfig zen0 192.168.2.39 netmask 255.255.255.0 up -trailers
@@ -11133,7 +11133,7 @@ route add default 192.168.2.1 1                             # trailing 1 = the (
 ## ★ The INT6 interrupt storm — *the* real-hardware blocker
 
 The single most important lesson of the project ✅. On the **WinUAE build box** (no Z3660 GEM) the
-whole integration and build path worked — the kernel boots, `z3660eth` registers at cdevsw 48, and
+whole integration and build path worked — the kernel boots, `z3660eth` registers at its cdevsw slot (48 at the time; 51 today), and
 `open(/dev/zen0)` returns `ENXIO` with **no panic**. But on the real A4000 + Z3660:
 
 **Symptom.** The kernel booted with the driver and reached `login:`, but the moment the interface was
@@ -11305,8 +11305,8 @@ The amix-z3660net repo ships `userland/S99zen` (installed as `/etc/rc2.d/S99zen`
 
 ```sh
 #!/bin/sh
-# S99zen -- bring up zen0 at boot, backgrounded; cdevsw major 48.
-[ -c /dev/zen0 ] || mknod /dev/zen0 c 48 0
+# S99zen -- bring up zen0 at boot, backgrounded; cdevsw major 51 (was 48 before 2026-07-30).
+[ -c /dev/zen0 ] || mknod /dev/zen0 c 51 0
 (
   sleep 5
   /usr/sbin/slink                       # ensure the base inet streams are linked
@@ -11380,14 +11380,15 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   INT2-latency requirements of the **same Z3660 UAE-derived emulator** this driver runs on.
 - [Building and installing a kernel](kernel-build.md) — the relink → `relocunix` cycle and the D245
   clean-gate this driver's build depends on.
-- [Device & card list](../reference/device-list.md) — the `cdevsw` major 48 / `zen` assignment.
+- [Device & card list](../reference/device-list.md) — the `cdevsw` major 51 / `zen` assignment
+  (renumbered from 48 on 2026-07-30).
 - [Quirks](../how-it-works/quirks.md) — the firmware-INT6/polled-RX gotcha in the checklist.
 
 ## Sources
 
 - **Driver source we wrote** (primary, ✅): the **amix-z3660net** project (git, branch `master`) —
   `src/z3660eth.c` (~1034 lines), `src/z3660eth.h` (register map, frame-window layout, the `spl`
-  no-ops), `src/z3660ethuser.h`, `src/Makefile`, `driver.conf` (the `net z3660eth … 48 zen` stanza),
+  no-ops), `src/z3660ethuser.h`, `src/Makefile`, `driver.conf` (the `net z3660eth … 51 zen` stanza; 48 until the 2026-07-30 renumber),
   `userland/S99zen` (boot auto-bring-up), `userland/{bringup.sh,network-config.zen,zen.c}`,
   `README.md`, `BUILD.md`; commits `f04d283` (initial STREAMS/DLPI driver), `2d26315` (on-box
   integration scripts), `84c9a4f` (fix `spl6`/`splx` + `rico.h`-isms — Phase-1 gate), `b06cf45`
@@ -11422,7 +11423,7 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   set in the live kernel on a real A4000 + Z3660 (98 arena pages reclaimed across the ethernet and
   SCSI drivers), read with `adb -k` against the on-box native-linked kernel; and the byte-vs-int
   `adb` format trap that makes a set flag print as `16777216`.
-- Magic numbers (✅): cdevsw major **48**; board autocon `0x144B0001`; fixed combo base `0x10000000`;
+- Magic numbers (✅): cdevsw major **51** (48 until 2026-07-30); board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.168.2.39`; build box `192.168.2.38`; TFTP `192.168.2.29`; station MAC
   `00:80:51:01:02:03`.
 
@@ -11661,7 +11662,7 @@ board reads back garbage outside `{0,1}`). The driver is also defensive about ge
 
 ## Kernel integration
 
-Unlike the ethernet driver — a STREAMS char driver wired into `cdevsw[]` at major 48 — the piscsi
+Unlike the ethernet driver — a STREAMS char driver wired into `cdevsw[]` at major 51 (48 until 2026-07-30) — the piscsi
 driver is a **block disk driver that plugs into the existing Amix SCSI stack**, exactly like the
 [A4091](a4091-53c710-driver.md#the-card-registry-in-sdc). It registers a **queue function in `sd.c`'s
 `scsicard[]` registry**, keyed by AutoConfig product id, and the disk then appears under the stock
@@ -13657,10 +13658,10 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 | `/dev/dsk/c0d0s1` | block | **18** | encoded (see below) | SCSI hard-disk driver | ✅ |
 | `/dev/va2000` | char | **68** | 0 | MNT VA2000 RTG framebuffer (`asokero/va2000-amix`) | ✅ |
 | `/dev/<hya>` | char | **47** | — | Hydra AmigaNet STREAMS/DLPI driver, tag `hya` (`isoriano1968/hydra-amix`) | ✅ |
-| `/dev/zen0` | char | **48** | 0 | Z3660 onboard-ethernet STREAMS/DLPI driver, tag `zen` (amix-z3660net) | ✅ |
+| `/dev/zen0` | char | **51** | 0 | Z3660 onboard-ethernet STREAMS/DLPI driver, tag `zen` (amix-z3660net) — renumbered from 48 on 2026-07-30; 51 verified on real hardware 2026-09-09 | ✅ |
 | `/dev/zz9000` | char | **49** | 0 | MNT ZZ9000 RTG framebuffer (`isoriano1968/zz9000-amix`) — ⚠ see the collision note below | ✅ |
 
-**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 48, zz9000 took char 49) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
+**Note:** the major number is the **index into `cdevsw[]` (character) or `bdevsw[]` (block)** in `master.d/kernel.c`. A driver "registers" at a major by occupying that slot. There is no global registry that allocates them — community drivers pick a free slot (va2000 took char 68, hydra took char 47, z3660eth took char 51 — originally 48, zz9000 took char 49) and patch it into `kernel.c` themselves ✅. See [Building and installing a kernel](../drivers/kernel-build.md) for how a slot is wired in.
 
 > ⚠ **Community majors collide across trees.** The `zz9000-amix` author's development kernel assigns
 > **47 hydra, 48 `random`, 49 zz9000, 50 `sad`** ✅ — while this project's family tree assigns **48 to
@@ -13673,8 +13674,9 @@ The four stock entries below come from the `ls -l /dev` excerpt in the Ditto dri
 
 The cross-tree claim map outgrew this page. **[The Major-Number Registry](major-number-registry.md)**
 now carries every known `cdevsw[]`/`bdevsw[]`/`vfssw[]`/AutoConfig claim across the community trees —
-including the **two live collisions** (stock `mx` vs `hydra` at char 47; `z3660eth` vs the unpublished
-`random` at char 48), the free ranges (51–67, 69; `CDEVSIZE` = 70 so nothing above 69 exists), and the
+including the live collision (stock `mx` vs `hydra` at char 47; the `z3660eth`-vs-unpublished-`random`
+collision at char 48 was **resolved** when `z3660eth` moved to 51 on 2026-07-30), the free ranges
+(52–67, 69; `CDEVSIZE` = 70 so nothing above 69 exists), and the
 conventions for adding a driver ✅. Pick your slot there.
 
 ### Minor-number encoding for the SCSI disk (major 18)
@@ -13727,12 +13729,12 @@ ifconfig hya0 <ip> netmask <mask> up -trailers
 
 hydra has a boot-time `init_tbl[]` entry (`hydrainit`) that only *probes* for the board; the full init (MAC read, DP8390 programming) is deferred to open (`slink`) time ✅. For the full driver internals see [the Hydra case study](../drivers/case-studies/hydra.md); for the networking stack it plugs into see [Networking](../how-it-works/networking.md).
 
-### The z3660eth STREAMS driver (char 48)
+### The z3660eth STREAMS driver (char 51)
 
-`z3660eth` is the second modern STREAMS/DLPI network driver, for the **Z3660 accelerator's onboard ethernet** — interface **`zen0`**, tag **`zen`**, at **`cdevsw` slot 48** (the free `nostr` slot above hydra's 47 on the stock / A4091 kernel) ✅. Like hydra it is a character driver carrying a `streamtab`, brought up with `slink` (no `ifconfig plumb` on SVR4.0):
+`z3660eth` is the second modern STREAMS/DLPI network driver, for the **Z3660 accelerator's onboard ethernet** — interface **`zen0`**, tag **`zen`**, at **`cdevsw` slot 51** ✅ — originally 48 (the free `nostr` slot above hydra's 47), **renumbered to 51 on 2026-07-30** to vacate a collision, and 51 confirmed live in a shipped kernel on real hardware 2026-09-09. Like hydra it is a character driver carrying a `streamtab`, brought up with `slink` (no `ifconfig plumb` on SVR4.0):
 
 ```sh
-mknod /dev/zen0 c 48 0
+mknod /dev/zen0 c 51 0
 slink addaen /dev/zen0 zen0
 ifconfig zen0 <ip> netmask <mask> up -trailers
 ```
@@ -13776,7 +13778,7 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (an `ifconfig` name, not a `/dev` node — but the underlying `aen` LANCE driver **does occupy char major 18** in `cdevsw[]`; see the [registry](major-number-registry.md)) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
-| `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-48 driver) ✅ | ✅ |
+| `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-51 driver) ✅ | ✅ |
 
 **Note:** `aen0`, `hya0` and `zen0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (both the hydra and z3660eth drivers were modelled on it) ✅.
 
@@ -13824,7 +13826,7 @@ The A2410 is the *officially* supported color option; the VA2000 (X11R5) and ZZ9
 | **A2065** | `aen0` | Native Ethernet (LANCE); the A3000UX ships with it | ✅ |
 | **Ariadne I** | — | Via Gateway! Vol.2 drivers | 🟡 |
 | **Hydra AmigaNet** | `hya0` (char 47) | Via the modern `hydra-amix` STREAMS/DLPI driver (NE2000/DP8390); **works on real hardware (2026-06)** — ARP + ICMP ping verified | ✅ |
-| **Z3660** (accelerator onboard ethernet) | `zen0` (char 48) | Via the modern `z3660eth` STREAMS/DLPI driver (Zynq GEM over the firmware mailbox, **not** chip-level); **works on real hardware (2026-06)** — full bidirectional TCP/IP, telnet/ftp | ✅ |
+| **Z3660** (accelerator onboard ethernet) | `zen0` (char 51) | Via the modern `z3660eth` STREAMS/DLPI driver (Zynq GEM over the firmware mailbox, **not** chip-level); **works on real hardware (2026-06)** — full bidirectional TCP/IP, telnet/ftp | ✅ |
 
 Hydra's AutoConfig identity is **ID 2121/1 (`0x08490001`)**, rev 1.2a, with 10Base2 + 10BaseT ✅. The Z3660 accelerator's AutoConfig id is **`0x144B0001`** (combo base `0x10000000` on AGA), station MAC `00:80:51:01:02:03` observed on the wire ✅. See [Networking](../how-it-works/networking.md).
 
@@ -13859,7 +13861,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - `src/kernel-patches/sd.c` — the `0x02020054, &a4091queue, "A4091 SCSI"` `scsicard[]` row and the base-address-sorted `queue[]` insertion.
 - `src/a4091-wr.c` — `A4091_PROD = 0x02020054`, phys base `0x40000000`; the `sptalloc()`-mapped 53C710 driver.
 - a4091.device open-source project: [`A4091/a4091-software`](https://github.com/A4091/a4091-software) (A4091 ROM + SCRIPTS assembler).
-- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`src/z3660eth.{c,h}`, `driver.conf`'s `net z3660eth … 48 zen` stanza), **validated on a real A4000 + Z3660, 2026-06-21** ✅: `cdevsw` char major **48**, tag `zen` / interface `zen0`, AutoConfig `0x144B0001`, combo base `0x10000000`, MAC `00:80:51:01:02:03`. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
+- The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`src/z3660eth.{c,h}`, `driver.conf`'s `net z3660eth … 51 zen` stanza, 48 until 2026-07-30), **validated on a real A4000 + Z3660, 2026-06-21** ✅: `cdevsw` char major **51** (48 at the time of that validation), tag `zen` / interface `zen0`, AutoConfig `0x144B0001`, combo base `0x10000000`, MAC `00:80:51:01:02:03`. See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
 - The amix-z3660scsi project @ `8ea1605` — the native `z3660` piscsi **block** driver (`src/z3660.c`, `src/kernel-patches/sd.c`, `driver.conf`'s `0x144B0001 z3660queue "Z3660 SCSI" z3660.c probe=z3660present` stanza), **validated on a real A4000 + Z3660, 2026-06-12/13** ✅: registers in `sd.c`'s `scsicard[]` (block major 18 / char major 40), root disk `/dev/rdsk/c6d0s1`, AutoConfig `0x144B0001`, fixed combo base `0x10000000`. See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 
 
@@ -13955,7 +13957,7 @@ between the two shows **five hunks, all of them hydra** — so both trees agree 
 | **48** | `random` (isoriano1968 dev tree, unpublished) — **vacated by `z3660eth` 2026-07-30** | — | 🟡 dev-tree prose only; collision resolved — see §2.2 |
 | **49** | **`zz9000`** (isoriano1968) | community | claimed ✅ |
 | 50 | `sad` — STREAMS administrative driver | stock | occupied ✅ |
-| **51** | **`z3660eth`/`zen0`** (this family) — renumbered from 48, 2026-07-30 | community | claimed ✅ — source-side; **shipped kernels and `/dev/zen0` nodes carry 48 until the next kernel rebuild** |
+| **51** | **`z3660eth`/`zen0`** (this family) — renumbered from 48, 2026-07-30 | community | claimed ✅ — **live in shipped kernels: `mknod /dev/zen0 c 51 0` verified on real hardware 2026-09-09** (A4000 + Z3660, kernel `68060-260828-50`, `zen0` up at 0 % packet loss). The "48 until the next kernel rebuild" caveat is now discharged |
 | **52–67** | — | — | ✅ **FREE** — verified row-by-row in two trees; **take a slot here** |
 | **68** | **`va2000`** (asokero) | community | claimed ✅ |
 | **69** | — | — | ✅ **FREE** — the last slot in the array |
