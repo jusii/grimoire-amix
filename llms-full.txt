@@ -11271,7 +11271,10 @@ reason is a board-ID mismatch that no configuration key can bridge ✅:
   linked kernel's disassembly).
 - The Amix-interop firmware presents **every** emulated autoconfig board under `MANUF_ID 0x144B`
   (Double H Tech), and has **A2065 emulation commented out of its embedded UAE core** ✅
-  (`cpu_emulator.cpp`; `uae/include/sysconfig.h`).
+  (`Z3660_emu/src/cpu_emulator.cpp:263`; `uae/include/sysconfig.h:79`, `/* #define A2065 */`).
+  ⚠ Note the tree: there are **two** `cpu_emulator` files in the firmware — `Z3660/src/cpu_emulator.c`
+  and `Z3660_emu/src/cpu_emulator.cpp` — and the autoconfig code lives only in the `.cpp`. A grep in
+  the wrong tree returns nothing and makes the claim look false.
 
 So the probe hunts an id the firmware never offers. **A manufacturer id is not settable by any
 `autoconfig_*` option**, which is why the probe fails identically with `autoconfig_rtg` NO and YES —
@@ -11409,7 +11412,8 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   from both ends of the interface: the Amix kernel's `aenautoconfig` pushing the packed A2065 id
   `0x02020070` to `autocon()` (disassembled from the linked kernel), against the Amix-interop
   firmware's `MANUF_ID 0x144B` for every emulated board with A2065 emulation commented out of the
-  embedded UAE core (`cpu_emulator.cpp`, `uae/include/sysconfig.h`). Confirmed on real hardware the
+  embedded UAE core (`Z3660_emu/src/cpu_emulator.cpp:263`; `uae/include/sysconfig.h:79`) — line
+  references re-verified against the firmware source 2026-09-09. Confirmed on real hardware the
   same day: `aen -S` returning 1 under `autoconfig_rtg` both NO and YES, and the five-command `zen0`
   bring-up succeeding first try on a real 68LC060 — while a second SD carrying a *different* firmware
   build networked on `aen0` on the same machine and card, which is the evidence for the
