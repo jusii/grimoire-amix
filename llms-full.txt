@@ -153,7 +153,7 @@ The releases, with confidence tags carried straight from the research brief:
 
 ---
 title: Supported Hardware & Requirements
-summary: The two official machines, the mandatory 68020/030+MMU+FPU CPU, the hard 16 MB Fast RAM ceiling, the SCSI ID 6/4 rules, Zorro II only, and which expansion cards work.
+summary: The two official machines, the mandatory 68020/030+MMU+FPU CPU, the Fast RAM envelope (4 MB up — the old "16 MB hard ceiling" is retracted), the SCSI ID 6/4 rules, Zorro II only, and which expansion cards work.
 status: draft
 ---
 
@@ -208,16 +208,16 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 **Note:** "020/030 *with* MMU" excludes the cut-down EC variants specifically — the EC chips drop the MMU (and sometimes the FPU interface), which is exactly the hardware Amix depends on.
 
-### Fast RAM: 4 MB minimum, 16 MB hard ceiling
+### Fast RAM: 4 MB minimum, and the retracted "16 MB hard ceiling"
 
 - **Minimum:** 4 MB Fast RAM. ✅
-- **Maximum:** 16 MB Fast RAM — and this is a **hard kernel ceiling**, not a guideline. ✅
-- **Exceeding 16 MB mis-maps the SCSI drive.** ✅ The kernel's memory-mapping layer hard-codes the ceiling; install more than 16 MB of Fast RAM and the SCSI disk lands at the wrong address, so the system cannot reach its own disk.
+- **The "16 MB hard ceiling" was never measured** 🟡 — no first-party observation of the "mis-mapped SCSI drive" failure exists anywhere in this project's record; 32 MB boots on a stock kernel, the bench golden runs at 64 MB daily, the project owner reports the stock 030 line at 80 MB and more, and the 68040/68060 kernels run at **128 MB** on real silicon (the 2026-09 unattended installs). The real limit is the *describable-RAM* arena on the [RAM-ceiling page](ram-ceiling.md) ✅. 16 MB is a historical working point, not a ceiling (retracted 2026-09-15).
+- **What does limit you:** the kernel can *describe* only so much RAM — ≈64 MB on the stock 68030 kernel's fixed arena, ≈128 MB on the 4 KB-page 68060 kernels — and past that it fails silently, not with a disk error ✅. On the Z3660 the firmware's `amix_ram` knob sizes the window (default 16, bounded 128) under the emulated modes; under the real-CPU mode the 128 MB card RAM is simply there ✅.
 - **Running at _exactly_ 16 MB is proven safe — the failure mode is _exceeding_ the ceiling, not sitting at it.** ✅ At `a3000mem_size=16, mbresmem_size=0`, SCSI read + write/readback + double-read consistency are all clean, and a full base-set install reproduces its canonical tree digest byte-for-byte. So 16 MB is the correct working configuration, not a value to stay under.
 
 **The 8 MB memory-exhaustion livelock — and its diagnosis trap.** ✅ A memory-hungry workload on an under-provisioned (8 MB) box does **not** panic — it _livelocks_: network and console input both go dead, the framebuffer freezes at whatever was last on screen, and the emulator's host CPU pegs near 100 % indefinitely. The trap is that this reads exactly like a SCSI or network hang; the actual cause is RAM. The specific trigger seen was the package tool's cache/staging path double-materializing a package (fetch → cache file, then the installer's own `TMPDIR` re-spool — a ~35 MB working set) with no headroom to page it. The verify-in-place path and a plain install fit 8 MB comfortably, so the culprit is the extra transient footprint, not the base install. **If a box wedges with a pegged host CPU and no panic, suspect memory pressure before chasing the disk or the NIC.**
 
-In emulation this translates directly to "set Fast RAM to 16 MB (not less, not more)." See [the WinUAE config table](../getting-started/emulation-winuae.md).
+In emulation this translates to "present a sane amount of Fast RAM for the kernel you run — 16–64 MB on the stock 030 line, 128 MB on the 040/060 line — and never less than 8 MB." See [the WinUAE config table](../getting-started/emulation-winuae.md).
 
 **A second, separate limit sits far above this one: total *describable* RAM.** ✅ Past roughly
 **64 MB** on a stock 68030 kernel — a bound set by a fixed 4 MiB kernel arena, not by an arithmetic
@@ -370,20 +370,16 @@ Two limits live on this page, and they are **not the same limit**:
 
 | Limit | Value | What goes wrong past it | Tag |
 |---|---|---|---|
-| **Fast RAM configuration ceiling** | **16 MB** | The SCSI drive is mis-mapped — presents as a disk fault | ✅ |
+| ~~Fast RAM configuration ceiling~~ **16 MB working point (retracted as a ceiling 2026-09-15)** | 16 MB | Nothing observed: the "mis-mapped SCSI drive" failure has no first-party sighting; 32 MB (stock), 64 MB (bench golden, daily) and 128 MB (040/060 kernels, metal) all run | 🟡 history |
 | **Total describable RAM** | **≈64 MB** on a stock 68030 kernel (a 4 KB-page 68060 kernel reaches ≈128 MB) | `page_init()` wild-writes from address 0 — total silence | ✅ |
 
-Set your emulator, your accelerator and your memory map to the **16 MB Fast RAM** rule and neither
-one can bite you. The rest of this page is for when something has already handed the guest more
+Present the RAM your kernel can describe (below) and the second limit cannot bite you; the first was folklore. The rest of this page is for when something has already handed the guest more
 memory than you meant to — a debug/DDR window, a Zorro III RAM board, an accelerator's onboard
 memory — and you are staring at a machine that produces nothing.
 
 ## The short version
 
-- **Cap the RAM you present.** 4–16 MB of Fast RAM is the supported envelope; see
-  [hardware and requirements](hardware.md#fast-ram-4-mb-minimum-16-mb-hard-ceiling). ✅
-- **32 MB total is the largest value with positive boot evidence on a *stock* kernel**, and it exists
-  only because one bench rig needs RAM at `0x08000000` for a DMA-threshold reason. ✅
+- **The "16 MB ceiling" is retracted** (2026-09-15): no first-party observation of its failure mode exists; 32 MB boots on a stock kernel, the bench golden runs at **64 MB** every day, the project owner reports the stock 030 line at **≥ 80 MB**, and the 040/060 kernels run at **128 MB** on real silicon ✅. See [hardware](hardware.md#fast-ram-4-mb-minimum-and-the-retracted-16-mb-hard-ceiling).
 - **528 MB is proven fatal**, in exactly the way described below. ✅
 - **The ceiling is a fixed 4 MiB kernel arena, not an arithmetic accident** — ≈64 MB on the stock
   68030 kernel, ≈128 MB on a 4 KB-page 68060 kernel, and it moves only if the arena moves. ✅
@@ -502,7 +498,9 @@ On real hardware, on a kernel whose arena had been moved (except where the row s
 |---|---|---|
 | **32 MB** | Boots. The largest value with positive evidence on a **stock** kernel | ✅ |
 | **88 MB** | **Boots durably and networks** — a working multiuser machine, not just a banner | ✅ |
-| **128 MB** | Prints the **full** SVR4 banner (`134215680` bytes of memory), then **hangs post-banner** | ✅ observed / 🔴 cause open |
+| **128 MB** (arena-moved 030 kernel) | Prints the **full** SVR4 banner (`134215680` bytes of memory), then **hangs post-banner** | ✅ observed / 🔴 cause open |
+| **128 MB** (4 KB-page **68060** kernel, real 68LC060, A4000D + Z3660, 2026-09) | **Boots, installs, runs multiuser** — `Total Unix memory 134213632`; the unattended installs and the daily dev box run here | ✅ |
+| **≥ 80 MB** (stock 030 line) | Reported working by the project owner 2026-09-15; not measured here | 🟡 |
 | **≈151 MB** | **End stop** — a further page-table extent bound in the root map; nothing beyond it was reached | ✅ |
 | **528 MB** | Fatal, in exactly the way described above | ✅ |
 
@@ -566,7 +564,7 @@ Uniformly ✅ unless tagged.
 | Knob | Value | Why |
 |---|---|---|
 | Chip RAM | 2 MB (4 MB on the A4000-style rigs) | Standard; not counted against the Fast RAM rule |
-| Fast / motherboard RAM | **16 MB, exactly** | The supported ceiling; 16 MB *exactly* is proven clean, and less than 8 MB livelocks under package-install workloads |
+| Fast / motherboard RAM | **16–64 MB** on the stock 030 line (the bench golden runs 64); **128 MB** on the 040/060 line | 16 MB is only the historical working point; less than 8 MB livelocks under package-install workloads; stay under the describable-RAM ceiling for your kernel |
 | A debug/DDR window (e.g. a stand-in for accelerator memory) | **32 MB** if you need one at all | The only oversized value with positive boot evidence *on a stock kernel* — the 88 MB result below needed the kernel arena moved |
 | Zorro III fastmem board | avoid | It is AutoConfig RAM counted straight from the memory list, so it reaches the ceiling faster than a mapped window 🟡 |
 
@@ -2710,7 +2708,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | # | Quirk | Tag | Deeper coverage |
 |---|---|---|---|
 | 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
-| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive. A second, far-higher limit — total *describable* RAM, ≈64 MB on a stock 030 kernel, set by a fixed 4 MiB kernel arena — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
+| 2 | ~~16 MB Fast RAM ceiling~~ **retracted 2026-09-15** — never observed; 32/64 MB run on stock kernels, 128 MB on the 040/060 kernels. The real limit — total *describable* RAM, ≈64 MB on a stock 030 kernel, set by a fixed 4 MiB kernel arena — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
 | 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside the identity-mapped low 1 GB) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md), [040/060 status](68040-68060-status.md) |
 | 5 | **Superkickstart dual-boot** by holding the right mouse button at power-on | ✅ | [Boot process](boot-process.md) |
@@ -2828,9 +2826,9 @@ The **tape drive must sit at ID 4** — the root-floppy install scripts hard-ref
 
 **Consequence for emulation:** attach your tape image at SCSI ID 4 (the installer looks only there) and your hardfile (RDB) at SCSI ID 6 — any target works for the disk, but 6 is the convention and saves you re-pointing `/etc/vfstab` later. See the mapping in [the WinUAE setup](../getting-started/emulation-winuae.md) and [the FS-UAE setup](../getting-started/emulation-fs-uae.md). Disk geometry and partitioning are covered in [filesystems & disks](filesystems-and-disks.md).
 
-### 2. The 16 MB Fast RAM ceiling ✅
+### 2. The "16 MB Fast RAM ceiling" — retracted 🟡
 
-The kernel hard-codes a Fast RAM ceiling of **16 MB** (minimum 4 MB) ✅. Going **above 16 MB mis-maps the SCSI drive** ✅ — the symptom is disk corruption / failure rather than an honest "too much RAM" error, which makes it a nasty trap. Set your emulator's Fast RAM to **≤ 16 MB**. Background in [hardware](hardware.md).
+For years this project repeated that the kernel hard-codes a 16 MB Fast RAM ceiling and that more "mis-maps the SCSI drive". **No first-party observation of that failure exists** (checked 2026-09-15): 32 MB boots on a stock kernel, the bench golden runs at 64 MB daily, the project owner runs the stock 030 line at 80 MB and more, and the 040/060 kernels run at 128 MB on real silicon. The limit that is real is the *describable-RAM* arena (≈64 MB stock 030, ≈128 MB 4 KB-page 060) on the [RAM-ceiling page](ram-ceiling.md), and it fails silently, not as a disk error. Set your emulator's Fast RAM to **≤ 16 MB**. Background in [hardware](hardware.md).
 
 ### 3. Zorro III — stock drivers are Zorro II only ✅
 
@@ -4640,6 +4638,25 @@ a scratch *file* (never a raw device). Values in KB/s; repeats shown where taken
   early 100 MHz write read 851.9 KB/s and did not replicate — withdrawn; always repeat writes) ✅
   (the outlier and its non-replication are measured; the allocation-cost explanation for it is 🟡).
 
+### SD card on an extension cable: `sd_clock 25` (A4000D + Z3660, 2026-09-14) ✅
+
+With the SD card moved onto an extension cable the firmware's default SD clock (`sd_clock 50`) no
+longer works at all — the card does not enumerate and Amix finds no SD-backed devices. `sd_clock 25`
+in `z3660cfg.txt` restores it ✅. Measured cost against the 2026-08-31 rows above, same method, same
+80 MHz clock, every row `err=0` ✅:
+
+| Test | sd_clock 50 (08-31) | sd_clock 25 (09-14) | Δ |
+|---|---|---|---|
+| Sequential read, 64 KB | 2313 KB/s | 1924 KB/s | −16.8 % |
+| Sequential write, 64 KB | 1912 KB/s | 1620 KB/s | −15.3 % |
+| Sequential read, 512 B | 409.6 KB/s | 376.9 KB/s | −8.0 % |
+
+Stability at 25 is not in question: a bounded stress inside Amix (11 passes of 4–32 MB
+write / read-back / compare with per-pass checksums, plus 1,103 loops of a parallel small-block
+random reader) ran with zero mismatches and zero SD or piscsi errors on the firmware console ✅.
+The small-block penalty being half the large-block one is consistent with the CPU/driver-bound path
+noted above: halving the SD clock only shows where the media was on the critical path.
+
 ## Thermals — real 68LC060 under load (A4000D + Z3660, 2026-08-31)
 
 First thermal characterisation of our 68LC060, read from the Z3660's own CPU thermistor
@@ -5034,7 +5051,7 @@ All of the following are required for a *clean* boot. The four bolded rows are t
 | Wait for Blitter | **ON** | 🟡 |
 | ROM | A3000 KS **2.04 (rev 37.175)** or **3.1 (40.68)** | Must be an A3000 ROM ✅ |
 | Chip RAM | **2 MB** | ✅ |
-| Fast RAM | **≤ 16 MB** | Kernel hard-codes a 16 MB ceiling; **more mis-maps the SCSI drive** ✅ |
+| Fast RAM | **16–64 MB** (stock 030 kernel; 64 is the bench golden's daily value) | The old "16 MB ceiling / more mis-maps the SCSI drive" is retracted — never observed; the real limit is describable RAM ([RAM ceiling](../how-it-works/ram-ceiling.md)) 🟡 |
 | Floppy **DF0** | `amix_2.1_boot.adf` | The bootable install floppy ✅ |
 | **SCSI ID 4** | Tape image | Install script reads the distribution from `/dev/rmt/4hn`, hard-coded ✅ |
 | **SCSI ID 6** | RDB hardfile, ~450–900 MB | The conventional Amix disk target — the installer prompts for it, but use 6 (see [hardware](../how-it-works/hardware.md#scsi-target-ids)) ✅ |
@@ -5043,7 +5060,7 @@ All of the following are required for a *clean* boot. The four bolded rows are t
 
 - **MMU ON / JIT OFF** — these two are a pair. Amix is one of the very few classic-Amiga OSes that *requires* the MMU, and JIT and the MMU emulation do not coexist for it. JIT on → panic ✅.
 - **More Compatible OFF** — counter-intuitive, because for AmigaOS games you usually want it ON. For Amix it triggers a boot-time freeze 🟡.
-- **16 MB Fast RAM ceiling** — the kernel hard-codes the limit. Exceeding 16 MB does not just waste RAM; it **mis-maps the SCSI controller**, so the symptom looks like a disk problem, not a memory problem ✅. (Far past this rule sits a second, *silent* limit on total describable RAM — see [the RAM ceiling](../how-it-works/ram-ceiling.md).)
+- **The "16 MB Fast RAM ceiling" is retracted** (2026-09-15) — no first-party sighting of the "mis-mapped SCSI controller" failure; 32 and 64 MB run on stock kernels, 128 MB on the 040/060 kernels 🟡. (Far past this rule sits a second, *silent* limit on total describable RAM — see [the RAM ceiling](../how-it-works/ram-ceiling.md).)
 - **SCSI ID 4 = tape, ID 6 = disk.** The **tape ID 4 is hard-coded** (the scripts read `/dev/rmt/4h` and look nowhere else); the **disk ID 6 is convention** — the installer prompts for the disk target and computes the boot partition from `c${SCSI}d0s${BOOTPART}`. Use 6: it's the universal default and gets baked into the installed device names (`/etc/vfstab`), so you'd only have to undo it later. ✅/🟡
 - **Which *controller* for the install disk + tape — put both on the A3000 onboard SCSI.** ✅ (2026-07-05) WinUAE emulates the **A4091 (53C710)** for **tapes** (TAPEEMU) but **not for hard disks** — a hardfile attached at `scsi6_a4091` is never seen by the installer's SCSI scan ("No hard disks attached", RDB or not). Put the target disk on the **A3000 onboard SCSI** (`scsi_a3000=true`, hardfile at `scsi6_a3000`); it is detected and installs. And keep the **tape on the same controller as the disk** — `/dev/rmt/4hn` (the `ct` tape) routes to **card 0**, so with the A3000 SCSI enabled (card 0) and an A4091 also present (card 1), a tape left on the a4091 gives `A3000 Internal SCSI: tape ct4: SCSI timeout / cannot open`. Both on the A3000 SCSI (card 0) → a full install (disk detect → partition → tape read → package install → reboot into the laid-down system) works.
 
@@ -5125,7 +5142,7 @@ status: draft
 
 FS-UAE can run Amix, and a working configuration has been reported against FS-UAE **3.1.66** 🟡. The whole config fits in a handful of `key = value` lines: emulate an **A3000**, attach the boot floppy, and attach an RDB hardfile on the on-board SCSI controller at **ID 6**. This page gives the verified snippet, explains each line, and maps every line back to the corresponding setting in [Running Amix in WinUAE](emulation-winuae.md) so you can move a setup between the two emulators.
 
-FS-UAE shares the WinUAE emulation core, so the *same* hard rules apply: 68030 + MMU, no JIT, 68882 FPU, the hard disk on **SCSI ID 6**, the tape on **SCSI ID 4**, and **≤ 16 MB** of Fast RAM. If a setting below looks under-specified, it is because FS-UAE's A3000 model preset already supplies the matching CPU/MMU/ROM defaults that WinUAE makes you set by hand.
+FS-UAE shares the WinUAE emulation core, so the *same* hard rules apply: 68030 + MMU, no JIT, 68882 FPU, the hard disk on **SCSI ID 6**, the tape on **SCSI ID 4**, and a sane amount of Fast RAM (16–64 MB; the old "≤ 16 MB" rule is retracted — see the [RAM-ceiling page](../how-it-works/ram-ceiling.md)). If a setting below looks under-specified, it is because FS-UAE's A3000 model preset already supplies the matching CPU/MMU/ROM defaults that WinUAE makes you set by hand.
 
 ## The verified config
 
@@ -5270,7 +5287,7 @@ Same as any Amix target ✅ — and the CPU/MMU settings are mandatory or it won
   `NOTICE: User BUS ERROR at … PID:1 CMD:/sbin/init` ✅. It also silently overrides the
   `cpu_compatible=false` above. See [the cycle-exact
   trap](../how-it-works/emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive).
-- **4–16 MB Fast RAM** (16 MB hard ceiling) and an **A3000 Kickstart 2.04** ROM
+- **16–64 MB Fast RAM** on the stock 030 line (the bench golden runs 64; the old "16 MB hard ceiling" is retracted) and an **A3000 Kickstart 2.04** ROM
 - `scsi_a3000=true`
 
 > ⚠️ **A hand-written `.uae` is guilty until proven otherwise.** The effective cycle-exact default is
@@ -6107,14 +6124,14 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 | **CPU** | 68020 **or** 68030 with a **real MMU** | Amix uses the 68030 MMU (HAT layer); a 68EC020/68EC030 (no MMU) **cannot** run Amix |
 | **FPU** | **68881 or 68882** mandatory | No soft-float; the kernel and userland assume hardware FP |
 | **No 68040/68060** | A4000 **cannot** officially run Amix | Kernel predates the 68040 MMU — see the [040/060 status page](../how-it-works/68040-68060-status.md) |
-| **Fast RAM** | **4 MB minimum, 16 MB MAXIMUM** | Kernel hard-codes a 16 MB ceiling; **>16 MB mis-maps the SCSI drive** |
+| **Fast RAM** | **4 MB minimum**; the old "16 MB maximum" is retracted | No first-party sighting of the "mis-mapped SCSI drive"; 32/64 MB run on stock kernels, 128 MB on the 040/060 kernels — the real limit is describable RAM ([RAM ceiling](../how-it-works/ram-ceiling.md)) |
 | **SCSI disk** | **ID 6** (convention) | Installer prompts for the disk target; ID 6 is the universal default, baked into device names once installed |
 | **SCSI tape** | **must be SCSI ID 4** | Hard-coded in install scripts (`/dev/rmt/4h`) |
 | **No Zorro III** | **Zorro II cards only** | The memory-mapping layer can't address Zorro III space, and that source wasn't shipped, so it can't be community-fixed |
 
 For the full hardware story — supported SCSI/graphics/network/serial cards, the AUTOCONFIG mechanism, the RAM-ceiling failure mode — see [the hardware reference page](../how-it-works/hardware.md).
 
-**On the Z3660 accelerator, the 16 MB contract is enforced in firmware, not left to you.** ✅ When the Z3660's Amix-interop mode is enabled, its emulator hard-wires a single 16 MB memory window (compile-time fixed — there is no config knob to raise it) and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. (The dummy bank is guarding the separate total-describable-RAM limit — see [the Amix RAM ceiling](../how-it-works/ram-ceiling.md).) The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
+**On the Z3660 accelerator the emulated modes size the Amix window with the `amix_ram` knob** (default 16 MiB, bounded 128; the firmware docs recommend 64 for a shipping config) ✅ — the earlier "compile-time fixed, no knob" statement described the investigation-era firmware. Under the real-CPU mode the card's 128 MB is presented directly and the 68060 kernels run there daily ✅. When the Amix-interop mode is enabled, its emulator presents a single window of that size and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. (The dummy bank is guarding the separate total-describable-RAM limit — see [the Amix RAM ceiling](../how-it-works/ram-ceiling.md).) The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
 
 **The Z3660's effective config is two layers — the preset overlay wins.** ✅ `z3660cfg.txt` declares the `hdfN` disk-image files, but the active `presets/presetN.txt` (chosen by `presets/preset.txt`) **overrides every key it sets** — boot mode, `amix_mode`, the Kickstart choice, and the `scsiN <hdf-index>` assignments — and the env parser handles only the `scsiN` indices, never `hdfN` declarations. The practical trap: editing `z3660cfg.txt` alone to re-map which image sits on which SCSI ID is **silently inert** when a preset carries `scsiN` lines. Change both layers (declare the image in the base, remap the SCSI ID in the active preset), and always confirm from the firmware's own boot print — it logs the effective join as `[CFG]`/`[ENV] SCSIn assigned to …`.
 
@@ -6150,6 +6167,11 @@ The principle is straightforward because Amix only cares about *SCSI IDs*, not t
 > **Warning (🟡, unverified depth):** This page does **not** have a primary-verified ZuluSCSI profile for Amix. SCSI emulators vary in how faithfully they emulate a *sequential* (tape) device versus a *block* (disk) device, sector sizes, and parity/termination behavior — and Amix's SCSI handling is old and picky. Treat any specific device-profile recipe you find online as unverified until you reproduce it. The reliable, well-trodden path most people use is the **tape-free install** below, which sidesteps tape emulation entirely.
 
 For how the disk is laid out once Amix sees it (RDB scheme, the 2 MB boot partition, swap, UFS-vs-s5 choice), see [filesystems and disks](../how-it-works/filesystems-and-disks.md) and [the installation walkthrough](install-walkthrough.md).
+
+**SD cards through the Z3660 on an extension cable need `sd_clock 25`** ✅ (2026-09-14): at the
+firmware default of 50 MHz the card does not enumerate and Amix sees no SD-backed devices at all; at
+25 it boots and passes a write/read-back stress cleanly, at roughly 15 % lower sequential throughput —
+numbers on the [benchmarks page](../how-it-works/performance-benchmarks.md#sd-card-on-an-extension-cable-sd_clock-25-a4000d--z3660-2026-09-14).
 
 ### Keep partitions reasonably small 🟡
 
@@ -6187,6 +6209,25 @@ Beyond the community tape-free lore above, a **complete from-scratch install has
 - **An installer-minted root can be attested end-to-end from the box's own package database** ✅ — the digest is computed over the installed standard package set as the box itself records it (`/var/sadm`), not over the media it came from. That is what separates a *golden* image from a disk that merely boots: its contents are provable against the installer's own manifest without trusting the host that built it.
 - **Budget minutes per iteration on metal.** A cold power-on to a networked multiuser box (run level 2, the ethernet interface up) takes **≈270 s** on this rig, reproduced over two cold boots ✅ — an order of magnitude slower than the emulator loop, and the single biggest cost in any metal test matrix.
 - Ops note: some large packages hold the console silently for many minutes during extraction — that is normal, not a hang; the metal Amix console is HDMI-only (the accelerator's serial log ends at the firmware→Amix handoff).
+
+### A from-scratch install on a real 68060 — unattended, from an SD card (Z3660, 2026-09-15) ✅
+
+The line above installed under the Z3660's *emulated* CPU. On 2026-09-15 the same installer completed
+its first install **on real 68LC060 silicon** (A4000D + Z3660, `bootmode CPU`, 128 MB), unattended:
+insert the card, power on, the miniroot boots the proven 060 kernel, the installer authors the target
+and installs the eight base packages in about 15–17 minutes, halts, and the installed disk boots to a
+login prompt in about a minute — roughly 2.7× faster than the emulated-040 reference for the same
+packages ✅. Two facts made it work, both earned on the wire: the miniroot must root on the Z3660
+(card 1) and never touch the phantom A3000 SCSI controller at card 0, whose first register write
+bus-errors in kernel mode on a real A4000 (the emulated modes supply a chip there; the metal does not)
+✅; and the first-boot script must not run the stock `atdevs` `/dev` probe, which opens a card-0
+node first ✅. The installed system then updates its catalog from the public package repository at
+`pkg.amigaux.org` over the Z3660's own ethernet and installs and removes packages with no operator
+configuration ✅ (hostname form only: the repository is a name-based virtual host, so a bare IP in the
+client's `repo=` line returns 404 ✅). One operational law from the same day: the unattended raw
+install has **no blank-target gate** — a power-cycle with the source medium still mapped re-installs
+and erases the target — so the card ships two firmware presets, *install* and *installed*, and the
+operator switches after the halt ✅.
 
 ### Non-standard tape drives: `viper_kludge` 🟡
 
@@ -10439,8 +10480,12 @@ stock X11R4/R5 ✅.
 
 ## The overlay pattern
 
-The repo contains **no X Consortium source** — only the Amix delta. `install.sh` downloads the three
-official archives from the [X.Org X11R6.3 archive](https://www.x.org/archive/X11R6.3/), verifies
+The repo was published as the Amix delta only, with **no X Consortium source**; since the 2026-07-07
+commits (`277087f`, `564694f`, `331d84e`) the overlay also vendors **seven full X Consortium/DEC
+core files** (`dix/dixfonts.c`, `lib/font/bitmap/pcfread.c`, `bitmapfunc.c`, `mfb/maskbits.h`,
+`mfb/mfbimage.c`, `mi/midispcur.c`, `mi/miglblt.c` — about 5,000 lines, each keeping its inline
+DEC/X Consortium header; `PORT-FILES.md` records why each was taken whole) ✅ (re-read 2026-09-14 at
+HEAD `cb61a21`). `install.sh` still downloads the three official archives from the [X.Org X11R6.3 archive](https://www.x.org/archive/X11R6.3/), verifies
 them against a committed `SOURCES.sha256`, extracts one `xc` tree, and copies `overlay/xc` over it ✅:
 
 ```sh
@@ -10451,8 +10496,9 @@ sh install.sh /export/amix/x11r6.3      # → /export/amix/x11r6.3/xc
 ```
 
 This is the same keep-upstream-out-of-the-repo licensing discipline this project uses for Amix
-media, applied to X11 ✅. The overlay is small: imake config, the `hw/amix` server directory, a few
-library Imakefiles, and compatibility shims for Amix's old `cpp`/`make`/`lex` ✅ (`PORT-FILES.md`).
+media, applied to X11 ✅ — with the seven whole files above as the documented exception. The rest of the
+overlay is small: imake config, the `hw/amix` server directory, a few library Imakefiles, and
+compatibility shims for Amix's old `cpp`/`make`/`lex` ✅ (`PORT-FILES.md`).
 
 ## Build configuration: `amix.cf`
 
@@ -10553,6 +10599,9 @@ shared library:
   ```
 
   Omitting `libXt.sa` fails with unresolved `XtOpenApplication`/`XtToolkitInitialize` ✅.
+- **Do not use the stock SVR4 `XawClientLibs` expansion on Amix** (`SHARED-LIBRARIES.md`, added
+  `64299bd` 2026-07-09): it can emit `-lXaw -lXmu -lXt …` without `libXmu.sa` and `libXt.sa`, which
+  fails for Athena clients that call Xt entry points directly — `xlogo` and `xmag` among them ✅.
 - **Hygiene:** never mix static and PIC objects in one library, and never reuse a `.so` built while
   experimenting with link flags — a stale `libICE.so.6.3` crashed **every** Xt client before `main`
   until relinked with `ld -G -h` ✅.
@@ -10570,11 +10619,18 @@ sh config/util/amix-shared-rebuild.sh /usr/x11r6/xc libs >/tmp/x11r6-shared.log 
 sh config/util/startXzz9000 :0        # 1920×800 twm + xterm + xclock session
 ```
 
-The launcher honours `ZZ9K_MODE`, `ZZ9K_FONT_PATH`, and `X11R6_TOP`, and passes `-ac -kb
--terminate` — access control off and XKB bypassed for the local bring-up test; **do not expose this
+A second driver script, `amix-build-programs.sh` (modes `useful` / `common` / `all`), builds the
+client programs after the libraries ✅. The launcher honours `ZZ9K_MODE`, `ZZ9K_FONT_PATH`, `X11R6_TOP`,
+and — since `b703af3` — `ZZ9K_XMODMAP` (default `Xmodmap.de`, a German keymap) and `ZZ9K_SHELL`; it
+detaches the ZZ9000 console before the session and restores it after (`ad2b43f`, `49d1557`), starts
+the server directly rather than through `xinit` (`b1d3095`), and ships a `twmrc.zz9000` root menu with
+titlebar controls and a [Mesa](mesa31.md) `gears` launcher that checks two install paths ✅. It passes
+`-ac -kb -terminate` — access control off and XKB bypassed for the local bring-up test; **do not expose this
 server to an untrusted network** ✅. Prerequisites: Amix 2.1/SVR4, GCC 2.7.2.3 (+GNU cpp), the
 [ZZ9000 driver](zz9000.md) with `/dev/zz9000`, and the system libraries `socket`, `nsl`, `dbm`,
-`screen` ✅. GLX and [Mesa](mesa31.md) are **not** part of this tree yet ✅.
+`screen` ✅. GLX and [Mesa](mesa31.md) are **not** part of this tree ✅ — Mesa lives in its own repo and is
+only launched from the twm menu. No binary release or tag exists; everything is built natively on the
+box with GCC 2.7.2.3 ✅ (state as of 2026-09-14, HEAD `cb61a21`, 19 commits).
 
 ## See also
 
@@ -10622,10 +10678,10 @@ stage — the static libraries and demos are the first milestone, not a finished
 | Rendering | **Xlib software driver** — client-side; no GLX server extension needed | ✅ |
 | Display target | [`Xzz9000`](x11r63-zz9000.md) (16-bit TrueColor), headers/libs from `/usr/x11r6` | ✅ |
 | Compiler | GCC 2.7.2.3; `-O -ansi -finline-functions -DAMIX -Dm68k -DSVR4` | ✅ |
-| First milestone | **static** `libGL.a` / `libGLU.a` / `libglut.a` + `xdemos` | ✅ |
+| First milestone | **static** `libGL.a` / `libGLU.a` / `libglut.a` + `xdemos`; then selected GLUT demos (`gears`, `bounce`, `glutmech`) before any shared-library work | ✅ |
 | Excluded (for now) | MIT-SHM, threads, CPU assembly, DRI, server-side GLX, ZZ9000 HW accel, shared libs | ✅ |
 | Distribution | overlay-only: `install.sh` fetches + SHA-256-verifies pristine Mesa 3.1 | ✅ |
-| License | Mesa's own terms (upstream) · MIT (new material) | ✅ |
+| License | Mesa's own terms (upstream) · MIT (new material) · **GLUT 3.7** (`demos/GLUT-3.7-NOTICE`, for the vendored `glutmech.c`) | ✅ |
 
 ## The interesting part: Mesa 3.1 already knew about Amix
 
@@ -10646,7 +10702,7 @@ amix:
 	"CFLAGS = -O -ansi -finline-functions -DAMIX -Dm68k -DSVR4 \
 		-I/usr/x11r6/xc/exports/include -I/usr/x11r6/include" \
 	"XLIBS = -L/usr/x11r6/xc/exports/lib -L/usr/x11r6/lib \
-		-lX11 -lsocket -lnsl -lm"
+		-lXmu -z nodefs -lXext -lX11 -lsocket -lnsl -lm"
 ```
 
 ## Preparing and building
@@ -10686,6 +10742,18 @@ Stated explicitly in `PORTING.md` ✅: the **X11R6.3 repo owns any future server
 the Mesa repo owns the renderer, the GL/GLU/GLUT libraries, the demos, and the client-side
 GLX/Xlib integration. Mesa's tree is deliberately independent of the `xc` tree
 (`/usr/mesa3/Mesa-3.1` vs `/usr/x11r6`) ✅.
+
+## State as of 2026-09-14 (HEAD `1065dcc`, 5 commits)
+
+Three commits after the one this page was written from (`78fe054`) ✅: `b394471` adds `gears.c` and
+starts its idle loop reliably on Amix; `430b174` adds GLUT demo targets (`amix-build.sh mech`) and
+vendors **`glutmech.c` from GLUT 3.7** into `overlay/Mesa-3.1/demos/` with its own
+`GLUT-3.7-NOTICE` — a third upstream project beside Mesa and the port's MIT material; `1065dcc` adds
+`bounce.c` and its idle loop. `PORTING.md`'s sequence gained a step 5, *build selected GLUT demos*,
+pushing shared libraries to step 6 ✅. The `XLIBS` line above now also carries `-lXmu -z nodefs
+-lXext` ✅. No binary release or tag exists; the build is native (GCC 2.7.2.3) against X11R6.3 headers
+and libraries under `/usr/x11r6` ✅. The README's *Layout* section still names the author's Windows
+build-host paths — read it as a personal layout, not a convention ✅.
 
 ## See also
 
@@ -14933,7 +15001,7 @@ status: draft
 ## Fact-confidence tags
 
 Inline, per the [AGENTS contract](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md): ✅ verified, 🟡 community-reported, 🔴 unverified/disputed.
-Example: "The kernel hard-codes a 16 MB Fast RAM ceiling ✅; exceeding it mis-maps the SCSI drive ✅."
+Example: "The tape drive must be SCSI ID 4 ✅; the install scripts read `/dev/rmt/4h` and look nowhere else ✅." (The old example sentence about a 16 MB RAM ceiling was itself a claim nobody had measured — retracted 2026-09-15 — which is the point of tagging.)
 
 ## Filenames
 
@@ -15001,7 +15069,7 @@ Rules of use:
 Example, copy the brief's own style:
 
 ```markdown
-The kernel hard-codes a 16 MB Fast RAM ceiling ✅; exceeding it mis-maps the SCSI drive ✅.
+The tape drive must be SCSI ID 4 ✅; the install scripts read `/dev/rmt/4h` and look nowhere else ✅.
 A "2.2" release does not exist in any primary source 🔴.
 ```
 
