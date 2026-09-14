@@ -23,10 +23,10 @@ stage — the static libraries and demos are the first milestone, not a finished
 | Rendering | **Xlib software driver** — client-side; no GLX server extension needed | ✅ |
 | Display target | [`Xzz9000`](x11r63-zz9000.md) (16-bit TrueColor), headers/libs from `/usr/x11r6` | ✅ |
 | Compiler | GCC 2.7.2.3; `-O -ansi -finline-functions -DAMIX -Dm68k -DSVR4` | ✅ |
-| First milestone | **static** `libGL.a` / `libGLU.a` / `libglut.a` + `xdemos` | ✅ |
+| First milestone | **static** `libGL.a` / `libGLU.a` / `libglut.a` + `xdemos`; then selected GLUT demos (`gears`, `bounce`, `glutmech`) before any shared-library work | ✅ |
 | Excluded (for now) | MIT-SHM, threads, CPU assembly, DRI, server-side GLX, ZZ9000 HW accel, shared libs | ✅ |
 | Distribution | overlay-only: `install.sh` fetches + SHA-256-verifies pristine Mesa 3.1 | ✅ |
-| License | Mesa's own terms (upstream) · MIT (new material) | ✅ |
+| License | Mesa's own terms (upstream) · MIT (new material) · **GLUT 3.7** (`demos/GLUT-3.7-NOTICE`, for the vendored `glutmech.c`) | ✅ |
 
 ## The interesting part: Mesa 3.1 already knew about Amix
 
@@ -47,7 +47,7 @@ amix:
 	"CFLAGS = -O -ansi -finline-functions -DAMIX -Dm68k -DSVR4 \
 		-I/usr/x11r6/xc/exports/include -I/usr/x11r6/include" \
 	"XLIBS = -L/usr/x11r6/xc/exports/lib -L/usr/x11r6/lib \
-		-lX11 -lsocket -lnsl -lm"
+		-lXmu -z nodefs -lXext -lX11 -lsocket -lnsl -lm"
 ```
 
 ## Preparing and building
@@ -87,6 +87,18 @@ Stated explicitly in `PORTING.md` ✅: the **X11R6.3 repo owns any future server
 the Mesa repo owns the renderer, the GL/GLU/GLUT libraries, the demos, and the client-side
 GLX/Xlib integration. Mesa's tree is deliberately independent of the `xc` tree
 (`/usr/mesa3/Mesa-3.1` vs `/usr/x11r6`) ✅.
+
+## State as of 2026-09-14 (HEAD `1065dcc`, 5 commits)
+
+Three commits after the one this page was written from (`78fe054`) ✅: `b394471` adds `gears.c` and
+starts its idle loop reliably on Amix; `430b174` adds GLUT demo targets (`amix-build.sh mech`) and
+vendors **`glutmech.c` from GLUT 3.7** into `overlay/Mesa-3.1/demos/` with its own
+`GLUT-3.7-NOTICE` — a third upstream project beside Mesa and the port's MIT material; `1065dcc` adds
+`bounce.c` and its idle loop. `PORTING.md`'s sequence gained a step 5, *build selected GLUT demos*,
+pushing shared libraries to step 6 ✅. The `XLIBS` line above now also carries `-lXmu -z nodefs
+-lXext` ✅. No binary release or tag exists; the build is native (GCC 2.7.2.3) against X11R6.3 headers
+and libraries under `/usr/x11r6` ✅. The README's *Layout* section still names the author's Windows
+build-host paths — read it as a personal layout, not a convention ✅.
 
 ## See also
 
