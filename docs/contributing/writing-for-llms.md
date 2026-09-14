@@ -45,7 +45,7 @@ Rules of use:
 Example, copy the brief's own style:
 
 ```markdown
-The kernel hard-codes a 16 MB Fast RAM ceiling ✅; exceeding it mis-maps the SCSI drive ✅.
+The tape drive must be SCSI ID 4 ✅; the install scripts read `/dev/rmt/4h` and look nowhere else ✅.
 A "2.2" release does not exist in any primary source 🔴.
 ```
 

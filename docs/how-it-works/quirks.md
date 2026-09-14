@@ -15,7 +15,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | # | Quirk | Tag | Deeper coverage |
 |---|---|---|---|
 | 1 | **Tape must be ID 4** (hard-coded `/dev/rmt/4h`); **disk ID 6 by convention** — installer prompts for the target, but the ID is baked into device names, so don't change it post-install | ✅/🟡 | [Hardware](hardware.md#scsi-target-ids), [Filesystems & disks](filesystems-and-disks.md) |
-| 2 | **16 MB Fast RAM ceiling**; more mis-maps the SCSI drive. A second, far-higher limit — total *describable* RAM, ≈64 MB on a stock 030 kernel, set by a fixed 4 MiB kernel arena — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
+| 2 | ~~16 MB Fast RAM ceiling~~ **retracted 2026-09-15** — never observed; 32/64 MB run on stock kernels, 128 MB on the 040/060 kernels. The real limit — total *describable* RAM, ≈64 MB on a stock 030 kernel, set by a fixed 4 MiB kernel arena — fails **silently** (no output at all) | ✅ | [Hardware](hardware.md), [RAM ceiling](ram-ceiling.md) |
 | 3 | **Stock Amix is Zorro II only** — stock drivers can't address Zorro III; but a purpose-written driver that maps the board (`sptalloc`, or a window inside the identity-mapped low 1 GB) **can** — see the [A4091](../drivers/a4091-53c710-driver.md) & [Z3660](../drivers/z3660-ethernet-driver.md) drivers | ✅ | [Hardware](hardware.md), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 4 | **No 68040/68060** → the A4000 can't officially run Amix | ✅ | [Hardware](hardware.md), [040/060 status](68040-68060-status.md) |
 | 5 | **Superkickstart dual-boot** by holding the right mouse button at power-on | ✅ | [Boot process](boot-process.md) |
@@ -133,9 +133,9 @@ The **tape drive must sit at ID 4** — the root-floppy install scripts hard-ref
 
 **Consequence for emulation:** attach your tape image at SCSI ID 4 (the installer looks only there) and your hardfile (RDB) at SCSI ID 6 — any target works for the disk, but 6 is the convention and saves you re-pointing `/etc/vfstab` later. See the mapping in [the WinUAE setup](../getting-started/emulation-winuae.md) and [the FS-UAE setup](../getting-started/emulation-fs-uae.md). Disk geometry and partitioning are covered in [filesystems & disks](filesystems-and-disks.md).
 
-### 2. The 16 MB Fast RAM ceiling ✅
+### 2. The "16 MB Fast RAM ceiling" — retracted 🟡
 
-The kernel hard-codes a Fast RAM ceiling of **16 MB** (minimum 4 MB) ✅. Going **above 16 MB mis-maps the SCSI drive** ✅ — the symptom is disk corruption / failure rather than an honest "too much RAM" error, which makes it a nasty trap. Set your emulator's Fast RAM to **≤ 16 MB**. Background in [hardware](hardware.md).
+For years this project repeated that the kernel hard-codes a 16 MB Fast RAM ceiling and that more "mis-maps the SCSI drive". **No first-party observation of that failure exists** (checked 2026-09-15): 32 MB boots on a stock kernel, the bench golden runs at 64 MB daily, the project owner runs the stock 030 line at 80 MB and more, and the 040/060 kernels run at 128 MB on real silicon. The limit that is real is the *describable-RAM* arena (≈64 MB stock 030, ≈128 MB 4 KB-page 060) on the [RAM-ceiling page](ram-ceiling.md), and it fails silently, not as a disk error. Set your emulator's Fast RAM to **≤ 16 MB**. Background in [hardware](hardware.md).
 
 ### 3. Zorro III — stock drivers are Zorro II only ✅
 

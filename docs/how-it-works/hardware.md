@@ -1,6 +1,6 @@
 ---
 title: Supported Hardware & Requirements
-summary: The two official machines, the mandatory 68020/030+MMU+FPU CPU, the hard 16 MB Fast RAM ceiling, the SCSI ID 6/4 rules, Zorro II only, and which expansion cards work.
+summary: The two official machines, the mandatory 68020/030+MMU+FPU CPU, the Fast RAM envelope (4 MB up — the old "16 MB hard ceiling" is retracted), the SCSI ID 6/4 rules, Zorro II only, and which expansion cards work.
 status: draft
 ---
 
@@ -55,16 +55,16 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 **Note:** "020/030 *with* MMU" excludes the cut-down EC variants specifically — the EC chips drop the MMU (and sometimes the FPU interface), which is exactly the hardware Amix depends on.
 
-### Fast RAM: 4 MB minimum, 16 MB hard ceiling
+### Fast RAM: 4 MB minimum, and the retracted "16 MB hard ceiling"
 
 - **Minimum:** 4 MB Fast RAM. ✅
-- **Maximum:** 16 MB Fast RAM — and this is a **hard kernel ceiling**, not a guideline. ✅
-- **Exceeding 16 MB mis-maps the SCSI drive.** ✅ The kernel's memory-mapping layer hard-codes the ceiling; install more than 16 MB of Fast RAM and the SCSI disk lands at the wrong address, so the system cannot reach its own disk.
+- **The "16 MB hard ceiling" was never measured** 🟡 — no first-party observation of the "mis-mapped SCSI drive" failure exists anywhere in this project's record; 32 MB boots on a stock kernel, the bench golden runs at 64 MB daily, the project owner reports the stock 030 line at 80 MB and more, and the 68040/68060 kernels run at **128 MB** on real silicon (the 2026-09 unattended installs). The real limit is the *describable-RAM* arena on the [RAM-ceiling page](ram-ceiling.md) ✅. 16 MB is a historical working point, not a ceiling (retracted 2026-09-15).
+- **What does limit you:** the kernel can *describe* only so much RAM — ≈64 MB on the stock 68030 kernel's fixed arena, ≈128 MB on the 4 KB-page 68060 kernels — and past that it fails silently, not with a disk error ✅. On the Z3660 the firmware's `amix_ram` knob sizes the window (default 16, bounded 128) under the emulated modes; under the real-CPU mode the 128 MB card RAM is simply there ✅.
 - **Running at _exactly_ 16 MB is proven safe — the failure mode is _exceeding_ the ceiling, not sitting at it.** ✅ At `a3000mem_size=16, mbresmem_size=0`, SCSI read + write/readback + double-read consistency are all clean, and a full base-set install reproduces its canonical tree digest byte-for-byte. So 16 MB is the correct working configuration, not a value to stay under.
 
 **The 8 MB memory-exhaustion livelock — and its diagnosis trap.** ✅ A memory-hungry workload on an under-provisioned (8 MB) box does **not** panic — it _livelocks_: network and console input both go dead, the framebuffer freezes at whatever was last on screen, and the emulator's host CPU pegs near 100 % indefinitely. The trap is that this reads exactly like a SCSI or network hang; the actual cause is RAM. The specific trigger seen was the package tool's cache/staging path double-materializing a package (fetch → cache file, then the installer's own `TMPDIR` re-spool — a ~35 MB working set) with no headroom to page it. The verify-in-place path and a plain install fit 8 MB comfortably, so the culprit is the extra transient footprint, not the base install. **If a box wedges with a pegged host CPU and no panic, suspect memory pressure before chasing the disk or the NIC.**
 
-In emulation this translates directly to "set Fast RAM to 16 MB (not less, not more)." See [the WinUAE config table](../getting-started/emulation-winuae.md).
+In emulation this translates to "present a sane amount of Fast RAM for the kernel you run — 16–64 MB on the stock 030 line, 128 MB on the 040/060 line — and never less than 8 MB." See [the WinUAE config table](../getting-started/emulation-winuae.md).
 
 **A second, separate limit sits far above this one: total *describable* RAM.** ✅ Past roughly
 **64 MB** on a stock 68030 kernel — a bound set by a fixed 4 MiB kernel arena, not by an arithmetic

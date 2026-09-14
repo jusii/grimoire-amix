@@ -16,20 +16,16 @@ Two limits live on this page, and they are **not the same limit**:
 
 | Limit | Value | What goes wrong past it | Tag |
 |---|---|---|---|
-| **Fast RAM configuration ceiling** | **16 MB** | The SCSI drive is mis-mapped — presents as a disk fault | ✅ |
+| ~~Fast RAM configuration ceiling~~ **16 MB working point (retracted as a ceiling 2026-09-15)** | 16 MB | Nothing observed: the "mis-mapped SCSI drive" failure has no first-party sighting; 32 MB (stock), 64 MB (bench golden, daily) and 128 MB (040/060 kernels, metal) all run | 🟡 history |
 | **Total describable RAM** | **≈64 MB** on a stock 68030 kernel (a 4 KB-page 68060 kernel reaches ≈128 MB) | `page_init()` wild-writes from address 0 — total silence | ✅ |
 
-Set your emulator, your accelerator and your memory map to the **16 MB Fast RAM** rule and neither
-one can bite you. The rest of this page is for when something has already handed the guest more
+Present the RAM your kernel can describe (below) and the second limit cannot bite you; the first was folklore. The rest of this page is for when something has already handed the guest more
 memory than you meant to — a debug/DDR window, a Zorro III RAM board, an accelerator's onboard
 memory — and you are staring at a machine that produces nothing.
 
 ## The short version
 
-- **Cap the RAM you present.** 4–16 MB of Fast RAM is the supported envelope; see
-  [hardware and requirements](hardware.md#fast-ram-4-mb-minimum-16-mb-hard-ceiling). ✅
-- **32 MB total is the largest value with positive boot evidence on a *stock* kernel**, and it exists
-  only because one bench rig needs RAM at `0x08000000` for a DMA-threshold reason. ✅
+- **The "16 MB ceiling" is retracted** (2026-09-15): no first-party observation of its failure mode exists; 32 MB boots on a stock kernel, the bench golden runs at **64 MB** every day, the project owner reports the stock 030 line at **≥ 80 MB**, and the 040/060 kernels run at **128 MB** on real silicon ✅. See [hardware](hardware.md#fast-ram-4-mb-minimum-and-the-retracted-16-mb-hard-ceiling).
 - **528 MB is proven fatal**, in exactly the way described below. ✅
 - **The ceiling is a fixed 4 MiB kernel arena, not an arithmetic accident** — ≈64 MB on the stock
   68030 kernel, ≈128 MB on a 4 KB-page 68060 kernel, and it moves only if the arena moves. ✅
@@ -148,7 +144,9 @@ On real hardware, on a kernel whose arena had been moved (except where the row s
 |---|---|---|
 | **32 MB** | Boots. The largest value with positive evidence on a **stock** kernel | ✅ |
 | **88 MB** | **Boots durably and networks** — a working multiuser machine, not just a banner | ✅ |
-| **128 MB** | Prints the **full** SVR4 banner (`134215680` bytes of memory), then **hangs post-banner** | ✅ observed / 🔴 cause open |
+| **128 MB** (arena-moved 030 kernel) | Prints the **full** SVR4 banner (`134215680` bytes of memory), then **hangs post-banner** | ✅ observed / 🔴 cause open |
+| **128 MB** (4 KB-page **68060** kernel, real 68LC060, A4000D + Z3660, 2026-09) | **Boots, installs, runs multiuser** — `Total Unix memory 134213632`; the unattended installs and the daily dev box run here | ✅ |
+| **≥ 80 MB** (stock 030 line) | Reported working by the project owner 2026-09-15; not measured here | 🟡 |
 | **≈151 MB** | **End stop** — a further page-table extent bound in the root map; nothing beyond it was reached | ✅ |
 | **528 MB** | Fatal, in exactly the way described above | ✅ |
 
@@ -212,7 +210,7 @@ Uniformly ✅ unless tagged.
 | Knob | Value | Why |
 |---|---|---|
 | Chip RAM | 2 MB (4 MB on the A4000-style rigs) | Standard; not counted against the Fast RAM rule |
-| Fast / motherboard RAM | **16 MB, exactly** | The supported ceiling; 16 MB *exactly* is proven clean, and less than 8 MB livelocks under package-install workloads |
+| Fast / motherboard RAM | **16–64 MB** on the stock 030 line (the bench golden runs 64); **128 MB** on the 040/060 line | 16 MB is only the historical working point; less than 8 MB livelocks under package-install workloads; stay under the describable-RAM ceiling for your kernel |
 | A debug/DDR window (e.g. a stand-in for accelerator memory) | **32 MB** if you need one at all | The only oversized value with positive boot evidence *on a stock kernel* — the 88 MB result below needed the kernel arena moved |
 | Zorro III fastmem board | avoid | It is AutoConfig RAM counted straight from the memory list, so it reaches the ceiling faster than a mapped window 🟡 |
 

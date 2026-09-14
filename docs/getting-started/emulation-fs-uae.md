@@ -8,7 +8,7 @@ status: draft
 
 FS-UAE can run Amix, and a working configuration has been reported against FS-UAE **3.1.66** 🟡. The whole config fits in a handful of `key = value` lines: emulate an **A3000**, attach the boot floppy, and attach an RDB hardfile on the on-board SCSI controller at **ID 6**. This page gives the verified snippet, explains each line, and maps every line back to the corresponding setting in [Running Amix in WinUAE](emulation-winuae.md) so you can move a setup between the two emulators.
 
-FS-UAE shares the WinUAE emulation core, so the *same* hard rules apply: 68030 + MMU, no JIT, 68882 FPU, the hard disk on **SCSI ID 6**, the tape on **SCSI ID 4**, and **≤ 16 MB** of Fast RAM. If a setting below looks under-specified, it is because FS-UAE's A3000 model preset already supplies the matching CPU/MMU/ROM defaults that WinUAE makes you set by hand.
+FS-UAE shares the WinUAE emulation core, so the *same* hard rules apply: 68030 + MMU, no JIT, 68882 FPU, the hard disk on **SCSI ID 6**, the tape on **SCSI ID 4**, and a sane amount of Fast RAM (16–64 MB; the old "≤ 16 MB" rule is retracted — see the [RAM-ceiling page](../how-it-works/ram-ceiling.md)). If a setting below looks under-specified, it is because FS-UAE's A3000 model preset already supplies the matching CPU/MMU/ROM defaults that WinUAE makes you set by hand.
 
 ## The verified config
 

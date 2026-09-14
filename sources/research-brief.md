@@ -58,7 +58,7 @@ SHA-256 of all four: see `sources/CHECKSUMS.txt`. Inspect any ADF with `tools/in
 
 ### Minimums / hard limits
 - ✅ **68020 or 68030 with a real MMU** + **68881/68882 FPU** (both mandatory; no soft-float; 68000 and MMU-less 68EC020/030 cannot run Amix).
-- ✅ **4 MB Fast RAM min; 16 MB Fast RAM MAX** — kernel hard-codes the ceiling; **>16 MB mis-maps the SCSI drive**.
+- 🟡 **4 MB Fast RAM min; "16 MB Fast RAM MAX"** — no primary source was ever named for the ceiling or the "mis-mapped SCSI drive" failure, and no first-party observation exists; **retracted 2026-09-15**: 32/64 MB run on stock kernels, the owner reports the stock 030 line at ≥ 80 MB, and the 040/060 kernels run at 128 MB on real silicon (the real limit is describable RAM, see the RAM-ceiling page).
 - **Tape must be ID 4** ✅ — hard-coded literal `/dev/rmt/4h` in the install scripts. **Disk is ID 6 by convention** 🟡 — the installer *prompts* for the disk target and templates `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` from `$SCSI` (only target 4 is reserved, for the tape), so Amix installs on other targets; but the chosen ID is baked into device names in `/etc/vfstab` + the boot partition, so it can't be changed post-install without editing those. (Verified against the installer's disk-selection loop + amigaunix.com — "preferably … ID 6" for the disk but "won't look anywhere else than SCSI4" for the tape; corrects an earlier "disk hard-coded in kernel" overclaim.)
 - ✅ **No 68040/68060** (kernel predates 68040 MMU) → **A4000 cannot officially run Amix**.
 - ✅ **No Zorro III** — memory-mapping layer can't address Zorro III space; that source was not shipped, so it can't be community-fixed. **Zorro II only.**

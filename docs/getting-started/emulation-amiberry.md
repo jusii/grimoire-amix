@@ -62,7 +62,7 @@ Same as any Amix target ✅ — and the CPU/MMU settings are mandatory or it won
   `NOTICE: User BUS ERROR at … PID:1 CMD:/sbin/init` ✅. It also silently overrides the
   `cpu_compatible=false` above. See [the cycle-exact
   trap](../how-it-works/emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive).
-- **4–16 MB Fast RAM** (16 MB hard ceiling) and an **A3000 Kickstart 2.04** ROM
+- **16–64 MB Fast RAM** on the stock 030 line (the bench golden runs 64; the old "16 MB hard ceiling" is retracted) and an **A3000 Kickstart 2.04** ROM
 - `scsi_a3000=true`
 
 > ⚠️ **A hand-written `.uae` is guilty until proven otherwise.** The effective cycle-exact default is
