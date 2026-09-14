@@ -134,6 +134,25 @@ Beyond the community tape-free lore above, a **complete from-scratch install has
 - **Budget minutes per iteration on metal.** A cold power-on to a networked multiuser box (run level 2, the ethernet interface up) takes **≈270 s** on this rig, reproduced over two cold boots ✅ — an order of magnitude slower than the emulator loop, and the single biggest cost in any metal test matrix.
 - Ops note: some large packages hold the console silently for many minutes during extraction — that is normal, not a hang; the metal Amix console is HDMI-only (the accelerator's serial log ends at the firmware→Amix handoff).
 
+### A from-scratch install on a real 68060 — unattended, from an SD card (Z3660, 2026-09-15) ✅
+
+The line above installed under the Z3660's *emulated* CPU. On 2026-09-15 the same installer completed
+its first install **on real 68LC060 silicon** (A4000D + Z3660, `bootmode CPU`, 128 MB), unattended:
+insert the card, power on, the miniroot boots the proven 060 kernel, the installer authors the target
+and installs the eight base packages in about 15–17 minutes, halts, and the installed disk boots to a
+login prompt in about a minute — roughly 2.7× faster than the emulated-040 reference for the same
+packages ✅. Two facts made it work, both earned on the wire: the miniroot must root on the Z3660
+(card 1) and never touch the phantom A3000 SCSI controller at card 0, whose first register write
+bus-errors in kernel mode on a real A4000 (the emulated modes supply a chip there; the metal does not)
+✅; and the first-boot script must not run the stock `atdevs` `/dev` probe, which opens a card-0
+node first ✅. The installed system then updates its catalog from the public package repository at
+`pkg.amigaux.org` over the Z3660's own ethernet and installs and removes packages with no operator
+configuration ✅ (hostname form only: the repository is a name-based virtual host, so a bare IP in the
+client's `repo=` line returns 404 ✅). One operational law from the same day: the unattended raw
+install has **no blank-target gate** — a power-cycle with the source medium still mapped re-installs
+and erases the target — so the card ships two firmware presets, *install* and *installed*, and the
+operator switches after the halt ✅.
+
 ### Non-standard tape drives: `viper_kludge` 🟡
 
 If you *do* use a real tape drive that isn't the original A3070, note that the root floppy ships **`viper_kludge`** (by Frank "Crash" Edwards), which patches kernel memory so a non-standard **Archive Viper 2150S** drive works. ✅ (it is present on root.adf, with `viper.README`). Its own README warns it is **incompatible with the A3070, Caliper, Wangtek, and Sankyo** drives — do not run it with those. ✅ It does not help with arbitrary modern SCSI-emulated tape devices; it is specific to the Viper 2150S.
