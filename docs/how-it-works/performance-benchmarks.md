@@ -95,6 +95,25 @@ a scratch *file* (never a raw device). Values in KB/s; repeats shown where taken
   early 100 MHz write read 851.9 KB/s and did not replicate — withdrawn; always repeat writes) ✅
   (the outlier and its non-replication are measured; the allocation-cost explanation for it is 🟡).
 
+### SD card on an extension cable: `sd_clock 25` (A4000D + Z3660, 2026-09-14) ✅
+
+With the SD card moved onto an extension cable the firmware's default SD clock (`sd_clock 50`) no
+longer works at all — the card does not enumerate and Amix finds no SD-backed devices. `sd_clock 25`
+in `z3660cfg.txt` restores it ✅. Measured cost against the 2026-08-31 rows above, same method, same
+80 MHz clock, every row `err=0` ✅:
+
+| Test | sd_clock 50 (08-31) | sd_clock 25 (09-14) | Δ |
+|---|---|---|---|
+| Sequential read, 64 KB | 2313 KB/s | 1924 KB/s | −16.8 % |
+| Sequential write, 64 KB | 1912 KB/s | 1620 KB/s | −15.3 % |
+| Sequential read, 512 B | 409.6 KB/s | 376.9 KB/s | −8.0 % |
+
+Stability at 25 is not in question: a bounded stress inside Amix (11 passes of 4–32 MB
+write / read-back / compare with per-pass checksums, plus 1,103 loops of a parallel small-block
+random reader) ran with zero mismatches and zero SD or piscsi errors on the firmware console ✅.
+The small-block penalty being half the large-block one is consistent with the CPU/driver-bound path
+noted above: halving the SD clock only shows where the media was on the critical path.
+
 ## Thermals — real 68LC060 under load (A4000D + Z3660, 2026-08-31)
 
 First thermal characterisation of our 68LC060, read from the Z3660's own CPU thermistor

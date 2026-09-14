@@ -92,6 +92,11 @@ The principle is straightforward because Amix only cares about *SCSI IDs*, not t
 
 For how the disk is laid out once Amix sees it (RDB scheme, the 2 MB boot partition, swap, UFS-vs-s5 choice), see [filesystems and disks](../how-it-works/filesystems-and-disks.md) and [the installation walkthrough](install-walkthrough.md).
 
+**SD cards through the Z3660 on an extension cable need `sd_clock 25`** ✅ (2026-09-14): at the
+firmware default of 50 MHz the card does not enumerate and Amix sees no SD-backed devices at all; at
+25 it boots and passes a write/read-back stress cleanly, at roughly 15 % lower sequential throughput —
+numbers on the [benchmarks page](../how-it-works/performance-benchmarks.md#sd-card-on-an-extension-cable-sd_clock-25-a4000d--z3660-2026-09-14).
+
 ### Keep partitions reasonably small 🟡
 
 Keep Amix partitions roughly **≲ 1 GB** each. 🟡 This is community guidance, not a documented hard limit — but combined with the 16 MB RAM ceiling and the era's filesystem assumptions, oversized partitions are a known source of trouble. A modern SD card is enormous relative to what Amix expects, so size the *Amix RDB partitions* conservatively rather than the card.
