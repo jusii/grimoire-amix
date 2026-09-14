@@ -6224,7 +6224,13 @@ bus-errors in kernel mode on a real A4000 (the emulated modes supply a chip ther
 node first ✅. The installed system then updates its catalog from the public package repository at
 `pkg.amigaux.org` over the Z3660's own ethernet and installs and removes packages with no operator
 configuration ✅ (hostname form only: the repository is a name-based virtual host, so a bare IP in the
-client's `repo=` line returns 404 ✅). One operational law from the same day: the unattended raw
+client's `repo=` line returns 404 ✅). The next day the same system pulled the stock X stack (`xcore`,
+`xbasic`, `olcore` — about 11 MB, fitting a 100 MB disk with room to spare) and **`X2410` came up on the
+68060 at 128 MB** — the first X server started on a real 060 Amix ✅; start it as `xinit -- /usr/bin/X11/X2410`
+(the server is not found by name on the default lookup path ✅). One client limit surfaced on the way: the
+1992 `apkg` fetch had a 60-second *total* deadline, which an 8 MB package cannot meet at the ~37 KB/s a single
+TCP stream from the 68060 reaches against a distant host; the fix is an idle timeout that resets while bytes
+flow ✅ (shipped as the next `apkg` version). One operational law from the same day: the unattended raw
 install has **no blank-target gate** — a power-cycle with the source medium still mapped re-installs
 and erases the target — so the card ships two firmware presets, *install* and *installed*, and the
 operator switches after the halt ✅.
