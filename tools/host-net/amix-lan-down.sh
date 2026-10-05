@@ -1,7 +1,7 @@
 #!/bin/sh
 # amix-lan-down.sh -- tear down everything amix-lan-up.sh created. Idempotent.
 # Does NOT touch the host's own IP/route (the routed-TAP model never changed them).
-GUEST_IP="${GUEST_IP:-192.168.2.38}"
+GUEST_IP="${GUEST_IP:-192.0.2.38}"   # RFC 5737 example default: set GUEST_IP
 TAP="${TAP:-tap0}"
 ETH="${ETH:-$(ip route show default 2>/dev/null | awk '/default/{print $5; exit}')}"
 

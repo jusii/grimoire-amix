@@ -6,9 +6,9 @@ status: draft
 
 # Toolchain & Packaging
 
-Amix builds software two ways. **On the box**: the bundled AT&T SVR4 `cc` (the kernel's reference compiler) or a community **GCC 2.7.2.3** (installable as a pkg from [amigaunix.com](https://amigaunix.com)), with GNU `make` and GAS, then relink `/unix` ✅ — this is how the existing drivers ([Hydra](case-studies/hydra.md), [VA2000](case-studies/va2000.md)) are built. **On Linux**: as of 2026-06 a public, reproducible *cross*-toolchain exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), a GCC 2.7.2.3 retargeted to `m68k-cbm-sysv4` — that compiles Amix userland binaries and kernel/driver objects on a modern host (you supply your own licensed Amix sysroot) ✅. Finished software is shipped as SVR4 packages built with `pkgproto`/`pkgmk`/`pkgtrans` and installed with `pkgadd` ✅; the large community bundle is **AmixBP**, with a `zoo`+`cpio` fallback ✅.
+Amix builds software two ways. **On the box**: the bundled AT&T SVR4 `cc` (the kernel's reference compiler) or the stock Commodore-patched **GNU GCC 1.40.5** at `/usr/public/bin/gcc` ✅, with GNU `make` and GAS, then relink `/unix` ✅ (a native **GCC 2.7.2.3** exists on some community boxes, but the "installable pkg from amigaunix.com" attribution is unsourced 🔴 — see [the compiler table](#native-compilers-on-the-box)) — this is how the existing drivers ([Hydra](case-studies/hydra.md), [VA2000](case-studies/va2000.md)) are built. **On Linux**: as of 2026-06 a public, reproducible *cross*-toolchain exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), a GCC 2.7.2.3 retargeted to `m68k-cbm-sysv4` — that compiles Amix userland binaries and kernel/driver objects on a modern host (you supply your own licensed Amix sysroot) ✅. Finished software is shipped as SVR4 packages built with `pkgproto`/`pkgmk`/`pkgtrans` and installed with `pkgadd` ✅; the large community bundle is **AmixBP**, with a `zoo`+`cpio` fallback ✅.
 
-Two important caveats colour everything below. The Amix `/bin/sh` is **pre-POSIX**, which breaks many modern build scripts ✅. And the cross-toolchain still needs a **user-supplied licensed Amix sysroot** (headers/libs/startup objects are not redistributable), and its **C++/`g++` support is not finished yet** 🟡 — C is fully working.
+Two important caveats colour everything below. The Amix `/bin/sh` is **pre-POSIX**, which breaks many modern build scripts ✅. And the cross-toolchain still needs a **user-supplied licensed Amix sysroot** (the toolchain repo ships no Amix headers/libs/startup objects; until 2026-09-23 this project treated them as not redistributable — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) for the outcome that lifted that), and its **C++/`g++` support is not finished yet** 🟡 — C is fully working.
 
 This page is the toolchain companion to [building and relinking the kernel](kernel-build.md) and to [writing a STREAMS driver](writing-a-streams-driver.md) (the worked native build example). For the underlying driver model see [the Amix device-driver model](driver-model.md).
 
@@ -19,13 +19,13 @@ Amix ships with a working C development environment ✅. The reference compiler 
 | Tool | Version / location | Notes | Tag |
 |---|---|---|---|
 | AT&T SVR4 `cc` | system default | Reference compiler for kernel + simple drivers | ✅ |
-| Bundled GCC (legacy) | **`gcc 1.4.2`** at **`/usr/public/bin/gcc`** | Old; prefer a newer GCC where one is installed | ✅ |
-| Community GCC | **2.7.2.3** (native Amix build; installable **pkg on amigaunix.com**) | The compiler the Hydra driver builds with, on-box; select via `CC` | ✅ |
+| Bundled GCC (stock) | **`GNU GCC version 1.40.5 (68k, SGS/AT&T syntax)`**, Commodore-patched, at **`/usr/public/bin/gcc`** — what `gcc --version` prints on a stock 2.1 box, and the `CC = gcc` of `/usr/sys/Makefile` (measured 2026-09-15) | Old; the only compiler with `-fpcrel` (needed for `boot2`); rejects gcc-2 flags such as `-fno-builtin`. (Earlier versions of this page, following community notes, called it `gcc 1.4.2`.) | ✅ |
+| Community GCC | **2.7.2.3** (native Amix build) | The compiler the Hydra and X11 community repos say they build with, on-box; select via `CC`. **Where to get it is unsourced** 🔴: the "installable pkg on amigaunix.com" attribution has no source found, and no public source or package for a native 2.7.2.3 build is known | 🔴 |
 | GNU `make` | **3.80** | The make used by the driver makefiles | 🟡 |
 | GAS (GNU assembler) | bundled | Assembler backing GCC | 🟡 |
 | `perl` | **5.005_4** | Available in some installs | 🟡 |
 
-**Prefer the newer compiler.** The `gcc` on `PATH` may be the ancient `1.4.2` at `/usr/public/bin/gcc` ✅. When a newer GCC (e.g. 2.7.2.3) is installed, point the build at it explicitly rather than relying on `PATH` order:
+**Prefer the newer compiler.** The `gcc` on `PATH` may be the ancient stock `1.40.5` at `/usr/public/bin/gcc` ✅. When a newer GCC (e.g. 2.7.2.3) is installed, point the build at it explicitly rather than relying on `PATH` order:
 
 ```sh
 # Override the compiler for a single make invocation
@@ -85,7 +85,7 @@ make        # CFLAGS = -O -D_KERNEL -DSVR40 -DSVR4 ; links 'exp' via ld -r
 - `-DSVR40` / `-DSVR4` select the SVR4 / SVR4.0 code paths.
 - `-O` is the optimisation level the repos build at.
 
-The native compiler is **GCC 2.7.2.3** (or the AT&T `cc`), available as a pkg on amigaunix.com ✅.
+The native compiler the community repos target is **GCC 2.7.2.3** (or the AT&T `cc`) ✅; a stock box has only GNU GCC 1.40.5 and `cc`, and the "pkg on amigaunix.com" source for 2.7.2.3 is unsourced 🔴 (see [the compiler table](#native-compilers-on-the-box)).
 
 ### ELF → boot format: elf2brel
 
@@ -113,7 +113,7 @@ Note the kernel image name: modern 2.1 systems and the community repos call the 
 
 The cross path is now **public and reproducible**: **[`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix)** is a `Makefile` that bootstraps a Linux-hosted toolchain for `m68k-cbm-sysv4` ✅. (This resolves the gap our earlier notes flagged as open 🔴.)
 
-- **Components:** GNU **binutils 2.8.1** + **GCC 2.7.2.3** (the same GCC version Amix runs natively), downloaded from the GNU archive and built with `-std=gnu89` (the 1990s configure tests and sources predate C99). The installed cross driver is **`m68k-cbm-sysv4-gcc`** — our earlier docs called it `m68k-amix-gcc`, a placeholder; the real binary is the triple-prefixed one ✅.
+- **Components:** GNU **binutils 2.8.1** + **GCC 2.7.2.3** (the version the community native builds use; the stock box compiler is GCC 1.40.5), downloaded from the GNU archive and built with `-std=gnu89` (the 1990s configure tests and sources predate C99). The installed cross driver is **`m68k-cbm-sysv4-gcc`** — our earlier docs called it `m68k-amix-gcc`, a placeholder; the real binary is the triple-prefixed one ✅.
 - **The one thing you must supply: a licensed Amix sysroot.** The repo deliberately ships **no** Amix headers/libraries/startup objects (the licensing boundary). You point it at your own Amix tree — `make all AMIX_ROOT=/path/to/usr-amix` — and its `sysroot` target copies `usr/include`, `usr/lib` (`libc.so.1`, `ld.so.1`), `usr/ccs/lib` (`crt1.o`/`crti.o`/`crtn.o`), and `usr/sys` into the toolchain ✅.
 - **Status (2026-06):** the C compiler, GNU `as`, and GNU `ld` all work, and a **dynamically-linked Amix C executable links and runs on real Amix** ✅. **C++ / `g++` is not complete yet** 🟡.
 
@@ -165,9 +165,7 @@ is detected and the wrapper `exec`s straight to `gcc.real` with **zero fixups ap
 losing all of the repairs above. The most dangerous one to lose is the **`fcmp` FP-compare
 operand-order reversal** (`SGS_CMP_ORDER`): for an FP-register-vs-FP-register comparison this does not
 fail to assemble — it assembles to a *different, valid* encoding with the **operands swapped**, so
-`a > b` between two doubles silently evaluates as `b > a`, with no diagnostic at any stage ✅. This is
-not hypothetical: it shipped once in this family's own tooling, producing a benchmark whose numeric
-guard (`secs > 0.0`) was silently always false. The `fcmp` defect itself is fixed and gated
+`a > b` between two doubles silently evaluates as `b > a`, with no diagnostic at any stage ✅. The `fcmp` defect itself is fixed and gated
 (`make test-fcmp`), but the **general bypass property remains true of the wrapper as designed**: any
 build system that compiles to `.s` and assembles separately, resolves to `gcc.real` directly, or
 drives `as` itself inherits none of the wrapper's repairs ✅. This is the same silent-mis-encode
@@ -276,7 +274,7 @@ regardless: a trap that exits 0 is only ever caught after the fact.
 
 ### The stock shared-libc `getpwnam()` first-call SIGSEGV — and the static-link sidestep ✅
 
-A separate porting hazard lives in the stock **shared `libc.so.1`**, not in the toolchain: the **first `getpwnam()` call** of a process crashes inside libc's passwd-record handling (a record expand routed through the `_libc_malloc` allocator-redirect pointers), while the symmetric group path (`getgrnam`) survives — the asymmetry is entirely inside libc and not debuggable off-box. Interposition was ruled out (libc calls its internal helpers via non-preemptible `bsrl`). The **working sidestep**, used in every binary of the ported pkg toolchain: link them **statically** and let the executable *define* `getpwnam`/`getpwuid`/`getgrnam`/`getgrgid` as small direct `/etc/passwd`/`/etc/group` parsers — an executable's own global symbols win over shared-library exports at static link time, so every internal caller is preempted uniformly. Two consequences worth knowing: this only protects code you can relink (it cannot reach the stock **dynamically-linked** daemons — which were never the victims of this particular defect anyway; a daemon crashing at boot is far more likely the [colon-less-`TZ` bug](../how-it-works/quirks.md)), and it is one more reason the install-media engine ships static.
+A separate porting hazard lives in the stock **shared `libc.so.1`**, not in the toolchain: the **first `getpwnam()` call** of a process crashes inside libc's passwd-record handling (a record expand routed through the `_libc_malloc` allocator-redirect pointers), while the symmetric group path (`getgrnam`) survives — the asymmetry is entirely inside libc and not debuggable off-box. Interposition was ruled out (libc calls its internal helpers via non-preemptible `bsrl`). The **working sidestep**, used in every binary of the ported pkg toolchain: link them **statically** and let the executable *define* `getpwnam`/`getpwuid`/`getgrnam`/`getgrgid` as small direct `/etc/passwd`/`/etc/group` parsers — an executable's own global symbols win over shared-library exports at static link time, so every internal caller is preempted uniformly. One consequence worth knowing: this only protects code you can relink (it cannot reach the stock **dynamically-linked** daemons — which were never the victims of this particular defect anyway; a daemon crashing at boot is far more likely the [colon-less-`TZ` bug](../how-it-works/quirks.md)).
 
 ## The porting surface: libc and library gaps modern C assumes ✅
 
@@ -418,14 +416,15 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 ## Sources
 
 - amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): gcc-cross-amix `984192a` fix_asm rewrite + test-divmod; on-box measurements; metal confirmation 2026-07-21.
-- [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra **native** build, GCC 2.7.2.3 from amigaunix.com), §11 (userland shells), and §13 (open gaps #1, #3).
+- [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra **native** build, GCC 2.7.2.3 — the brief's "from amigaunix.com" attribution is 🔴, unsourced), §11 (userland shells), and §13 (open gaps #1, #3).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (kernel build flow; `rdbunix` historical name).
-- `isoriano1968/hydra-amix` repo (the **native** `make` / `make force` build, `CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"`, `elf2brel` in `boot/`, native GCC 2.7.2.3 from amigaunix.com): <https://github.com/isoriano1968/hydra-amix>
+- The **stock native compiler**, measured on a stock Amix 2.1 install (2026-09-15/16) ✅: `gcc --version` prints `GNU GCC version 1.40.5 (68k, SGS/AT&T syntax)` (`/usr/public/bin/gcc`, `/usr/sys/Makefile` `CC = gcc`); it alone has `-fpcrel` and it rejects `-fno-builtin`. No copy of a native GCC 2.7.2.3 package or source for the "amigaunix.com pkg" attribution has been found — hence 🔴 on that attribution.
+- `isoriano1968/hydra-amix` repo (the **native** `make` / `make force` build, `CFLAGS="-O -D_KERNEL -DSVR40 -DSVR4"`, `elf2brel` in `boot/`, native GCC 2.7.2.3 — origin unsourced 🔴, not an amigaunix.com pkg as far as any source shows): <https://github.com/isoriano1968/hydra-amix>
 - `isoriano1968/gcc-cross-amix` repo (the Linux-hosted cross-toolchain: `Makefile` + `amix-gcc-wrapper.sh`; binutils 2.8.1 + GCC 2.7.2.3, target `m68k-cbm-sysv4`, user-supplied sysroot; `make all`/`test-hello`/`test-random`; C works, C++ WIP): <https://github.com/isoriano1968/gcc-cross-amix>
 - `asokero/va2000-amix` repo (native `cc va2000.c`; pre-POSIX `/bin/sh` gotchas — no `$(...)`, no `grep -q`): <https://github.com/asokero/va2000-amix>
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (install uses `amixpkg`/`cpio`/`dd` from tape).
 - amigaunix.com — *downloads* page (AmixBP, Michael Parson) and *more_software* / *tips-tricks*: <https://www.amigaunix.com/doku.php/home>
 - SVR4 packaging tools (`pkgproto`, `pkgmk`, `pkgtrans`, `pkgadd`) — standard AT&T System V Release 4 documentation.
-- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- amix-installng @ `7106f1b` and amix-packagemanager @ `4539ad2` (2026-07-22/24) — platform behaviours root-caused under Amiberry and on a real A4000 + Z3660 (s5/UFS state reads, on-metal digest checks) ✅ (🟡 where tagged).
 - First-party cross-toolchain findings (2026-07-27): SGS-dialect probes of the installed `m68k-cbm-sysv4` binutils-2.8.1 `as` (the `#`-as-comment failure reproduced; per-construct MIT-syntax compatibility probes) and the wrapper `-c foo.s` source-destruction defect (minimally reproduced three times; cause chain pinned by tracing the wrapper; empty-stdin control via `as -m68020 -o t.s </dev/null`).
-- The **amix-packages** porting campaign — `PORTING.md` and a corroborating ports-roadmap research pass (2026-08-28), all from direct Amix-sysroot inspection ✅: the byte-identical `libcurses.a`/`libtermcap.a`/`libtermlib.a` archive exporting both APIs and the "link `-lcurses`" policy (§3.4); no POSIX `regcomp`/`regexec`, only SVR4 `<regexp.h>` + libgen `regcmp`; `strcasecmp` present only in the networking libs and declared in no header (§3.1); `snprintf`/`vsnprintf`/`getpagesize` absent from `libc.so.1` (and `snprintf` undeclared in `stdio.h`) with the GCC 2.7.2.3 implicit-declaration miscompile (the reproduced `atof` case) and the wider absent-symbol list (§3.1); the SVR4 `/proc` 37-`PIOC*`-ioctl model vs. Linux text files, with the parallel-port-`PIOC*` disambiguation (§3.2); and the `fix_asm`-only-through-the-wrapper property — `-S` bypasses every fixup, including the silent `fcmp` operand-order reversal shipped once as `iobench kb_s=0.0` (§2.2). No proprietary SVR4 headers or source reproduced — symbol/header **presence and behaviour** observed live, paraphrased.
+- The **amix-packages** porting campaign — `PORTING.md` and a corroborating ports-roadmap research pass (2026-08-28), all from direct Amix-sysroot inspection ✅: the byte-identical `libcurses.a`/`libtermcap.a`/`libtermlib.a` archive exporting both APIs and the "link `-lcurses`" policy (§3.4); no POSIX `regcomp`/`regexec`, only SVR4 `<regexp.h>` + libgen `regcmp`; `strcasecmp` present only in the networking libs and declared in no header (§3.1); `snprintf`/`vsnprintf`/`getpagesize` absent from `libc.so.1` (and `snprintf` undeclared in `stdio.h`) with the GCC 2.7.2.3 implicit-declaration miscompile (the reproduced `atof` case) and the wider absent-symbol list (§3.1); the SVR4 `/proc` 37-`PIOC*`-ioctl model vs. Linux text files, with the parallel-port-`PIOC*` disambiguation (§3.2); and the `fix_asm`-only-through-the-wrapper property — `-S` bypasses every fixup, including the silent `fcmp` operand-order reversal (§2.2). No proprietary SVR4 headers or source reproduced — symbol/header **presence and behaviour** observed live, paraphrased.

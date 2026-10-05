@@ -62,7 +62,7 @@ Same as any Amix target ✅ — and the CPU/MMU settings are mandatory or it won
   `NOTICE: User BUS ERROR at … PID:1 CMD:/sbin/init` ✅. It also silently overrides the
   `cpu_compatible=false` above. See [the cycle-exact
   trap](../how-it-works/emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive).
-- **16–64 MB Fast RAM** on the stock 030 line (the bench golden runs 64; the old "16 MB hard ceiling" is retracted) and an **A3000 Kickstart 2.04** ROM
+- **16 MB A3000 motherboard RAM** (`a3000mem_size=16`) for a stock kernel — a bigger bank breaks its A3000-SCSI detection ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)); 64 MB with a kernel that probes for the controller and an **A3000 Kickstart 2.04** ROM
 - `scsi_a3000=true`
 
 > ⚠️ **A hand-written `.uae` is guilty until proven otherwise.** The effective cycle-exact default is
@@ -106,14 +106,8 @@ uaehf0=hdf,rw,DH0:/path/to/Amix-a4091.hdf,32,1,2,512,0,,scsi6_a4091
 > an A3000 SCSI and an A4091 are present, the A4091 sorts to card 1 and its disk shows up as
 > `c8d0s0`-class).
 
-> **Gotcha — don't put the install CD on a _sole_-A4091 rig.** 🟡 With the A4091 as the **only** SCSI
-> controller (card 0), mounting a `cdfs` CD at `0,3` reliably **hangs the kernel in an uninterruptible
-> SCSI wait** under Amiberry — neither Ctrl-C nor re-inserting the CD recovers it (it looks like a
-> boot-time unit-attention that the `cdfs` raw-SCSI path never clears). An **A3000-SCSI-plus-A4091**
-> profile, with the CD reached at `1,3`, never hits it. 🟡 because the fault isn't yet attributed
-> (Amiberry's A4091 CD emulation vs the a4091 driver's unit-attention handling) and it is untested on
-> real hardware — but the operational rule is solid: on a two-controller rig keep the disk on the A3000
-> SCSI and the CD on the A4091; on a single-A4091 rig, avoid `cdfs` CD media.
+> **CD at `0,3` with a sole A4091** 🟡: on current kernels a `cdfs` CD at `0,3` mounts with the A4091 as
+> the only SCSI card (card 0) under Amiberry. Not yet checked on real hardware.
 
 > **Licensing.** The Amix HDFs **and** the A4091 ROM (`amiga-boot-a4091.rom`) are **not committed** to
 > this repo — supply your own. Get the A4091 autoboot ROM from the
@@ -141,7 +135,7 @@ The project's working configs (in the A4091 repo; ROM/HDF paths point at user-su
 
 | Config file | Machine | Purpose |
 |---|---|---|
-| `amix-a4091-boot.uae` | A3000, `chipset=ecs`, KS 2.04, A3000 SCSI off | A4091-only boot (root on the A4091) |
+| `amix-a4091-boot.uae` | A3000, `chipset=ecs`, KS 2.04, A3000 SCSI off | **Historical** (pre-probe kernels). A4091 root is an A4000 shape: a kernel that probes for the A3000 SCSI keeps the emulated one at `$DD0000` as card 0 and the A4091 becomes card 1 — use `amix-a4091-boot-aga.uae` |
 | `amix-a4091-boot-aga.uae` | A4000, `chipset=aga`, KS 3.0 r39.106 | A4000/AGA + A4091 boot |
 | `amix-dbg.uae` | A3000, `chipset=ecs`, `scsi_a3000=true` | A3000 root (`scsi6_a3000`) **+** A4091 as a second card (`scsi0_a4091`) — the build/diagnostic environment |
 
@@ -210,20 +204,22 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
 - [`tools/amix-amiberry.uae`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amix-amiberry.uae) — a complete, ready-to-edit working Amiberry config (A3000 / KS 2.04 / 68030+MMU / SCSI disk@6 + tape@4 / A2065).
 - [Install walkthrough](install-walkthrough.md) — the end-to-end tape install (works on Amiberry 8.x, WinUAE, and FS-UAE).
 - [Amix on WinUAE](emulation-winuae.md) / [Amix on FS-UAE](emulation-fs-uae.md) — the other UAE-family targets.
-- [Hardware & requirements](../how-it-works/hardware.md) — why the SCSI IDs and RAM ceiling are fixed.
+- [Hardware & requirements](../how-it-works/hardware.md) — why the SCSI IDs are fixed, and the RAM envelope per kernel.
 - [The Amix RAM ceiling](../how-it-works/ram-ceiling.md) — the separate total-describable-RAM limit (debug windows, Zorro III RAM) and its silent failure.
 - [Putting Amix on your real LAN](networking-on-the-lan.md) — A2065 networking on Amiberry.
 - [The A4091 / 53C710 SCSI driver](../drivers/a4091-53c710-driver.md) — the native driver that makes the emulated A4091 usable (and bootable) under Amix.
 
 ## Sources
+- The retired sole-A4091 CD gotcha and the A4091-root-on-A3000 config: first-party record, 2026-09-29 (a CD at `0,3` mounted with a card-0 A4091 on an ECS rig; on an A3000 the WD33C93 is card 0 and the A4091 card 1) 🟡.
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
 - First-hand, 2026-06, Amiberry **8.1.6**: an installed Amix 2.1 boots to login from the `scsi6_a3000` hardfile; the GUI *Hard drives/CD* page shows `A3000 SCSI:6 → HDF` and `A3000 SCSI:4 → TAPE` mounted (RW) with an "Add Tape Drive…" button; a full from-tape install completes on Amiberry 8.1.6 (confirmed first-hand, 2026-06). Working config: `scsi_a3000=true`, `hardfile2=…,scsi6_a3000`, `uaehf1=tape0,…,scsi4_a3000`.
 - [BlitterStudio/amiberry #1376](https://github.com/BlitterStudio/amiberry/issues/1376) — "Add A3000 SCSI controller and tape support for amix" (the requested support is present in 8.x).
 - Research brief §2 (tape ID 4 hard-coded; disk ID 6 by convention) and §9 (`dd … /dev/rmt/4hn | cpio` install flow).
 - [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) project repository.
 - The A4091-on-Amix project — `NOTES.md` §9 (A4091-in-Amiberry config + the A3000(ECS)/A4000(AGA) Kickstart matrix) and §10 (the `amishot` IPC-socket screenshot tool), reproduced locally ✅. Config files `amix-a4091-boot.uae`, `amix-a4091-boot-aga.uae`, `amix-dbg.uae`; A4091 product id `0x02020054` verified in `src/a4091-blk.c`. Screenshot wrapper: [`tools/amishot.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amishot.sh).
 - [A4091/a4091-software](https://github.com/A4091/a4091-software) — the A4091 autoboot ROM (`amiga-boot-a4091.rom`) and the `ncr53cxxx` SCRIPTS assembler.
-- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
-- The **amiberry** workspace fork, `docs/amix-guest-cycle-exact.md` @ `aa077b0`, 2026-07-26 ✅ — the
+- The **Installer-NG** blank-disk→bootable-install work (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24, on Amiberry and a real A4000+Z3660 (install-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The **amiberry** project fork, `docs/amix-guest-cycle-exact.md` @ `aa077b0`, 2026-07-26 ✅ — the
   `default_prefs()` initialisation (`src/cfgfile.cpp`), the four non-equivalent config keys and why only
   `cycle_exact` clears all three flags, the host-dependent `default_disable_cycle_exact` path
   (`src/osdep/amiberry.cpp` / `src/include/options.h`), the `fixup_prefs()` host-log tell and its
@@ -231,6 +227,5 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
   omitting runs, absent in 10/10 pinning runs).
 - The **amix-kerntools** piscsi-rig ablation @ `33ab7c3` (`docs/piscsi-rig.md` §3, first landed
   `c1cd679`), 2026-07-26 ✅ — 10 boots, same image and same kernel throughout, isolating
-  `cycle_exact` as the single variable (R14: the hand-written config plus `cycle_exact=false` and
-  nothing else reaches multiuser); supersedes two earlier runs that had been attributed to a
-  RAM/board interaction.
+  `cycle_exact` as the single variable (the hand-written config plus `cycle_exact=false` and
+  nothing else reaches multiuser).

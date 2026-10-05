@@ -68,8 +68,10 @@ address ranges that have no board behind them.
 | Zorro II memory | `0x200000`–`0x9FFFFF` | memory-mapped boards (framebuffers, RAM apertures) |
 
 These are the standard Zorro II spaces; boards are placed there by the Amiga AUTOCONFIG mechanism at
-reset, and Amix inherits those assignments (Zorro II only — there is **no Zorro III** support in Amix
-✅; see [Hardware](../../how-it-works/hardware.md)).
+reset, and Amix inherits those assignments. Zorro III boards are AutoConfigured too, but their space
+lies outside the kernel's identity map, so only a driver that maps them (`sptalloc()`) can reach
+them ✅ — see [the Zorro III correction](../zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall) and
+[Hardware](../../how-it-works/hardware.md).
 
 ### 3. Decode the AutoConfig nibble format
 
@@ -107,8 +109,9 @@ scan. If a board is missing from `lszorro` output, that is the first thing to ch
 *not* mean the board is broken, only that it has no AutoConfig presence to enumerate.
 
 This is a limitation of the AutoConfig protocol itself, not of the tool. To reason about RAM and CPU
-limits instead, see [Hardware](../../how-it-works/hardware.md) (the kernel's 16 MB Fast RAM ceiling and
-the 68020/68030-with-MMU requirement ✅).
+limits instead, see [Hardware](../../how-it-works/hardware.md) (the Fast RAM envelope — the old "16 MB
+ceiling" is retracted, see [the RAM ceiling](../../how-it-works/ram-ceiling.md) — and the
+68020/68030-with-MMU requirement ✅).
 
 ## Why it matters for driver work
 
@@ -137,6 +140,6 @@ the 68020/68030-with-MMU requirement ✅).
   `0x200000`–`0x9FFFFF`, AutoConfig nibble decode (upper nibble D15–D12, ones-complement fields),
   461-entry ID DB imported from the Linux kernel Zorro list, register-only fingerprinting (e.g. VA2000),
   and the RAM/accelerator-board blind spot.
-- Research brief §2 (Hardware): Zorro II only / no Zorro III; 16 MB Fast RAM ceiling.
+- Research brief §2 (Hardware): stock drivers Zorro II only (the old "no Zorro III" absolute corrected); the 16 MB Fast RAM figure (retracted as a ceiling 2026-09-15).
 - Research brief §6 (`asokero/va2000-amix`): VA2000 AutoConfig mfr `0x6D6E`, product `0x01`.
 - Repository: <https://github.com/asokero/lszorro-amix>.

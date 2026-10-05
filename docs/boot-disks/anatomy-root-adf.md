@@ -12,7 +12,7 @@ The Amix **root floppy** (`amix_21_root.adf`, 901,120 bytes / 880 KB) is a **Sys
 
 Unlike the [boot floppy](anatomy-boot-adf.md), the root floppy has **no AmigaDOS bootblock** — its first sectors are zeroed and the Kickstart ROM never boots it directly. It is mounted *by* the install kernel after you swap it in. This page dissects its on-disk structure and the install logic it carries. For the end-to-end procedure, see the [install walkthrough](../getting-started/install-walkthrough.md); to understand how all three install disks are produced, see the [build pipeline](build-pipeline.md).
 
-> **Licensing.** The root floppy is proprietary Commodore material (abandonware, not licensed for redistribution). Do not commit it here. Obtain it from [amigaunix.com](https://www.amigaunix.com/doku.php/home) or the Internet Archive, then run the read-only tooling below against your own copy.
+> **Licensing.** The root floppy is Commodore material. Until 2026-09-23 this project treated it as abandonware, not licensed for redistribution; since then the Amix release restriction is lifted (see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)). Do not commit it here — this is a text knowledge hub. Obtain it from [amigaunix.com](https://www.amigaunix.com/doku.php/home) or the Internet Archive, then run the read-only tooling below against your own copy.
 
 Identify your copy:
 
@@ -264,7 +264,7 @@ Both require `binwalk`/`strings`; `inspect-adf.sh` additionally uses `xdftool` (
 - [Anatomy of the patch floppy](anatomy-patch-adf.md) — the self-extracting 2.1c patch disk.
 - [The build pipeline](build-pipeline.md) — how the boot/root/patch disks are produced and how to build add-on disks.
 - [Filesystems and disks](../how-it-works/filesystems-and-disks.md) — RDB scheme, s5 vs UFS, partition layout.
-- [Quirks](../how-it-works/quirks.md) — the SCSI ids (tape fixed at 4, disk 6 by convention), the 16 MB ceiling, and other landmines.
+- [Quirks](../how-it-works/quirks.md) — the SCSI ids (tape fixed at 4, disk 6 by convention), the RAM limits, and other landmines.
 
 ## Sources
 

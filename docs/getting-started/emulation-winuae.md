@@ -12,7 +12,7 @@ If you want the *why* behind these settings, see [how Amix uses the hardware](..
 
 ## Before you start: what you need
 
-You supply your own images — none of these files are redistributable, so this repo does not ship them. Get them from [amigaunix.com](https://www.amigaunix.com/doku.php/home) and the [Internet Archive Amix collection](https://archive.org/details/commodore-amiga-operating-systems-amix).
+You supply your own images — this repo does not ship them (it is a text knowledge hub; the 2026-09-23 licensing outcome, which lifted the Amix release restriction, is recorded in [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)). Get them from [amigaunix.com](https://www.amigaunix.com/doku.php/home) and the [Internet Archive Amix collection](https://archive.org/details/commodore-amiga-operating-systems-amix).
 
 | File | What it is | Where it goes |
 |---|---|---|
@@ -37,7 +37,7 @@ All of the following are required for a *clean* boot. The four bolded rows are t
 | Wait for Blitter | **ON** | 🟡 |
 | ROM | A3000 KS **2.04 (rev 37.175)** or **3.1 (40.68)** | Must be an A3000 ROM ✅ |
 | Chip RAM | **2 MB** | ✅ |
-| Fast RAM | **16–64 MB** (stock 030 kernel; 64 is the bench golden's daily value) | The old "16 MB ceiling / more mis-maps the SCSI drive" is retracted — never observed; the real limit is describable RAM ([RAM ceiling](../how-it-works/ram-ceiling.md)) 🟡 |
+| Fast RAM | **16 MB** A3000 motherboard RAM for the stock kernel; 64 MB with a kernel that probes for the A3000 SCSI | The stock kernel's A3000-SCSI guess needs the kernel loaded above `0x07000000` ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)); the old "more mis-maps the SCSI drive" story had the mechanism wrong, not the advice. Above that sits the describable-RAM limit ([RAM ceiling](../how-it-works/ram-ceiling.md)) ✅ |
 | Floppy **DF0** | `amix_2.1_boot.adf` | The bootable install floppy ✅ |
 | **SCSI ID 4** | Tape image | Install script reads the distribution from `/dev/rmt/4hn`, hard-coded ✅ |
 | **SCSI ID 6** | RDB hardfile, ~450–900 MB | The conventional Amix disk target — the installer prompts for it, but use 6 (see [hardware](../how-it-works/hardware.md#scsi-target-ids)) ✅ |
@@ -46,7 +46,7 @@ All of the following are required for a *clean* boot. The four bolded rows are t
 
 - **MMU ON / JIT OFF** — these two are a pair. Amix is one of the very few classic-Amiga OSes that *requires* the MMU, and JIT and the MMU emulation do not coexist for it. JIT on → panic ✅.
 - **More Compatible OFF** — counter-intuitive, because for AmigaOS games you usually want it ON. For Amix it triggers a boot-time freeze 🟡.
-- **The "16 MB Fast RAM ceiling" is retracted** (2026-09-15) — no first-party sighting of the "mis-mapped SCSI controller" failure; 32 and 64 MB run on stock kernels, 128 MB on the 040/060 kernels 🟡. (Far past this rule sits a second, *silent* limit on total describable RAM — see [the RAM ceiling](../how-it-works/ram-ceiling.md).)
+- **The "16 MB Fast RAM ceiling" had the wrong mechanism** (corrected 2026-09-29): with a bigger A3000 motherboard bank the stock kernel loads below `0x07000000`, never registers the internal SCSI and cannot mount root ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)) ✅. Kernels that probe for the controller run 64 MB; the 040/060 kernels run 128 MB ✅. (Far past this rule sits a second, *silent* limit on total describable RAM — see [the RAM ceiling](../how-it-works/ram-ceiling.md).)
 - **SCSI ID 4 = tape, ID 6 = disk.** The **tape ID 4 is hard-coded** (the scripts read `/dev/rmt/4h` and look nowhere else); the **disk ID 6 is convention** — the installer prompts for the disk target and computes the boot partition from `c${SCSI}d0s${BOOTPART}`. Use 6: it's the universal default and gets baked into the installed device names (`/etc/vfstab`), so you'd only have to undo it later. ✅/🟡
 - **Which *controller* for the install disk + tape — put both on the A3000 onboard SCSI.** ✅ (2026-07-05) WinUAE emulates the **A4091 (53C710)** for **tapes** (TAPEEMU) but **not for hard disks** — a hardfile attached at `scsi6_a4091` is never seen by the installer's SCSI scan ("No hard disks attached", RDB or not). Put the target disk on the **A3000 onboard SCSI** (`scsi_a3000=true`, hardfile at `scsi6_a3000`); it is detected and installs. And keep the **tape on the same controller as the disk** — `/dev/rmt/4hn` (the `ct` tape) routes to **card 0**, so with the A3000 SCSI enabled (card 0) and an A4091 also present (card 1), a tape left on the a4091 gives `A3000 Internal SCSI: tape ct4: SCSI timeout / cannot open`. Both on the A3000 SCSI (card 0) → a full install (disk detect → partition → tape read → package install → reboot into the laid-down system) works.
 
@@ -68,7 +68,7 @@ See the [quirks page](../how-it-works/quirks.md) for the full list of hard-coded
 
 3. **Set CPU, MMU, JIT, FPU.** CPU = 68030, **MMU = ON**, **JIT = OFF**, FPU = 68882. Turn **"More Compatible" OFF** and **"Wait for Blitter" ON**.
 
-4. **Set RAM.** Chip = 2 MB, Fast = anything **≤ 16 MB** (16 MB is the documented maximum used by amigaunix.com and FS-UAE configs ✅; do not exceed it).
+4. **Set RAM.** Chip = 2 MB, Fast = **16 MB** of A3000 motherboard RAM for the stock kernel, up to 64 MB with a kernel that probes for the A3000 SCSI ✅. (16 MB is what amigaunix.com and the FS-UAE configs document — right for the stock kernel, for a reason found only in 2026: [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi). Stay under the describable-RAM limit for your kernel — [the RAM ceiling](../how-it-works/ram-ceiling.md).)
 
 5. **Set the ROM.** Point the Kickstart ROM at an A3000 ROM image: 2.04 (37.175) or 3.1 (40.68) ✅.
 
@@ -78,7 +78,7 @@ See the [quirks page](../how-it-works/quirks.md) for the full list of hard-coded
 
 8. **You reach the install kernel / first prompt.** From here you are in the Amix installer flow: insert the root floppy when prompted, the UFS miniroot mounts, and the installer runs. That process is covered in detail in the [install walkthrough](install-walkthrough.md).
 
-**Tip:** Save this as a WinUAE configuration (e.g. `amix-a3000ux.uae`) immediately after step 6, so you never re-enter the table. A single wrong row (JIT back ON, RAM bumped over 16 MB) is the most common cause of "it stopped booting."
+**Tip:** Save this as a WinUAE configuration (e.g. `amix-a3000ux.uae`) immediately after step 6, so you never re-enter the table. A single wrong row (JIT back ON, RAM bumped past what the kernel can describe — ≈64 MB on the stock 030 kernel) is the most common cause of "it stopped booting."
 
 ## After install: logging in
 
@@ -94,7 +94,7 @@ The tape image at SCSI ID 4 is the standard route, but a tape-free install is do
 |---|---|
 | Kernel panic shortly after boot | JIT is **ON** — set it **OFF** ✅ |
 | Boot freezes; `sort: fatal: line too long` | "More Compatible" is **ON** — set it **OFF** 🟡 |
-| Installer can't find a disk / SCSI errors | Disk not at **SCSI ID 6**, or Fast RAM **> 16 MB** mis-mapping the controller ✅ |
+| Installer can't find a disk / SCSI errors | Disk not at **SCSI ID 6** ✅. Second cause, stock kernel only: the A3000 motherboard bank is bigger than 16 MB, so the kernel loads below `0x07000000` and the internal SCSI is never registered (`VOP_OPEN error 6` at boot) — [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi) ✅. |
 | Installer can't read the distribution | Tape image not at **SCSI ID 4** ✅ |
 | `Decompression failed!` / `WARNING! Kernel file checksum mismatch.` | Corrupt or wrong `boot.adf` — re-verify against the checksum on amigaunix.com ✅ |
 | Won't map memory / boots then dies in MMU code | MMU is **OFF**, or you used a non-A3000 ROM ✅ |
@@ -107,7 +107,8 @@ The tape image at SCSI ID 4 is the standard route, but a tape-free install is do
 - [Quirks](../how-it-works/quirks.md) — the complete list of hard-coded limits.
 
 ## Sources
-- Research brief §8 (Emulation — WinUAE mandatory config table; "wasp" login 🟡), §2 (hardware minimums: 68030 + real MMU + 68882, 4–16 MB Fast RAM ceiling, SCSI ID 6 disk / ID 4 tape), §3 (Superkickstart boot path, RDB layout), §9 (installation flow, `dd if=/dev/rmt/4hn … | cpio`, tape-free install, `viper_kludge`).
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
+- Research brief §8 (Emulation — WinUAE mandatory config table; "wasp" login 🟡), §2 (hardware minimums: 68030 + real MMU + 68882, 4 MB Fast RAM minimum — its old "16 MB ceiling" retracted 2026-09-15, SCSI ID 6 disk / ID 4 tape), §3 (Superkickstart boot path, RDB layout), §9 (installation flow, `dd if=/dev/rmt/4hn … | cpio`, tape-free install, `viper_kludge`).
 - `amix_2.1_boot.adf` analysis via `tools/inspect-adf.sh` (bootblock + compressed kernel; decompression/checksum strings) — brief §3, §10.
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) (install media, image checksums, requirements).
 - [Internet Archive: Commodore Amiga operating systems — Amix](https://archive.org/details/commodore-amiga-operating-systems-amix).

@@ -55,7 +55,7 @@ olinit -- -tiga -tm 3
 
 - `-tiga` selects the A2410/TIGA server backend 🟡.
 - `-tm 3` is a TIGA mode argument (graphics mode/timing selector) seen in community configs 🟡; the exact mode-number meaning is not primary-verified, so treat the specific value as community lore.
-- The A2410 is **Zorro II** and uses the standard Amiga AUTOCONFIG discovery the kernel reads via `autocon()` 🟡 — see [Hardware](hardware.md) and [Zorro AUTOCONFIG](../drivers/zorro-autoconfig.md). Amix cannot use **Zorro III** boards at all ✅, so any color graphics option must be a Zorro II / linear-mode card.
+- The A2410 is **Zorro II** and uses the standard Amiga AUTOCONFIG discovery the kernel reads via `autocon()` 🟡 — see [Hardware](hardware.md) and [Zorro AUTOCONFIG](../drivers/zorro-autoconfig.md). A **Zorro III** board's physical space (`0x40000000`+) lies outside the kernel's identity-mapped low 1 GB, so a stock driver cannot simply dereference it (a driver that maps it with `sptalloc` can — see the [identity-map correction](../drivers/zorro-autoconfig.md#the-identity-map)); in practice the color graphics options are Zorro II / linear-mode cards, or a hard-mapped window inside the low 1 GB such as the Z3660's RTG bank at `0x10000000`.
 
 ## The OpenLook desktop: `olwm` / `olwsm`
 

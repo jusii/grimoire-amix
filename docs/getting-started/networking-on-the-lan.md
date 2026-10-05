@@ -8,14 +8,14 @@ status: draft
 
 This is a complete, **first-hand-verified** recipe (2026-06: Amiberry **8.1.6**, Amix **2.1 / SVR4.0**, Linux host) for turning an emulated Amix into a **real, reachable host on your physical LAN** — with a static IP, a working default gateway, **DNS name resolution and internet access**, reachable inbound (telnet/ftp/rlogin), and **coming up automatically at boot**. ✅
 
-The result, with the example values used throughout:
+The result, with the **example values** used throughout. They are documentation addresses (RFC 5737, `192.0.2.0/24`): substitute your own LAN's free address, gateway and DNS servers everywhere they appear below.
 
 | | |
 |---|---|
-| Amix IP | `192.168.2.38/24` (`aen0`) |
-| Gateway | `192.168.2.1` |
-| DNS | `192.168.2.14`, `192.168.2.23` |
-| From the LAN | `ping 192.168.2.38`, `telnet 192.168.2.38` reach Amix |
+| Amix IP | `192.0.2.38/24` (`aen0`) |
+| Gateway | `192.0.2.1` (your LAN's gateway) |
+| DNS | `192.0.2.14`, `192.0.2.23` (your LAN's DNS servers) |
+| From the LAN | `ping 192.0.2.38`, `telnet 192.0.2.38` reach Amix |
 | From Amix | `ping www.google.com`, internet, NFS, etc. |
 
 It builds on the conceptual [networking page](../how-it-works/networking.md) (the SVR4 STREAMS stack, `aen0`, static-IP/no-DHCP, DNS-off-by-default) and [the Amiberry page](emulation-amiberry.md): **Amiberry 8.x fully runs and installs Amix** — its A3000 on-board SCSI emulates the disk (ID 6) and tape (ID 4) — and adds real A2065 networking. ✅
@@ -41,7 +41,7 @@ It builds on the conceptual [networking page](../how-it-works/networking.md) (th
 
 ## Step 1 — Host side (proxy-ARP routed TAP)
 
-Run the helper (idempotent; defaults to `GUEST_IP=192.168.2.38`, autodetects the NIC):
+Run the helper (idempotent; autodetects the NIC). Its built-in default guest address is only an example — **always set `GUEST_IP` to the address you chose for your LAN**, e.g. `GUEST_IP=192.0.2.38`:
 
 ```sh
 sudo sh tools/host-net/amix-lan-up.sh
@@ -53,10 +53,10 @@ That is exactly equivalent to (LAN NIC shown as `$ETH`):
 # user-owned TAP Amiberry attaches to (no caps needed)
 sudo ip tuntap add dev tap0 mode tap user "$USER"
 sudo ip link set tap0 up
-sudo ip addr replace 192.168.2.2/32 dev tap0          # host-side anchor (host<->guest)
+sudo ip addr replace 192.0.2.17/32 dev tap0          # host-side anchor (host<->guest)
 
 # route the guest's /32 at the tap, with a same-subnet source
-sudo ip route replace 192.168.2.38/32 dev tap0 src 192.168.2.2
+sudo ip route replace 192.0.2.38/32 dev tap0 src 192.0.2.17
 
 # make the host a proxy-ARP router
 sudo sysctl -wq net.ipv4.ip_forward=1
@@ -133,13 +133,13 @@ boot and no interface. Populate it (`/etc/hosts` is a symlink to this file):
 
 ```text
 127.0.0.1     localhost loghost
-192.168.2.38  amix amix.localdomain
-192.168.2.1   gateway
-192.168.2.14  ns1
-192.168.2.23  ns2
+192.0.2.38  amix amix.localdomain
+192.0.2.1   gateway
+192.0.2.14  ns1
+192.0.2.23  ns2
 ```
 
-No explicit netmask is needed: `192.168.2.x` takes the class-C default (`ffffff00`
+No explicit netmask is needed: `192.0.2.x` takes the class-C default (`ffffff00`
 = `/24`) automatically. ✅
 
 ### 3b. Default route — in `/etc/inet/rc.inet`
@@ -148,7 +148,7 @@ No explicit netmask is needed: `192.168.2.x` takes the class-C default (`ffffff0
 lives. Add (note the **mandatory metric** — `1`):
 
 ```sh
-/usr/sbin/route add default 192.168.2.1 1
+/usr/sbin/route add default 192.0.2.1 1
 ```
 
 ### 3c. DNS — library swap + transport table + resolv.conf
@@ -167,8 +167,8 @@ cp /etc/netconfig.DNS /etc/netconfig          # adds /usr/lib/resolv.so to tcp/u
 
 # 3. resolver config — nameservers ONLY, no `domain`/`search` (see the gotcha)
 cat > /etc/resolv.conf <<'EOF'
-nameserver 192.168.2.14
-nameserver 192.168.2.23
+nameserver 192.0.2.14
+nameserver 192.0.2.23
 EOF
 ```
 
@@ -193,7 +193,7 @@ EOF
 
 # /etc/inet/network-config  -- the aen0 bring-up (replaces the `uname -n` from Step 3a)
 -   /usr/sbin/ifconfig aen0 `uname -n` up -trailers
-+   /usr/sbin/ifconfig aen0 192.168.2.38 up -trailers   # this host's static IP, literal
++   /usr/sbin/ifconfig aen0 192.0.2.38 up -trailers   # this host's static IP, literal
 ```
 
 `lo0` is always `127.0.0.1`; `aen0` uses this host's own static address (the same
@@ -241,14 +241,14 @@ depend on a name service, so this is the correct design regardless. ✅
 
 ```sh
 # From the host:
-ping 192.168.2.38                       # -> replies
+ping 192.0.2.38                       # -> replies
 python3 tools/host-net/amixsh.py 'ifconfig aen0' 'netstat -rn' 'domainname' \
-        'ping 192.168.2.1' 'ping www.google.com'
-# Expect: aen0 inet 192.168.2.38 netmask ffffff00 ; default -> 192.168.2.1 via aen0 ;
-#         domainname empty ; "192.168.2.1 is alive" ; "www.google.com is alive"
+        'ping 192.0.2.1' 'ping www.google.com'
+# Expect: aen0 inet 192.0.2.38 netmask ffffff00 ; default -> 192.0.2.1 via aen0 ;
+#         domainname empty ; "192.0.2.1 is alive" ; "www.google.com is alive"
 
 # From any other LAN machine:
-telnet 192.168.2.38                     # -> Amix login: prompt
+telnet 192.0.2.38                     # -> Amix login: prompt
 ```
 
 SVR4 `ping host` is single-shot ("`host is alive`" / "`no answer`"), not a
@@ -293,7 +293,7 @@ Useful for automation / agents driving Amix without a visible window:
 
 ## Sources
 
-- First-hand reproduction, 2026-06-02: Amiberry 8.1.6 (`a2065=tap0`, A2065 attached to a host TAP, MAC `00:80:10:00:00:38`), Amix 2.1 on `Amix.hdf` at `scsi6_a3000`; host = Linux on `192.168.2.0/24` with Docker. Verified host↔guest, gateway/DNS/internet, inbound telnet/ftp, and **reboot persistence** (aen0/route/DNS auto-up after `shutdown -i6`).
+- First-hand reproduction, 2026-06-02: Amiberry 8.1.6 (`a2065=tap0`, A2065 attached to a host TAP, MAC `00:80:10:00:00:38`), Amix 2.1 on `Amix.hdf` at `scsi6_a3000`; host = Linux on `192.0.2.0/24` with Docker. Verified host↔guest, gateway/DNS/internet, inbound telnet/ftp, and **reboot persistence** (aen0/route/DNS auto-up after `shutdown -i6`).
 - Amiberry 8.0.0 release + PRs [#1784](https://github.com/BlitterStudio/amiberry/pull/1784) (TAP backend, `a2065=tap0`/`a2065=br0`), [#1777](https://github.com/BlitterStudio/amiberry/pull/1777) (PCAP bridged rewrite), [#1774](https://github.com/BlitterStudio/amiberry/pull/1774) (config parse fix). Source: `src/cfgfile.cpp`, `src/ethernet.cpp`, `src/osdep/amiberry_uaenet.cpp`, `src/a2065.cpp`.
 - Amix boot path: `/etc/inittab` (`S2::sysinit:/etc/sysinit`), `/etc/sysinit` (`domainname \`cat /etc/domain\``), `/etc/init.d/inetinit`, `/etc/inet/network-config` (`ifconfig aen0 \`uname -n\` up -trailers`), `/etc/inet/rc.inet` — read directly off the running system.
 - DNS enable: `/etc/netconfig.DNS` (adds `/usr/lib/resolv.so`), `/usr/lib/libsockdns.so` — present on the install; the `domain`-append behaviour matches [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) and was confirmed via a `gethostbyname()` probe.

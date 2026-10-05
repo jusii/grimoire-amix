@@ -43,7 +43,7 @@ a linear framebuffer window can be supported by writing (a) a small kernel frame
 matching RTG back-end inside the X server. On Amix today that pairing is the [`va2000`](case-studies/va2000.md)
 driver plus the `Xrtg` server ✅.
 
-Because Amix's memory-mapping layer cannot address Zorro III space, **RTG cards must be Zorro II / linear-mode
+Because a stock driver can only dereference what falls inside the kernel's identity-mapped low 1 GB (Zorro III space at `0x40000000`+ is outside it — see the [identity-map correction](zorro-autoconfig.md#the-identity-map); a driver can still reach it with `sptalloc`, as the A4091 driver does), **RTG cards must be Zorro II / linear-mode
 only** ✅ — the same constraint that applies to all Amix graphics expansion (see
 [Hardware](../how-it-works/hardware.md)).
 
@@ -157,7 +157,8 @@ For the native compilers and SVR4 toolchain caveats (the bundled AT&T `cc`, GCC 
 
 The **new** `Xrtg` Amix code is **MIT-licensed**; the surrounding **X11R5** code retains the original **X
 Consortium** terms ✅. Building it also requires a licensed Amix system for the SVR4 headers and libraries —
-the proprietary Amix distribution is not redistributable (see [licensing](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
+the repo ships none of them. (Until 2026-09-23 this project treated the Amix distribution as not
+redistributable; the 2026-09-23 outcome that lifted that restriction is in [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary).)
 
 ## Input: the AMIX screen manager
 

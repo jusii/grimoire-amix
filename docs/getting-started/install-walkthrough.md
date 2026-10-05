@@ -1,6 +1,6 @@
 ---
 title: Installing Amix (Emulation-First Walkthrough)
-summary: End-to-end install of Amix 2.1 — boot/root floppies, the UFS miniroot, RDB partitioning, streaming the distribution from a SCSI tape, building and writing the boot partition, first boot, and applying the patch disk to reach 2.1c (with Y2K fix).
+summary: End-to-end install of Amix 2.1 — boot/root floppies, the UFS miniroot, RDB partitioning, streaming the distribution from a SCSI tape, building and writing the boot partition, first boot, and applying the patch disk to reach 2.1c, and the community Y2K `setclk`.
 status: draft
 ---
 
@@ -18,8 +18,10 @@ correct CPU/MMU/FPU and two SCSI targets (a disk on ID 6, a tape on ID 4). Set t
 the A3000 SCSI disk + tape Amix needs. There is no working QEMU recipe 🟡. For period-correct **real hardware** instead of emulation,
 see [installing on real hardware](real-hardware.md).
 
-> **Licensing:** the boot/root/patch floppies and the distribution are proprietary Commodore material
-> (abandonware, not licensed for redistribution). This guide never asks you to commit or share them.
+> **Licensing:** the boot/root/patch floppies and the distribution are Commodore material. Since
+> 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's approval, the project owner's
+> ruling — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); until then this project
+> treated them as abandonware, not licensed for redistribution. This repo does not ship them.
 > Obtain the images yourself from [amigaunix.com](https://www.amigaunix.com/doku.php/home) /
 > archive.org. Verify them against `sources/CHECKSUMS.txt` before use.
 
@@ -51,9 +53,11 @@ install will not complete.
   default everything assumes, and the ID is baked into the device names once installed). The installer's
   `BPART` derives from `/dev/dsk/c${SCSI}d0s${BOOTPART}` ✅.
 - **SCSI tape on ID 4** — the distribution device is `/dev/rmt/4h` ✅.
-- **Fast RAM:** 4 MB minimum, **16 MB maximum** — the kernel hard-codes the ceiling, and exceeding it
-  mis-maps the SCSI drive ✅. Set the emulator's Fast RAM to ≤ 16 MB. (Total *describable* RAM has its
-  own, silent limit far above this — [the RAM ceiling](../how-it-works/ram-ceiling.md).)
+- **Fast RAM:** 4 MB minimum; on an A3000, **16 MB** of motherboard RAM for the stock install
+  kernel — a bigger bank loads the kernel below `0x07000000`, where the stock kernel never registers
+  the internal SCSI and cannot mount root ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)) ✅. The 040/060 kernels run
+  **128 MB** ✅. (The old "16 MB maximum" rule had the mechanism wrong, not the advice.) The real limit is total *describable* RAM, which fails silently —
+  [the RAM ceiling](../how-it-works/ram-ceiling.md).
 - **Disk image size:** roughly 450–900 MB is the usual range for the ID 6 hardfile 🟡; keep individual
   partitions ≲ 1 GB 🟡.
 
@@ -200,8 +204,8 @@ the admin tool **`amixadm`** ✅, which walks you through:
 
 - **nodename** (hostname) and **domain**;
 - **time zone**;
-- the **date** — set a date **≤ 1999** ✅ (the kernel caps the date at 1999; see the
-  [Y2K step](#stage-8-y2k-make-the-clock-work-past-1999) for the fix);
+- the **date** — `amixadm` accepts only a year **≤ 1999** ✅ (a limit of the tool, not the kernel;
+  set the real date afterwards — see the [Y2K step](#stage-8-y2k-make-the-clock-work-past-1999));
 - the **root password**;
 - **X11** configuration.
 
@@ -215,7 +219,7 @@ After this, you have a running Amix 2.1. For a guided look around your new syste
 ## Stage 7 — apply the patch disk (→ 2.1p2a / kernel 2.1c)
 
 The retail 2.1 is not the end state. The **patch disk** brings it to **2.1p2a / kernel 2.1c**, the
-release widely considered definitive (it carries the inet/NFS and Y2K fixes) ✅. Our `patch.adf`
+release widely considered definitive (it carries the inet/NFS fixes) ✅. Our `patch.adf`
 self-identifies as *"Patch Disks 1 and 2 for International, USA-Only, 2-user, and Unlimited-User Amiga
 UNIX System V Release 4.0 Version 2.1."* ✅
 
@@ -242,12 +246,17 @@ on the [patch disk anatomy](../boot-disks/anatomy-patch-adf.md) page.
 
 After the patch completes and you reboot, `uname` should reflect the patched **2.1c** kernel.
 
-## Stage 8 — Y2K: make the clock work past 1999
+## Stage 8 — Y2K: make the clock work past 1999 {#stage-8-y2k-make-the-clock-work-past-1999}
 
-Stock 2.1 has a **Y2K problem** ✅: a `setclk` `%02d` year-formatting bug plus a **kernel date cap at
-1999** ✅. That is why [Stage 6](#stage-6-first-boot-and-finish-with-amixadm) told you to set a date
-≤ 1999. The patch disk includes a **Y2K-fixed `setclk`** ✅; once you are on 2.1c, use the patched
-`setclk` to set the real (post-1999) date. The community Y2K/DST notes on
+Stock 2.1 has one **Y2K bug**, in the tooling, not the kernel ✅ (corrected 2026-09-29). `setclk`,
+which `/etc/sysinit` runs at every boot, hands the battery-clock year to `date` as `%02d` of
+years-since-1900 (`126` for 2026); `date` rejects it (`date: bad conversion`), so the box never takes
+its time from the battery clock. The kernel itself has **no** year cap — `date MMDDhhmmCCYY` with a
+4-digit year sets 2026 — but `amixadm` accepts only ≤ 1999, which is why
+[Stage 6](#stage-6-first-boot-and-finish-with-amixadm) asked for such a date. The patch disk does
+**not** fix this (its cpio carries no `setclk`). The fix is the **community-patched `setclk`** (the
+AmigaUnix wiki's y2k-dst page), plus `/etc/clkzone` naming the zone the battery clock holds — AmigaOS
+keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap). The community Y2K/DST notes on
 [amigaunix.com](https://www.amigaunix.com/doku.php/home) cover the corner cases.
 
 ## Recap: the install in one screen
@@ -260,9 +269,9 @@ Stock 2.1 has a **Y2K problem** ✅: a `setclk` `%02d` year-formatting bug plus 
                              amixpkg -i -m -d -r /mnt -y standard
                              (viper_kludge only for nonstandard tape drives)
 5. make bootpart KERNEL=relocunix ; shutdown -i6 ; remove floppy
-6. first boot → amixadm: nodename/domain/tz/date(≤1999)/root pw/X11
+6. first boot → amixadm: nodename/domain/tz/date (amixadm: ≤1999)/root pw/X11
 7. apply patch disk          → 2.1p2a / kernel 2.1c
-8. Y2K: patched setclk        → real date past 1999
+8. Y2K: community setclk + /etc/clkzone → clock from the RTC
 ```
 
 ## See also
@@ -279,6 +288,8 @@ Stock 2.1 has a **Y2K problem** ✅: a `setclk` `%02d` year-formatting bug plus 
 
 ## Sources
 
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
+- The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap); first-party record, 2026-09-29).
 - `sources/research-brief.md` §9 (installation flow) and §10 (boot/root/patch disk anatomy) — the
   primary grounding for every stage on this page.
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — partition logic (`BOOTSIZE=2`,

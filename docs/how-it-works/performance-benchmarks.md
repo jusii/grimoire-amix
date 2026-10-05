@@ -52,7 +52,7 @@ is ~11× the emulated modes — that gap is real hardware vs emulation, not a 68
 
 ### Ours across clocks — real 68LC060, 2026-08-31 campaign
 
-FP-free `dhry` (sha256 `41f6755a…` — the fieldkit's shipped `dhry` dies `SIGSYS` on this FPU-less part),
+FP-free `dhry` (sha256 `41f6755a…` — an FP-using `dhry` build dies `SIGSYS` on this FPU-less part),
 500,000 passes, 3 runs per row, multiuser verified by telnet `uname`/`who -r` before every row.
 
 | MHz | Dhrystones/s (3 runs) | spread | Dhry/MHz | boot reliability |
@@ -67,16 +67,12 @@ FP-free `dhry` (sha256 `41f6755a…` — the fieldkit's shipped `dhry` dies `SIG
 - 70 runs a 20 MHz bus (the others 25) yet sits on the same Dhry/MHz line ✅ — bus frequency barely
   affects a cache-resident integer loop 🟡 (one clock pair, offered as the explanation of the rows above).
 
-> ⚠ **70 MHz is not a dependable clock on current evidence** ✅ (rates) / 🔴 (cause) — 2026-08-31: boots **2/2** from a pristine
-> disk after a full power-cycle, but **0/4** when switched via the firmware console (`CCF`) from another
-> halted clock on the worked disk. Failure = kernel loads then hangs pre-root-mount. The two candidate
-> causes (disk state vs firmware/PLL reprogramming state) are confounded — every success had both a fresh
-> image *and* a fresh power-cycle. Its Dhrystone numbers are valid for the boots that succeeded; they are
-> not evidence the clock is dependable. 50/80/100 booted every time asked.
+> ⚠ 70 MHz did not boot reliably on the measured card ✅; clock rows are per-unit — see
+> [Z3660 board timings](z3660-timings.md).
 
 ## Disk I/O — SD card through piscsi (A4000D + Z3660, 2026-08-31)
 
-The "disk" on our box is the Z3660's **piscsi-backed `.hdf` image on the Zynq's SD card**, not a real
+The "disk" on the measured box is the Z3660's **piscsi-backed `.hdf` image on the Zynq's SD card**, not a real
 hard drive. Sequential, 64 KB blocks, 8 MB extent; read = the raw root slice `/dev/rdsk/ced0s1`, write =
 a scratch *file* (never a raw device). Values in KB/s; repeats shown where taken.
 
@@ -97,8 +93,8 @@ a scratch *file* (never a raw device). Values in KB/s; repeats shown where taken
 
 ### SD card on an extension cable: `sd_clock 25` (A4000D + Z3660, 2026-09-14) ✅
 
-With the SD card moved onto an extension cable the firmware's default SD clock (`sd_clock 50`) no
-longer works at all — the card does not enumerate and Amix finds no SD-backed devices. `sd_clock 25`
+An SD card on an extension cable may need `sd_clock 25`. With the default SD clock (`sd_clock 50`)
+such a card may not enumerate at all, and Amix then finds no SD-backed devices. `sd_clock 25`
 in `z3660cfg.txt` restores it ✅. Measured cost against the 2026-08-31 rows above, same method, same
 80 MHz clock, every row `err=0` ✅:
 
@@ -136,10 +132,6 @@ Load = the sustained mixed Dhrystone + disk-I/O soak loop.
   its own reference), and the slower timer-tick buckets split exactly evenly between the
   first and second halves of the 38 min load at both clocks: OS scheduling noise, no thermal
   trend.
-- Only prior data is the 2026-08-28 old-cooling record (53.2–56.4 °C at 80 MHz, still
-  climbing, lighter load, ambient unrecorded) 🟡: the new cooler is better in direction, but the
-  comparison is **uncontrolled** and must not be quoted as a measured delta. The controlled reference
-  is this run vs the future **properly-mounted** cooler re-run, whose protocol is pinned.
 
 All the figures above are ✅ first-party measurements; the °C/MHz slopes are a **two-point
 interpolation between them**, not a demonstrated law 🟡.
@@ -197,14 +189,6 @@ Two method rules make those numbers trustworthy, and both generalise past this b
   distinct readings step by ≈0.355 °C — one LSB of the sensor's ADC through this divider — so a
   tighter plateau criterion would merely be demanding five identical codes ✅.
 
-## Open items
-- **Mounted-cooler thermal re-run** — repeat the pinned 80+100 soak protocol after the
-  cooler is pasted/clamped; THERM calibration must stay at 800.0/27.0 for comparability.
-- **70 MHz boot-reliability confound** — needs one designed experiment: `CCF 70` on a worked disk *after*
-  a power-cycle, and on a pristine disk *without* one.
-- **60 MHz** — no working clock config found (2026-08-30 campaign, full negative matrix); untried lead:
-  duty cycles.
-
 ## See also
 
 - [Z3660 board timings](z3660-timings.md) — why a clock that benchmarks well may still not boot, and
@@ -225,7 +209,7 @@ Two method rules make those numbers trustworthy, and both generalise past this b
   100 MHz idle and load figures at 22 °C ambient with the cooler resting unpasted and unclamped; the
   LTC2990 readout method, its rail-signature guard and the I²C cross-check; the plateau-band and
   time-to-plateau sensitivity; and the time-order analysis over 255 Dhrystone runs behind the
-  no-throttling result. The 2026-08-28 record is used only as a loose anchor, never as a control.
+  no-throttling result.
 - The **Mercury 68040 / 68060 rows** are collaborator-reported figures from a separate A3000 + Mercury
   effort and are not first-party 🟡; the A3000 68030 baseline is a published reference figure 🟡.
 - The two **EMU** rows are the Z3660 firmware's ARM-hosted soft-68k cores (030-MMU and 040-MMU) on the

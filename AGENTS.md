@@ -50,9 +50,18 @@ analysis via `tools/inspect-adf.sh`", repo paths). No page ships without it.
 
 ## 5. Respect the licensing boundary
 
-The Amix distribution, the boot/root/patch ADFs, and the scanned manuals are **proprietary Commodore
-material** (treated as abandonware, not licensed for redistribution). **Never commit** the ADFs, HDFs,
-tape images, or the PDF (they are `.gitignore`d). Refer to them by name + checksum + a pointer to
+The Amix distribution, the boot/root/patch ADFs, and the scanned manuals are **Commodore material**.
+
+**Licensing status (2026-09-23).** Mike Battilana, CEO of Amiga Corporation, approved this project on
+the Amiga side — in person at the Saku event on 2026-09-19, confirmed by email on 2026-09-23: the
+Commodore Amiga binaries may be distributed. The project owner rules (2026-09-23) that this also lifts
+the restriction on releasing Amiga UNIX to the public. *History:* until 2026-09-23 this repo treated
+the material as abandonware, not licensed for redistribution, and the wording across the pages said
+so; pages that still mention that stance carry it as a dated history note.
+
+The lifted restriction does **not** change what this repo holds: it is a text knowledge hub, and any
+publication of media is a separate, per-action owner decision made elsewhere. **Never commit** the
+ADFs, HDFs, tape images, or the PDF (they are `.gitignore`d). Refer to them by name + checksum + a pointer to
 amigaunix.com / archive.org. Tooling must operate on **user-supplied** images. Quoting short script
 snippets or string excerpts for documentation/interoperability is fine; bulk-reproducing files is not.
 

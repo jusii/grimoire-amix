@@ -59,8 +59,10 @@ fell through.
 - ✅ **Not** loadable-module based. Drivers are statically linked into the kernel; adding one means
   editing `kernel.c` and relinking `/unix`. See the [driver model](../drivers/driver-model.md).
 - ✅ **Not** runnable on every Amiga. It needs a 68020/68030 **with a real MMU** and a hardware FPU,
-  tops out at **16 MB of Fast RAM**, supports **Zorro II only**, and does **not** run on the
-  68040/68060 (so the A4000 cannot officially run it). The hard limits are detailed on the
+  supports **Zorro II only**, and the **stock** kernel does **not** run on the
+  68040/68060 (so the A4000 cannot officially run stock Amix) — the public
+  [68040/68060 port](68040-68060-status.md) lifts that, metal-proven on a real 68060 (A4000T + Z3660,
+  2026-09-25) ✅. The hard limits are detailed on the
   [hardware](hardware.md) page and the [quirks](quirks.md) checklist; the 040/060 situation has
   [its own status page](68040-68060-status.md).
 
@@ -86,7 +88,7 @@ The releases, with confidence tags carried straight from the research brief:
 | 1.1 | 1991 | First widely-referenced SVR4 release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | Color X via the A2410; archive.org carries 2.01 and 2.03 installers | 🟡 |
 | **2.1** | **Feb 1992** 🟡 | **Last retail release** ✅ (month community-reported). Ships pre-formatted man pages only (nroff sources dropped) | ✅ |
-| 2.1 patch 2a → kernel **2.1c** | post-1992 | Unofficial but considered definitive; inet / NFS / Y2K fixes | ✅ |
+| 2.1 patch 2a → kernel **2.1c** | post-1992 | Unofficial but considered definitive; inet / NFS fixes (no Y2K content — [quirks §7](quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)) | ✅ |
 
 **Notes on the matrix:**
 
@@ -116,7 +118,7 @@ The releases, with confidence tags carried straight from the research brief:
 
 ## See also
 
-- [Hardware and requirements](hardware.md) — CPU/MMU/FPU rules, the 16 MB ceiling, Zorro II only.
+- [Hardware and requirements](hardware.md) — CPU/MMU/FPU rules, the RAM envelope, Zorro II only.
 - [How Amix boots](boot-process.md) — Superkickstart, the bootstrap, and the compressed kernel.
 - [Kernel architecture](kernel-architecture.md) — monolithic SVR4, STREAMS, static drivers.
 - [Versions reference](../reference/versions.md) — the per-release detail behind the matrix above.
@@ -125,7 +127,10 @@ The releases, with confidence tags carried straight from the research brief:
 
 ## Sources
 
+- The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - Research brief §1 (identity, lineage, history; version matrix) — `sources/research-brief.md`.
+- Research brief §2 (the stock 68020/030 limit) and the [040/060 status page](68040-68060-status.md).
+- First-party A4000T metal record: Amix 2.1c reaches `login:` about 60 s after power-on on a **real 68LC060** (the FPU-less 68060) on a Z3660 in an A4000T, running 060-direct (the card's CPU boot mode, not its 68030 emulation) with 128 MB of card RAM — 2026-09-25 ✅ (the Z3660 fork's `docs/investigations/a4000t-bench-2026-09.md`, "Outcome").
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference
   (opening line on direct-port lineage) — see [bibliography](../reference/bibliography.md).
 - `amix_21_patch.adf` analysis via `tools/inspect-adf.sh` (the `Version 2.1` self-identification and

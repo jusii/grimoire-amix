@@ -56,7 +56,7 @@ status: draft
 ## Fact-confidence tags
 
 Inline, per the [AGENTS contract](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md): ✅ verified, 🟡 community-reported, 🔴 unverified/disputed.
-Example: "The tape drive must be SCSI ID 4 ✅; the install scripts read `/dev/rmt/4h` and look nowhere else ✅." (The old example sentence about a 16 MB RAM ceiling was itself a claim nobody had measured — retracted 2026-09-15 — which is the point of tagging.)
+Example: "The tape drive must be SCSI ID 4 ✅; the install scripts read `/dev/rmt/4h` and look nowhere else ✅."
 
 ## Filenames
 

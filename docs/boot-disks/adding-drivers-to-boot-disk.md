@@ -7,8 +7,7 @@ status: draft
 # Adding Drivers to a Custom Boot Disk
 
 If you want an extra hardware driver available on an Amix machine, there are **three delivery surfaces**.
-All three are now tractable — an update from this project's first draft, where the bootable-floppy path
-was an open reverse-engineering problem. It is now solved (see
+All three are tractable — the bootable-floppy format has been reverse-engineered (see
 [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md)).
 
 | Surface | Use it for | Status |
@@ -120,8 +119,11 @@ scheme.) Plain `make install` here would have rewritten the *build host's* own b
 
 `make install` / `make bootpart` **rewrites the boot partition in place**. If the kernel you install
 is corrupt, the next boot **bricks that disk** — the bootstrap relocator chokes and you get a
-`D245 4C41` Guru with no usable system. This is not hypothetical: the Amix kernel link suffers an
-intermittent (~70%) `ld` write-corruption that produces exactly such a kernel. Three rules ✅:
+`D245 4C41` Guru with no usable system. Under emulation this is not hypothetical: an emulator MMU defect corrupts the
+kernel image during the link at a configuration-dependent rate on the unfixed emulator, and produces
+exactly such a kernel; on real hardware and on the fixed emulator the link is clean ✅ (see
+[the D245 boot-breaker](../drivers/kernel-build.md#the-d245-boot-breaker-an-intermittent-ld-corruption)).
+Three rules ✅:
 
 1. **Always clean-gate the build** — relink until the kernel checksum recurs, which proves a clean
    `ld` output, before you install it. See the
@@ -228,9 +230,9 @@ these are the remaining loose ends, none blocking:
 
 - ✅ **Driver-modified kernel** end-to-end (WinUAE, 2026-07-05): a floppy whose kernel was relinked with
   new drivers (a4091 + z3660scsi, cross-built on the host and `elf2brel`'d) boots and runs a **full Amix
-  install** from tape to disk; the laid-down system then boots from the disk into first-boot config. This
-  closes the long-standing "next validation." (The install/floppy kernel carried the drivers; making the
-  *installed* system's boot-partition kernel carry them is a further step — see the install-media project.)
+  install** from tape to disk; the laid-down system then boots from the disk into first-boot config.
+  (The install/floppy kernel carried the drivers; making the
+  *installed* system's boot-partition kernel carry them is a further step.)
 - ✅ **Full install** through the tape stage: done under WinUAE. Note the emulator specifics — the install
   **target disk must be on the A3000 onboard SCSI**, not the a4091 (WinUAE emulates a4091 **tapes** but
   not a4091 hard disks), and the tape (ID 4) must sit on the **same controller / card 0** as the disk
@@ -260,7 +262,7 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
   with `build-bootfloppy.sh`, boots and drives the Amiga UNIX installer through a full install (partition →
   format → read tape → install all package sets → laid-down system boots). Framing a raw `ld -r` ET_REL
   (`e_type=0x1`) instead Guru's `D245 4C41` at relocation. From `amix-kerntools/tools/elf2brel.py` (port of
-  `amiga/boot/elf2brel.c`) + `amix-installng/tools/build-universal-bootfloppy.sh`.
+  `amiga/boot/elf2brel.c`).
 - [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) and research brief §3, §10, §13
   ([`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md)): the `compress`/LZW kernel at
   `0x2800` → m68k ELF, the 16-bit folded **non-fatal** checksum (bootstrap disassembly), and the
@@ -273,7 +275,6 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
   "never `make install` an unverified kernel" safety rule) — The A4091-on-Amix project,
   `NOTES.md` §11 (build/install flow), §16 + §18 (boot-partition write bricks a disk; D245 `ld`
   corruption), §19 (the by-hand `c8d0s3` install onto a separate disk) — reproduced locally ✅;
-  handoff §8;
   [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
   is the clean-gate that proves a kernel safe to install.
 - Patch-disk self-extraction model — `amix_21_patch.adf` analysis; research brief §10;

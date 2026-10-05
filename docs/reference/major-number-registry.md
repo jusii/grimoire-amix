@@ -84,9 +84,9 @@ between the two shows **five hunks, all of them hydra** — so both trees agree 
 | 46 | `audio` | stock | occupied ✅ |
 | **47** | **`mx`** (stock contrib) ⚔ **`hydra`** (community) | — | ⚔ **COLLISION** — see §2.1 ✅ |
 | **48** | `random` (isoriano1968 dev tree, unpublished) — **vacated by `z3660eth` 2026-07-30** | — | 🟡 dev-tree prose only; collision resolved — see §2.2 |
-| **49** | **`zz9000`** (isoriano1968) | community | claimed ✅ |
+| **49** | **`zz9000`** (isoriano1968) — **also the Z3660 RTG target** (`amix-z3660rtg`, a row-selected build of the same driver, 2026-09-16 design decision: same node `/dev/zz9000`, same ABI, no new major claimed) | community | claimed ✅ |
 | 50 | `sad` — STREAMS administrative driver | stock | occupied ✅ |
-| **51** | **`z3660eth`/`zen0`** (this family) — renumbered from 48, 2026-07-30 | community | claimed ✅ — **live in shipped kernels: `mknod /dev/zen0 c 51 0` verified on real hardware 2026-09-09** (A4000 + Z3660, kernel `68060-260828-50`, `zen0` up at 0 % packet loss). The "48 until the next kernel rebuild" caveat is now discharged |
+| **51** | **`z3660eth`/`zen0`** (this family) — renumbered from 48, 2026-07-30 | community | claimed ✅ — **live in shipped kernels: `mknod /dev/zen0 c 51 0` verified on real hardware 2026-09-09** (A4000 + Z3660, `zen0` up at 0 % packet loss). |
 | **52–67** | — | — | ✅ **FREE** — verified row-by-row in two trees; **take a slot here** |
 | **68** | **`va2000`** (asokero) | community | claimed ✅ |
 | **69** | — | — | ✅ **FREE** — the last slot in the array |
@@ -141,9 +141,8 @@ Against it, `zz9000-amix`'s `integration/kernel.c.txt` states ✅:
 
 **Resolution (2026-07-30): `z3660eth` renumbered off 48 to 51** ✅ — the lowest slot of the
 verified-free 51–67/69 range — because this project's own convention (§5) says community claims
-win, and a documented claim — even a weak one — is cheaper to respect than to argue with. The
-renumber is **source-side**: kernels and `/dev/zen0` nodes built before the next kernel rebuild
-still register and open 48 ✅. 48 now carries only the unpublished-dev-tree `random` claim 🟡.
+win, and a documented claim — even a weak one — is cheaper to respect than to argue with. Kernels
+built before 2026-07-30 (and their `/dev/zen0` nodes) register and open 48; current kernels use 51 ✅. 48 now carries only the unpublished-dev-tree `random` claim 🟡.
 
 ## 3. Block majors — `bdevsw[]`
 
@@ -192,15 +191,9 @@ kernel's ABI, so it still needs recording.
 > ✅ **Index resolved 2026-07-27: `cdfs` = 12.** The staged `master.d/filesys.c` defines
 > `INCLUDE_RFS` **unconditionally in the file itself**, immediately above the `#ifdef` guarding the
 > `rfs` row — so `rfs` (index 4) always compiles, stock rows are 0–11 (`nfs` at 11), and the
-> appended `cdfs` row is **12**. No build knob ever turns `INCLUDE_RFS` off (the kerntools fstype
-> staging only appends the row; it never touches the guard). Confirmed at the binary level: the
-> `vfssw` tables dumped out of two independently linked kernels during the a3091 bounce
-> investigation are identical row for row, cdfs last at 12
-> (`amix-kerntools/docs/a3091-bounce-boot-patch.md`) ✅. The competing figure — "index 11, stock
-> 0–10" in `amix-cdfs/docs/packet-c-bench-results.md` (since corrected) — was a static miscount
-> that treated the `#ifdef INCLUDE_RFS` row as not compiled; excluding `rfs` yields exactly 11/0–10,
-> which is how the discrepancy arose. That doc's load-bearing claim (row appended **last**, no
-> index shift of stock rows) was true all along. Note the index is **load-bearing for nothing**:
+> appended `cdfs` row is **12**. No build knob ever turns `INCLUDE_RFS` off. Confirmed at the binary level: the
+> `vfssw` tables dumped out of two independently linked kernels are identical row for row, cdfs last at 12
+> (`amix-kerntools/docs/a3091-bounce-boot-patch.md`) ✅. A static count that treats the `#ifdef INCLUDE_RFS` row as not compiled gets index 11, which is wrong. Note the index is **load-bearing for nothing**:
 > `cdfsinit()` self-locates its row by *name* at boot and records the index it finds
 > (`cdfs_fstype`), and mount matches by name — by design, cdfs works at either index ✅.
 
@@ -223,7 +216,7 @@ key is `(manufacturer << 16) | product`, the argument to `autocon()` ✅.
 | `0x144B0001` | Z3660 accelerator (eth + piscsi, combo base `0x10000000`) | shanshe / this family ✅ |
 | `0x6D6E0001` | MNT VA2000 (mfr `0x6D6E`, product 1) | asokero ✅ |
 | `0x6D6E0003` | MNT ZZ9000, **Zorro II product 3** | isoriano1968 ✅ |
-| `0x6D6E0004` | MNT ZZ9000, Zorro III identity | ⚠ **detected and rejected** — Amix has no Zorro III bus support ✅ |
+| `0x6D6E0004` | MNT ZZ9000, Zorro III identity | ⚠ **detected and rejected** by the zz9000 driver, which supports only the Zorro II identity ✅ (a driver choice: Zorro III is reachable with an explicit mapping — [correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall)) |
 
 **No collisions today.** Two boards from the same manufacturer (`0x6D6E`, MNT) coexist because they
 carry different product numbers.
@@ -265,12 +258,13 @@ friendliest pattern for a shared kernel and the one this project recommends.
 
 | Project | Char | Block | Other | Verified on metal |
 |---|---|---|---|---|
-| [`z3660eth`](../drivers/z3660-ethernet-driver.md) (this family) | **51** (renumbered from 48, 2026-07-30 source-side; shipped kernels carry 48 until the next rebuild) | — | — | ✅ A4000 + Z3660, 2026-06 (at 48) |
+| [`z3660eth`](../drivers/z3660-ethernet-driver.md) (this family) | **51** (renumbered from 48, 2026-07-30; kernels built before 2026-07-30 register 48, current kernels 51) | — | — | ✅ A4000 + Z3660, 2026-06 (at 48) |
 | [`z3660scsi`](../drivers/z3660-scsi-driver.md) (this family) | via 40 | via **18** (`scsicard[]`, `0x144B0001`) | — | ✅ 2026-06 |
 | [`a4091`](../drivers/a4091-53c710-driver.md) (this family) | via 40 | via **18** (`scsicard[]`, ×3 IDs) | — | 🟡 emulated; metal pending |
 | `cdfs` (this family) | — | — | `vfssw[]` last row | ✅ 2026-07 |
 | [`hydra`](../drivers/case-studies/hydra.md) (isoriano1968) | **47** ⚔ | — | `init_tbl[]`, `int2_tbl[]` | ✅ 2026-06 |
 | [`zz9000`](../drivers/case-studies/zz9000.md) (isoriano1968) | **49** | — | `init_tbl[]` | ✅ |
+| `amix-z3660rtg` (this family; the Z3660 RTG **target** of the same `zz9000` driver, `-DZZ9K_TARGET_Z3660` board-table row) | **49** (shared by design — one driver, two board rows) | — | `init_tbl[]` | 🟡 design 2026-09-16; real-hardware status: see the [ZZ9000/Z3660 RTG page](../drivers/case-studies/zz9000.md) |
 | `random` (isoriano1968, unpublished) | **48** (uncontested since 2026-07-30) | — | — | 🟡 prose-only |
 | [`va2000`](../drivers/case-studies/va2000.md) (asokero) | **68** | — | `io_init[]` | ✅ |
 | `mx` MAX-125 (stock contrib, 1992) | **47** ⚔ | — | `int2_tbl[]`, `io_poll[]` | 🔴 no modern report |
@@ -291,9 +285,8 @@ friendliest pattern for a shared kernel and the one this project recommends.
   @ `dcb7d24`, and this project's relink tree. A full diff between them shows five hunks, all hydra.
 - `usr/sys/master.d/filesys.c` — `vfssw[]` rows, read from this project's staged tree with `cdfs`
   appended.
-- `amix-kerntools/docs/a3091-bounce-boot-patch.md` — the 2026-07-26 a3091 investigation's binary
-  `vfssw` table dumps from two independently linked kernels (cdfs last, index 12) — the
-  measurement that resolved the 11-vs-12 index question.
+- `amix-kerntools/docs/a3091-bounce-boot-patch.md` — binary `vfssw` table dumps
+  from two independently linked kernels, 2026-07-26 (cdfs last, index 12).
 - `/usr/sys/amiga/alien/contrib/mx/{kernel.c.mx,README}` — the stock Amix 2.1 MAX-125 contrib
   driver's major-47 claim, `int2_tbl[]` and `io_poll[]` entries (present in two independently
   obtained copies of the stock tree; files dated 1992-03-21).
@@ -311,5 +304,5 @@ friendliest pattern for a shared kernel and the one this project recommends.
   `amix-z3660scsi/driver.conf` (`0x144B0001 z3660queue`), `amix-a4091/driver.conf`
   (`0x02020054` / `0xc0de0001` / `0xc0de0002`) — and the build harness's free-row gate
   (`build-cross-kernel.sh`, `build-net-kernel.sh`).
-- Upstream-watch sweeps #1 (2026-07-26) and #2 (2026-07-27) — the cross-tree claim survey behind
-  this page.
+- Cross-tree claim surveys of the published community repos (2026-07-26, 2026-07-27) — the
+  evidence behind this page.

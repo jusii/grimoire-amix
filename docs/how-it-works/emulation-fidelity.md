@@ -90,7 +90,7 @@ emulator (Amiberry) had its own long-known infidelity: **relinking the Amix kern
 corrupted the output most of the time**. It was measured in 2026-07 (**85% of rounds at 8 MB**),
 then **root-caused on 2026-07-26 — and it is a 68030 MMU defect in the emulator, not a linker or
 disk problem.** Full mechanism and damage signature on the [kernel build
-page](../drivers/kernel-build.md#the-d245-boot-breaker--an-intermittent-ld-corruption); the short
+page](../drivers/kernel-build.md#the-d245-boot-breaker-an-intermittent-ld-corruption); the short
 version, because it generalises to any emulator running a demand-paging guest:
 
 - The bus-fault format-`$B` frame packs `mmu030_state[2]` and `wb3_status` into one 16-bit word;
@@ -130,8 +130,8 @@ banner, device configuration, root mounted — and then:
 NOTICE: User BUS ERROR at E0001770, PC:C100F35E FAULT:6 PID:1 CMD:/sbin/init
 ```
 
-That signature was on record for a day as a suspected interaction between a rig's extra RAM at
-`0x08000000` and an accelerator board, with a memory bisect proposed as the next move. It is neither ✅.
+It is easily mistaken for an interaction between extra RAM at `0x08000000` and an accelerator
+board; it is neither ✅.
 
 ### Why omission selects it ✅
 
@@ -179,10 +179,8 @@ Cycle-exact mode requires at least Disabled but emulated sound setting.
 
 That line is emitted **only** when `cpu_memory_cycle_exact` survived config load, so on a
 sound-disabled Amix config it is a direct read-out of whether the trap is armed ✅. Across 16 host logs
-from the session that found this it discriminates perfectly: present in **all 6** runs whose config
-omitted the key, absent in **all 10** that pinned `cycle_exact=false` — including all three logs of
-the memory bisect that was the dead end. The line naming the real cause was in the host log the whole
-time ✅.
+it discriminates perfectly: present in **all 6** runs whose config
+omitted the key, absent in **all 10** that pinned `cycle_exact=false` ✅.
 
 A quieter second consequence, worth knowing whenever a config seems to be ignored: `fixup_prefs()`
 also forces **`cpu_compatible = true`** whenever `cpu_memory_cycle_exact` is set — so a config asking
@@ -257,54 +255,15 @@ disagreed completely ✅:
 | address-error mask | a different bit set on every power cycle | empty |
 | detected fast RAM | over-counted by exactly the absent 4 MB | correct |
 
-The window really held **12 MB of working RAM with the top 4 MB unpopulated**, and the emulated path's
-failures were an **access artifact** ✅. A second tell arrived free: three different mechanisms for
-looking at the *same* guest addresses returned three different pictures in that session. **When a
-value depends on how you looked at it, the disagreement is in the tooling.**
-
-Four candidate mechanisms were actively contradicted before the artifact was confirmed, and the
-negative results are worth recording because they were expensive ✅:
-
-| candidate | what killed it |
-|---|---|
-| a discrete hardware fault | a bad joint does not move its boundary *and* change its bit set on every power cycle |
-| address aliasing | two addresses inside the window demonstrably held different values at the same time |
-| a host/guest address-translation leak into the emulator's own memory | its decisive test came back negative, with a positive control at a neighbouring address proving the read-out worked |
-| motherboard DRAM refresh starvation | decay predicts errors clustering at the **start** of a verify pass (oldest cells first); 3 of 4 runs put them at the **end** — and unrefreshed DRAM decays in milliseconds to seconds, not minutes |
+The real CPU showed the emulated path's failures were an **access artifact** ✅, not a memory fault.
 
 **The rule, not the verdict, is the transferable part**: run the identical test on a second CPU path
 before attributing a memory failure to hardware. The diagnostic framing for a suspect accelerator is
 on [Z3660 board timings](z3660-timings.md#moving-boundary).
 
-## Blaming an emulator release needs the same image on the *old* build ✅
+## Blaming an emulator release needs the same image on the *old* build
 
-A guest that stops booting after an emulator upgrade looks like an emulator regression, and the
-reflex is to pin the old release. **Run the identical image on the pre-upgrade build first.** In one
-case an inherited disk image failed to boot on a new emulator build; the *same image copy* panicked
-**identically** on the older build, exonerating the release and locating the defect in the image
-lineage instead ✅.
-
-The panic signature is worth recognising because it names the layer:
-
-```text
-s5mountroot: VOP_OPEN error 6
-PANIC: vfs_mountroot: cannot mount root: errno 89
-```
-
-**`VOP_OPEN error 6` is `ENXIO`** — the root device could not be opened *at all* ✅, which is a
-different fault from the `VOP_OPEN error 5` (`EIO`) variant on [the boot page](boot-process.md), where
-the device opened and the read failed. In both cases `errno 89` is only the `vfssw[]` walk running
-out of filesystem types to try, not a filesystem-format verdict — see
-[root-filesystem selection is by probe](boot-process.md).
-
-Two rules follow, and they apply to any bench that carries images forward:
-
-* **An image whose provenance you cannot reconstruct is not a control.** A long-inherited image
-  accumulates changes nobody recorded; when it fails, it cannot distinguish an emulator defect from
-  its own history. Retire such a lineage and mint a fresh image from a known installer run rather
-  than patching it.
-* **The falsification is cheap** — one boot of the same bytes on the previous build — and it is the
-  only step that separates "the emulator changed" from "this image was already broken".
+Withdrawn 2026-10-04 (bench process); the ENXIO-vs-EIO contrast lives on [the boot process](boot-process.md#how-the-kernel-picks-the-root-filesystem).
 
 ## Where this was discovered
 
@@ -331,24 +290,17 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
 
 ## Sources
 
-- amix-kerntools brief `e2-relink-corruption-measured` (2026-07-21): measure-relink.sh N=20 run on the raw golden-work image, 2026-07-20.
+- amix-kerntools brief `e2-relink-corruption-measured` (2026-07-21): a 20-round relink measurement under emulation, 2026-07-20.
 - `sources/research-brief.md` §19 (Emulation fidelity — the 68030 bus-error-frame requirement and the SCSI INT2 / `service_cadence` finding) and §18 (the Z3660 piscsi driver, whose emulator-core triage first surfaced the frame bugs).
 - **Z3660 firmware repository**, branch `amix-main` @ `703c0dc` — first-party, **cited not reproduced** (the emulator source and its fixes are owned by that repo):
   - First-generation demand-paging frame fixes: `3069e22` ("mmu030: fix demand-paged ifetch resume — restore the prefetch-fault sentinel in frame `$B`", the `SIGILL`) and `0b42cb8` ("mmu030: port full WinUAE format-`$B` frame-storage (fix mid-instruction-restart `SIGSEGV`)"). These are the live successors of the now-deleted `amix-boot` commits once cited as `c8b9398` / `e3f9440`; `0b42cb8`'s body names `c8b9398` as its predecessor, and the dead hashes are absent from the current tree. ✅
   - Second-generation multi-fault-continuation fixes: `7ff5774` ("emu: fix 030 MMU multi-fault continuation corrupting the bus-error frame PC"; behavioural change in `src/uae/newcpu.cpp`) and `acdfe15` ("emu: fix 030 MMU in-RTE retry-access rebuilding a mis-attributed bus-error frame"; `src/uae/cpummu030.cpp` — `mmu030_insn_start_pc = pc; regs.opcode = regs.irc = mmu030_opcode;` after `m68k_setpci(pc)`). Corroborated by `CHANGES.md` and the host MMU harness (60/60 → 64/64 with a two-fault-continuation regression test). ✅
   - SCSI INT2 / poll-cadence: `f7bbdb0` (the run-loop consumer + runtime `SERV`/`PERF`; `check_uae_int_request()` throttled to every `service_cadence` instructions in `src/uae/newcpu.cpp`, `do_specialties()` kept per-instruction) and `e0e17d5` ("emu perf: service_cadence config option (z3660cfg + per-preset)"; `Z3660/src/config_file.{c,h}`, default sentinel → clamp `<1 → 1`). ✅ (knob mechanics) The 4-boots / 8-hangs boundary and the INT2-latency attribution are from the firmware's `docs/AMIX.md` and shipped `z3660cfg.txt`, an author hardware sweep — 🟡.
-  - Two-core DMA cache coherence (branch `amix-main`, source_commit `51038f3`): `e37bb43` (SD-controller producer-side `Xil_DCacheInvalidateRange`/`Xil_DCacheFlushRange` before direct read/write) ✅; `0a4c064` (consumer-side core1 `Xil_L1DCacheInvalidateRange` after the completion spin, READ-only — a parked Cortex-A9 still speculatively refills L1D over the DMA target) ✅. The "both endpoints must maintain their own caches" general rule generalizes those two fixes, carried 🟡. Baseline was **2/2 failures** on the unfixed firmware (kmem wild-pointer bus error at `0x4AFC000C`; then a silent root-FS `ufs_readdir` corruption); post-fix a full CD read suite came back **byte-identical, 7/7** `cmp`-verified host-side (T2.P3, real A4000 + Z3660, 2026-07-10 → 07-12). ✅
+  - Two-core DMA cache coherence (branch `amix-main`, source_commit `51038f3`): `e37bb43` (SD-controller producer-side `Xil_DCacheInvalidateRange`/`Xil_DCacheFlushRange` before direct read/write) ✅; `0a4c064` (consumer-side core1 `Xil_L1DCacheInvalidateRange` after the completion spin, READ-only — a parked Cortex-A9 still speculatively refills L1D over the DMA target) ✅. The "both endpoints must maintain their own caches" general rule generalizes those two fixes, carried 🟡. Baseline was **2/2 failures** on the unfixed firmware (kmem wild-pointer bus error at `0x4AFC000C`; then a silent root-FS `ufs_readdir` corruption); post-fix a full CD read suite came back **byte-identical, 7/7** `cmp`-verified host-side (real A4000 + Z3660, 2026-07-10 → 07-12). ✅
 - **Live result** (first-party, ✅): Amix 2.1 cold-boots to a multiuser root login from the piscsi disk on a real A4000 + Z3660 (2026-06) — HDMI console ("The system is ready") and telnet (`uname -a` → `UNIX_System_V … 2.1c … m68k`); a 27-reboot multi-hour soak under fork/exec load ran clean (Z3660 `docs/AMIX.md`). One rare bus-error-frame `SR`-flip under extreme sustained paging load remains tracked (did not recur across the soak) — 🟡.
-- First-party **accelerator acceptance pass on a real A4000D** (2026-08-31, workspace record) ✅ —
+- First-party **accelerator acceptance pass on a real A4000D** (first-party record, 2026-08-31) ✅ —
   the emulated-versus-real CPU-path disagreement over a 16 MB motherboard memory window (the emulated
   path failing 4/4 with a wandering boundary and a per-power-cycle bit set, the real 68LC060 returning
-  one clean 12 MB / 4 MB split with an empty error mask), the three-different-views observation, and
-  the four contradicted candidate mechanisms. Board-level signal-path documentation from that pass is
+  one clean boundary with an empty error mask). Board-level signal-path documentation from that pass is
   deliberately not reproduced here.
-- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — the emulator-exoneration
-  falsification: an inherited guest image that would not boot was re-run **byte-identically on the
-  pre-upgrade emulator build** and panicked the same way (`s5mountroot VOP_OPEN error 6` → `PANIC:
-  vfs_mountroot: cannot mount root: errno 89`), so the release was cleared and the image lineage
-  retired in favour of a freshly installer-minted root. Emulator-version numbers and image
-  filenames are project bookkeeping and are deliberately not reproduced here.
 - First-party **68040/68060 port campaign**, FPU-less-060 software-FPE lane, real 68LC060 metal (2026-08) ✅ — the vector-60 bench-fidelity gap: a UAE-family emulator whose exception-raising guard suppressed vector 60 for an FPU-less 68060 configuration (so a kernel's vector-60 handler could not be exercised on that bed), closed by a narrowed guard verified byte-for-byte against every other configuration. The "any 68060 emulator" generalization is 🟡 (one codebase). The 68060 vector-60 architecture and instruction class are grounded on [the 040/060 status page](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon). No vendor MC68060 / FPSP text and no port source reproduced — measured behaviour paraphrased.

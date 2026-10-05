@@ -47,31 +47,48 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 |---|---|---|
 | **CPU** | 68020 **or** 68030 with a **real MMU** | Amix uses the 68030 MMU (HAT layer); a 68EC020/68EC030 (no MMU) **cannot** run Amix |
 | **FPU** | **68881 or 68882** mandatory | No soft-float; the kernel and userland assume hardware FP |
-| **No 68040/68060** | A4000 **cannot** officially run Amix | Kernel predates the 68040 MMU — see the [040/060 status page](../how-it-works/68040-68060-status.md) |
-| **Fast RAM** | **4 MB minimum**; the old "16 MB maximum" is retracted | No first-party sighting of the "mis-mapped SCSI drive"; 32/64 MB run on stock kernels, 128 MB on the 040/060 kernels — the real limit is describable RAM ([RAM ceiling](../how-it-works/ram-ceiling.md)) |
+| **No 68040/68060** (stock) | A4000 **cannot** officially run **stock** Amix | Stock kernel predates the 68040 MMU; the public [68040/68060 port](../how-it-works/68040-68060-status.md) boots Amix on a real 68060 (A4000T + Z3660, 2026-09-25) ✅ |
+| **Fast RAM** | **4 MB minimum**; on a stock kernel rooted on the A3000 SCSI, keep the motherboard bank at 16 MB | A bigger motherboard bank loads the stock kernel below `0x07000000` and loses the root disk ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)); kernels that probe for the controller run 64 MB, the 040/060 kernels 128 MB — above that, the describable-RAM limit ([RAM ceiling](../how-it-works/ram-ceiling.md)) |
 | **SCSI disk** | **ID 6** (convention) | Installer prompts for the disk target; ID 6 is the universal default, baked into device names once installed |
 | **SCSI tape** | **must be SCSI ID 4** | Hard-coded in install scripts (`/dev/rmt/4h`) |
-| **No Zorro III** | **Zorro II cards only** | The memory-mapping layer can't address Zorro III space, and that source wasn't shipped, so it can't be community-fixed |
+| **Zorro III** | **Stock drivers: Zorro II cards only** | Zorro III space lies outside the kernel's identity-mapped low 1 GB, so a stock driver that dereferences the `autocon()` address can't reach it; a driver that maps the board (`sptalloc()`) can — see [the Zorro III correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall) |
 
 For the full hardware story — supported SCSI/graphics/network/serial cards, the AUTOCONFIG mechanism, the RAM-ceiling failure mode — see [the hardware reference page](../how-it-works/hardware.md).
 
-**On the Z3660 accelerator the emulated modes size the Amix window with the `amix_ram` knob** (default 16 MiB, bounded 128; the firmware docs recommend 64 for a shipping config) ✅ — the earlier "compile-time fixed, no knob" statement described the investigation-era firmware. Under the real-CPU mode the card's 128 MB is presented directly and the 68060 kernels run there daily ✅. When the Amix-interop mode is enabled, its emulator presents a single window of that size and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. (The dummy bank is guarding the separate total-describable-RAM limit — see [the Amix RAM ceiling](../how-it-works/ram-ceiling.md).) The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
+**On the Z3660 accelerator the emulated modes size the Amix window with the `amix_ram` knob** (default 16 MiB, bounded 128; the firmware docs recommend 64 for a shipping config) ✅ — the earlier "compile-time fixed, no knob" statement described the investigation-era firmware. Under the real-CPU mode the card's 128 MB is presented directly and the 68060 kernels run there ✅. When the Amix-interop mode is enabled, its emulator presents a single window of that size and maps a dummy bank above it so nothing can coalesce past the ceiling; the same mode disables the accelerator's large CPU-RAM board, which is incompatible with the Amix memory map. (The dummy bank is guarding the separate total-describable-RAM limit — see [the Amix RAM ceiling](../how-it-works/ram-ceiling.md).) The historical "address not in section 1" panics came from presenting *more* than 16 MB or a split/second window — never from 16 MB exactly, which is the intended, working configuration. (One consequence: the metal Amix console is display-only, so unlike emulation there is no serial-log capture of the SVR4 boot banner's memory line.)
 
 **The Z3660's effective config is two layers — the preset overlay wins.** ✅ `z3660cfg.txt` declares the `hdfN` disk-image files, but the active `presets/presetN.txt` (chosen by `presets/preset.txt`) **overrides every key it sets** — boot mode, `amix_mode`, the Kickstart choice, and the `scsiN <hdf-index>` assignments — and the env parser handles only the `scsiN` indices, never `hdfN` declarations. The practical trap: editing `z3660cfg.txt` alone to re-map which image sits on which SCSI ID is **silently inert** when a preset carries `scsiN` lines. Change both layers (declare the image in the base, remap the SCSI ID in the active preset), and always confirm from the firmware's own boot print — it logs the effective join as `[CFG]`/`[ENV] SCSIn assigned to …`.
 
+**The Z3660's SD card can be reached from AmigaOS** 🟡. With `mount_sd_0x76 YES` in `z3660cfg.txt`,
+the firmware exposes each SD partition of type `0x76`, FAT16, FAT32 or exFAT as a
+`z3660_scsi.device` unit (11 + its MBR slot, so the exFAT data partition in slot 1 is unit 12), and
+the card's AmigaOS driver set includes an exFAT filesystem (`z3660-drivers/exfat`, since 1.03 beta
+18) that can mount it with an ordinary mountlist (read from the firmware source; the card's author
+has also said so in a public Discord post). Treat that volume as read-mostly: the ARM keeps the same
+exFAT filesystem open at the same time. ⚠ **That handler is built for an FPU** (`-m68881` in its
+makefile): on a **68LC060** it crashes with a Line-F exception as soon as the volume is mounted —
+seen on an A4000T, 2026-10-02 ✅. On an FPU-less card it needs an FPU-free build. A working mount is
+not yet confirmed 🟡. A companion
+key, `mount_sd_root`, maps one more unit (10) that the source calls the full SD; it is not
+characterised here 🔴.
+
+**On a Z3660 with the real 68060, always boot a Kickstart *file* via MAPROM** ✅. `kickstart 0`
+(the motherboard ROM sockets) never boots the real CPU ([quirks §67](../how-it-works/quirks.md#67-z3660-kickstart-0)),
+and the reset vector still comes from the socket chips — with DiagROM there, the mapped image needs
+the `.d6` patch ([quirks §68](../how-it-works/quirks.md#68-z3660-d6-reset-vector)).
+
 **The Amiga's own keyboard is a second, live input into the accelerator's firmware boot menu** ✅ —
 and that menu is a *single-key* consumer, where one keystroke can start a destructive operation. A
-host-side console guard on the serial line can neither see nor mediate it: the guard's whole model is
-that serial is the only way in, and it is not, whenever someone is physically at the machine. **Rule:
-no scripted boot-menu operations while anyone is hands-on at the box.** The same property bites
-confirmation prompts — a firmware `overwrite? (y/n)` can be answered by a stray keyboard byte before
-the scripted answer arrives over the serial line, so a script that sends its command and its
+script driving the menu over the serial line can neither see nor mediate those keystrokes: serial is
+not the only way in whenever someone is physically at the machine. The same property bites
+confirmation prompts — a firmware `overwrite? (y/n)` can be answered from the keyboard before the
+scripted answer arrives over the serial line, so a script that sends its command and its
 confirmation as *separate* writes has a race it cannot see. Send both in one write, so the answer is
 already in the serial FIFO when the prompt reads it.
 
 For the reset, halt and serial-capture laws that go with this — a warm reset is not a clean-state
-reset, a successful remote halt looks like a transport failure, and a stray reader eats the console
-stream — see [quirks 47–52](../how-it-works/quirks.md#47-halt-looks-like-failure).
+reset, a successful remote halt looks like a transport failure, and a USB-serial console has a
+single reader — see [quirks 47–52](../how-it-works/quirks.md#47-halt-looks-like-failure).
 
 ### Why SCSI ID 6 and ID 4 matter so much
 
@@ -92,14 +109,14 @@ The principle is straightforward because Amix only cares about *SCSI IDs*, not t
 
 For how the disk is laid out once Amix sees it (RDB scheme, the 2 MB boot partition, swap, UFS-vs-s5 choice), see [filesystems and disks](../how-it-works/filesystems-and-disks.md) and [the installation walkthrough](install-walkthrough.md).
 
-**SD cards through the Z3660 on an extension cable need `sd_clock 25`** ✅ (2026-09-14): at the
-firmware default of 50 MHz the card does not enumerate and Amix sees no SD-backed devices at all; at
-25 it boots and passes a write/read-back stress cleanly, at roughly 15 % lower sequential throughput —
-numbers on the [benchmarks page](../how-it-works/performance-benchmarks.md#sd-card-on-an-extension-cable-sd_clock-25-a4000d--z3660-2026-09-14).
+**An SD card through the Z3660 on an extension cable may need `sd_clock 25`** ✅ (measured on one
+A4000D + Z3660): at the firmware default of 50 MHz the card did not enumerate and Amix saw no SD-backed devices at all; at
+25 it booted and passed a write/read-back stress cleanly, at roughly 15 % lower sequential throughput —
+numbers on the [benchmarks page](../how-it-works/performance-benchmarks.md#sd-card-on-an-extension-cable-sd_clock-25-a4000d-z3660-2026-09-14).
 
 ### Keep partitions reasonably small 🟡
 
-Keep Amix partitions roughly **≲ 1 GB** each. 🟡 This is community guidance, not a documented hard limit — but combined with the 16 MB RAM ceiling and the era's filesystem assumptions, oversized partitions are a known source of trouble. A modern SD card is enormous relative to what Amix expects, so size the *Amix RDB partitions* conservatively rather than the card.
+Keep Amix partitions roughly **≲ 1 GB** each. 🟡 This is community guidance, not a documented hard limit — but one hard edge is measured: a stock kernel's on-box `mkfs_ufs` cannot author a root slice above **1 234 567 blocks (~603 MB)**, and a raw read starting past that point on a whole-disk node never completes ✅ ([quirks §62](../how-it-works/quirks.md#62-sddevsize-603mb)) — but combined with the era's small-RAM and filesystem assumptions, oversized partitions are a known source of trouble. A modern SD card is enormous relative to what Amix expects, so size the *Amix RDB partitions* conservatively rather than the card.
 
 ## Tape-free install (dd/cpio from another host) 🟡
 
@@ -126,15 +143,17 @@ The tape-free approach replaces `if=/dev/rmt/4hn` with a regular file (or a raw 
 
 Beyond the community tape-free lore above, a **complete from-scratch install has been proven end-to-end on a real A4000+Z3660** ✅, using a self-booting **RAW source disk** — a single `.hdf` deployed to the accelerator's SD card and mapped at SCSI id 0, carrying its own installer miniroot, boot chain, driver payload, and a raw package-image slice. Load-bearing facts that generalize:
 
-- **A purpose-built miniroot kernel boots straight from SCSI id 0** (the source disk), while the blank target sits at its own id — no floppy, no CD, no tape in the loop. The 16 MB memory contract holds exactly, with no D245.
+- **A purpose-built miniroot kernel boots straight from SCSI id 0** (the source disk), while the blank target sits at its own id — no floppy, no CD, no tape in the loop. It ran with a 16 MB Amix window and hit no D245.
 - **Boot-priority does the post-install hand-off for free.** Give the source disk's bootable partition a *lower* RDB boot priority than the freshly-written target's; the Kickstart scan cleanly skips the target's *empty* bootable slice before install, then — once the installer has written the target's real boot chain — the target wins the next scan with no media swap or config edit.
 - **The device-name minor number is `(slice << 4) | id`** on the Z3660 SCSI stack, the same encoding as everywhere else — useful when hand-deriving `/dev` nodes on the metal box.
 - **The outcome is byte-identical to an emulator-built install**: the installed tree's attestation digest matched the bench reference exactly. Emulation-built install media produces a bit-for-bit identical result on real hardware.
 - **An installer-minted root can be attested end-to-end from the box's own package database** ✅ — the digest is computed over the installed standard package set as the box itself records it (`/var/sadm`), not over the media it came from. That is what separates a *golden* image from a disk that merely boots: its contents are provable against the installer's own manifest without trusting the host that built it.
-- **Budget minutes per iteration on metal.** A cold power-on to a networked multiuser box (run level 2, the ethernet interface up) takes **≈270 s** on this rig, reproduced over two cold boots ✅ — an order of magnitude slower than the emulator loop, and the single biggest cost in any metal test matrix.
+- **Budget minutes per iteration on metal.** A cold power-on to a networked multiuser box (run level 2, the ethernet interface up) takes **≈270 s** on an A4000 + Z3660, reproduced over two cold boots ✅ — an order of magnitude slower than the emulator loop, and the single biggest cost in any metal test matrix.
 - Ops note: some large packages hold the console silently for many minutes during extraction — that is normal, not a hang; the metal Amix console is HDMI-only (the accelerator's serial log ends at the firmware→Amix handoff).
 
 ### A from-scratch install on a real 68060 — unattended, from an SD card (Z3660, 2026-09-15) ✅
+
+> **With the installer and an installed disk both attached, the unit decides, not the boot priority** ✅: whichever disk AmigaOS boots, Amix comes up on the disk at the unit its kernel's root is stamped for. Keep the installed disk at that unit, or attach one disk at a time — see [the boot process](../how-it-works/boot-process.md#boot-node-vs-root).
 
 The line above installed under the Z3660's *emulated* CPU. On 2026-09-15 the same installer completed
 its first install **on real 68LC060 silicon** (A4000D + Z3660, `bootmode CPU`, 128 MB), unattended:
@@ -154,10 +173,9 @@ client's `repo=` line returns 404 ✅). The next day the same system pulled the 
 (the server is not found by name on the default lookup path ✅). One client limit surfaced on the way: the
 1992 `apkg` fetch had a 60-second *total* deadline, which an 8 MB package cannot meet at the ~37 KB/s a single
 TCP stream from the 68060 reaches against a distant host; the fix is an idle timeout that resets while bytes
-flow ✅ (shipped as the next `apkg` version). One operational law from the same day: the unattended raw
-install has **no blank-target gate** — a power-cycle with the source medium still mapped re-installs
-and erases the target — so the card ships two firmware presets, *install* and *installed*, and the
-operator switches after the halt ✅.
+flow ✅ (shipped as the next `apkg` version). The unattended raw install has **no blank-target gate** ✅:
+a power-cycle with the source medium still mapped re-installs and erases the target. After the halt,
+unmap the source medium, or switch to a firmware preset without it.
 
 ### Non-standard tape drives: `viper_kludge` 🟡
 
@@ -194,7 +212,7 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 
 ## See also
 - [Installation walkthrough](install-walkthrough.md) — the OS install steps (partitioning, streaming the distribution, kernel build, patch disk) that run identically on real hardware
-- [Hardware reference](../how-it-works/hardware.md) — supported cards, AUTOCONFIG, the 16 MB ceiling, RAM/CPU/MMU requirements in depth
+- [Hardware reference](../how-it-works/hardware.md) — supported cards, AUTOCONFIG, the RAM envelope (and the retracted 16 MB ceiling), CPU/MMU requirements in depth
 - [Emulation with WinUAE](emulation-winuae.md) — the recommended way to run Amix today
 - [Filesystems and disks](../how-it-works/filesystems-and-disks.md) — RDB layout, the 2 MB boot partition, UFS vs s5
 - [Networking](../how-it-works/networking.md) — STREAMS TCP/IP, DNS, NFS, the A2065
@@ -202,17 +220,22 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — the most authoritative community resource for end-user install/history/media
 
 ## Sources
-- Research brief §2 (Hardware & requirements: A3000UX/A2500UX specs, Superkickstart, 68020/030+MMU+FPU mandatory, 4–16 MB Fast RAM, SCSI disk ID 6 / tape ID 4, no Zorro III, no 68040, A2065 networking) — primary facts ✅, expansion notes 🟡.
+- The Z3660 `kickstart 0` / `.d6` facts — see the matching Sources entry on [the quirks page](../how-it-works/quirks.md#68-z3660-d6-reset-vector) (FPGA and firmware sources, upstream `50e98e0`, a first-party A4000D run, 2026-10-03) ✅.
+- The **68LC060 and FPU-built AmigaOS software** ✅ — the Z3660 driver set's `z3660-drivers/exfat/makefile` (`-m68881`) and a first-party A4000T metal session on 2026-10-02 in which mounting the SD with that handler crashed the 68LC060 with a Line-F exception; Amix's own `no fpu detected` / `fpu emulation enabled` boot lines are on [the 040/060 page](../how-it-works/68040-68060-status.md).
+- The **2026-10-02 large-target bracket** ✅ — the installer's own author sequence on blank 600–1024 MB targets on a 68030 and a 68060 kernel, the stock `sddevsize()` default of 1 234 567 blocks found as the cause, the whole-disk raw-read hang bisected, and the fix (default `0x3FFFFF` + a `dd.c` offset check) re-run green at every size (first-party record, 2026-10-02).
+- The **Z3660 SD from AmigaOS** 🟡 — the Z3660 firmware source (`scsi/scsi.c` `piscsi_init()`: `mount_sd_0x76` maps MBR partitions of type `0x76`, FAT16, FAT32 and exFAT as units 11 + slot; `mount_sd_root` maps unit 10), the upstream driver set's `z3660-drivers/exfat` (since 1.03 beta 18), and the card author's public statement on the Z3660 Discord (<https://discord.gg/ua4u6SzyHf>, linked from the upstream README).
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
+- Research brief §2 (Hardware & requirements: A3000UX/A2500UX specs, Superkickstart, 68020/030+MMU+FPU mandatory, 4 MB Fast RAM minimum (its "16 MB" maximum retracted 2026-09-15), SCSI disk ID 6 / tape ID 4, stock drivers Zorro II only, no 68040 in the stock kernel, A2065 networking) — primary facts ✅, expansion notes 🟡.
+- First-party A4000T metal record: Amix 2.1c reaches `login:` about 60 s after power-on on a **real 68LC060** (the FPU-less 68060) on a Z3660 in an A4000T, running 060-direct (the card's CPU boot mode, not its 68030 emulation) with 128 MB of card RAM — 2026-09-25 ✅ (the Z3660 fork's `docs/investigations/a4000t-bench-2026-09.md`, "Outcome").
 - Research brief §9 (Installation flow: `dd if=/dev/rmt/4hn bs=256k | cpio -imdcu` and `… | zcat | cpio` variants reconstructed from `amix_21_root.adf` scripts; `viper_kludge` / `viper.README`; tape-free installs documented on comp.unix.amiga 🟡).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (install scripts: `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`, `/dev/rmt/4h`, `viper.README`) ✅.
 - Research brief §11 (Networking: A2065 `aen0`, static IP only, DNS off by default + relink recipe, `route add default … 1`, NFS, SLIP/PPP) ✅/🟡.
 - Research brief §8 (Emulation: WinUAE reference target; Amiberry 8.x adds A3000 SCSI + tape support — BlitterStudio/amiberry issue #1376, implemented). First-hand confirmation on Amiberry 8.1.6.
 - ZuluSCSI/flash-SCSI substitution, old hub / media-converter need, and the byte-level tape-free recipe: **community-reported (🟡)**, retro-Amiga community practice and comp.unix.amiga; not primary-verified in any Amix source.
-- The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window (`AMIX_A3000MEM_MB`), the dummy bank preventing coalescing past the ceiling, the `amix_mode`-forces-CPU-RAM-off contract, and the "not in section 1" panics coming only from >16 MB / split windows: read from `Z3660_emu/src/uae/uae_emulator.cpp`, `Z3660/src/config_file.c`, `AMIX_SCSI_design.md`, `docs/AMIX.md` ✅.
+- The **Z3660** Amix-interop firmware fork — the single Amix window (compile-time fixed at 16 MB via `AMIX_A3000MEM_MB` in the investigation-era firmware, since sized by the `amix_ram` knob), the dummy bank preventing coalescing past it, the `amix_mode`-forces-CPU-RAM-off contract, and the "not in section 1" panics coming only from >16 MB / split windows: read from `Z3660_emu/src/uae/uae_emulator.cpp`, `Z3660/src/config_file.c`, `AMIX_SCSI_design.md`, `docs/AMIX.md` ✅.
 - First-party **thermal soak session**, real A4000D + Z3660, 2026-08-31 ✅ — the Amiga keyboard as a
-  second live input into the accelerator's firmware boot menu, found when a stray keyboard byte
-  answered a firmware confirmation prompt ahead of the serial-side answer; and the single-write fix
-  that closes the race. Performance and temperature figures from the same session are on
+  second live input into the accelerator's firmware boot menu, and the single-write fix that closes
+  the confirmation-prompt race. Performance and temperature figures from the same session are on
   [performance benchmarks](../how-it-works/performance-benchmarks.md).
-- The **2026-08-14/15 golden-regeneration event** (workspace record), real A4000 + Z3660 ✅ — the first root image minted **by** the installer rather than inherited, attested from the box's own package-contents database and cold-booted twice; and the ≈270 s cold-power-on-to-networked-multiuser figure measured across those two boots. Image names and digests are project bookkeeping and are deliberately not reproduced here.
-- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The **2026-08-14/15 installer-minted root image**, real A4000 + Z3660 ✅ — a root image minted **by** the installer rather than inherited, attested from the box's own package-contents database and cold-booted twice; and the ≈270 s cold-power-on-to-networked-multiuser figure measured across those two boots.
+- The **Installer-NG** blank-disk→bootable-install work (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`; first-party record, 2026-07-22/24), which root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).

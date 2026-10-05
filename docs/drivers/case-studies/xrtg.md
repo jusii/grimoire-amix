@@ -107,7 +107,7 @@ The original Amix color X path is the **A2410** "Lowell" TIGA board driven by `o
 
 - **New code** written for `xrtg-amix` is **MIT-licensed** ✅.
 - The **X11R5** portions retain their original **X Consortium** license terms ✅.
-- The repository is **source-only** by necessity: building and running it requires a **licensed Amix SVR4** system (its X11R5 libraries/headers and the proprietary kernel interface to `/dev/va2000`) ✅. Do not expect a redistributable binary. See [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) on the Amix licensing boundary — the Amix media and environment are proprietary Commodore material; obtain them via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
+- The repository is **source-only** by necessity: building and running it requires a **licensed Amix SVR4** system (its X11R5 libraries/headers and the proprietary kernel interface to `/dev/va2000`) ✅. Do not expect a redistributable binary. See [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) on the Amix licensing boundary — the Amix media and environment are Commodore material (the release restriction this project observed was lifted on 2026-09-23); obtain them via [amigaunix.com](https://www.amigaunix.com/doku.php/home) / [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
 
 ## See also
 

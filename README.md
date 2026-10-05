@@ -86,15 +86,31 @@ fact-checked against it); they will move to `status: reviewed` as humans verify 
 real hardware and emulators. Contributions and corrections welcome; see
 [`AGENTS.md`](AGENTS.md) and [`docs/contributing/style-guide.md`](docs/contributing/style-guide.md).
 
+## Trademarks
+
+This repo is part of the [amigaux.org](https://amigaux.org) family of hobby projects, and carries its
+trademark disclaimer verbatim:
+
+> amigaux.org is an independent, unofficial project. This site and its developers are not affiliated
+> with, endorsed by, or sponsored by Amiga Corporation. Amiga is a registered trademark of Amiga
+> Corporation. The project is likewise not affiliated with, endorsed by, or sponsored by Commodore or
+> any other trademark holder. AmigaOS and Amiga UNIX are trademarks of their respective owners; UNIX
+> is a registered trademark of The Open Group. Amiga UNIX is Commodore's port of AT&T UNIX System V
+> Release 4; portions are copyright AT&T, UNIX System Laboratories and their successors.
+
 ## License
 
 The documentation and tooling in this repo are original work, released under the
 **[MIT License](LICENSE)**.
 
 The Amix operating system, its install media (ADFs/HDFs/tapes), and Commodore's scanned manuals are
-**proprietary Commodore-Amiga material** — widely treated as abandonware but not licensed for
-redistribution. They are **not** included here; the tooling operates on **user-supplied** images, and
-we only cite and analyze them. Download them yourself from
+**Commodore-Amiga material**. **Licensing status, 2026-09-23:** Mike Battilana, CEO of Amiga
+Corporation, approved this project on the Amiga side (in person at the Saku event on 2026-09-19,
+confirmed by email on 2026-09-23) — the Commodore Amiga binaries may be distributed — and the project
+owner rules that this lifts the restriction on releasing Amiga UNIX to the public. *History:* until
+2026-09-23 this repo treated the material as abandonware, not licensed for redistribution. The media
+are still **not** included here — this is a text knowledge hub; the tooling operates on
+**user-supplied** images, and we only cite and analyze them. Download them yourself from
 [amigaunix.com → Downloads](https://www.amigaunix.com/doku.php/downloads) or the
 [Internet Archive](https://archive.org/details/commodore-amiga-operating-systems-amix), and verify
 against [`sources/CHECKSUMS.txt`](sources/CHECKSUMS.txt). See [`sources/NOTES.md`](sources/NOTES.md)

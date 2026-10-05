@@ -20,9 +20,13 @@ The hierarchy we apply everywhere, per the [contributor contract](https://github
 catalogue, so it is lightly tagged.
 
 **Licensing note (read before downloading anything).** ✅ The Amix distribution, the boot/root/patch
-floppy images, the hardfiles, tape images, and the scanned manuals are **proprietary Commodore
-material**, treated as abandonware but **not licensed for redistribution**. We never commit them to
-this repository (they are `.gitignore`d) and we never tell you to. We refer to them by name and
+floppy images, the hardfiles, tape images, and the scanned manuals are **Commodore material**. On
+2026-09-23, following the approval of Mike Battilana (CEO, Amiga Corporation — Saku event 2026-09-19,
+email 2026-09-23), the project owner ruled the Amix release restriction lifted: the Commodore Amiga
+binaries may be distributed and Amiga UNIX released to the public ([`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)).
+*History:* until 2026-09-23 this project treated them as abandonware, not licensed for
+redistribution. We still never commit them to this repository (they are `.gitignore`d; it is a text
+knowledge hub). We refer to them by name and
 checksum and point you at [amigaunix.com](https://www.amigaunix.com/doku.php/home) and
 [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix) to obtain them
 yourself. All tooling in this repo operates on **user-supplied** images.
@@ -86,10 +90,10 @@ sources rather than committing them).
 | <https://github.com/isoriano1968/mesa-amix> | ✅ **Mesa 3.1** software-rendering bootstrap (Xlib driver against `Xzz9000`; static GL/GLU/glut first, no server-side GLX) (2026-07) | [mesa](../drivers/case-studies/mesa31.md) |
 | <https://github.com/vjouppi/hydra> | 🟡 Ville Jouppi's AmigaOS Hydra reverse-engineering (register offsets, board schematics); cited by the hydra-amix README | [hydra](../drivers/case-studies/hydra.md) |
 
-🟡 An earlier research note claimed "asokero handle not found / isoriano1968 only does AmigaOS Mesa."
-That note is **wrong** — these repos exist and are the project's centerpiece examples.
-🟢 The modern drivers build **natively on the box** (Hydra: `make`/`make force` with GCC 2.7.2.3, an
-amigaunix.com pkg). **As of 2026-06 a public, reproducible *cross*-toolchain also exists** —
+🟡 These repos exist and are the centrepiece examples; claims that the asokero/isoriano1968 handles
+do not exist or do only AmigaOS work are **wrong**.
+🟢 The modern drivers build **natively on the box** (Hydra: `make`/`make force` with a native GCC 2.7.2.3 —
+the "amigaunix.com pkg" attribution is unsourced 🔴; a stock box has GNU GCC 1.40.5 ✅). **As of 2026-06 a public, reproducible *cross*-toolchain also exists** —
 [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), `m68k-cbm-sysv4-gcc` —
 closing the earlier "no public cross recipe" gap ✅; see the [toolchain](../drivers/toolchain.md) page.
 🔴 **Do not propagate:** the hydra-amix README states Amix was "later sold by Haage & Partner." This

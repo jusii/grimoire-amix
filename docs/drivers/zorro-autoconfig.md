@@ -10,7 +10,7 @@ An Amix driver does **not** hard-code where its expansion board lives. The Amiga
 
 Two hard limits frame everything on this page:
 
-- **Zorro II only.** Amix's memory-mapping layer cannot address Zorro III space, and that source was never shipped, so it can't be community-fixed ✅. See [Hardware](../how-it-works/hardware.md).
+- **Stock drivers are Zorro II only.** Zorro III space lies outside the kernel's identity-mapped low 1 GB, so a driver that dereferences the `autocon()` base directly reaches only Zorro II boards; a driver that maps its board with `sptalloc()` reaches Zorro III as well ✅ — see [below](#zorro-iii-boards-and-the-real-zorro-ii-only-wall). See also [Hardware](../how-it-works/hardware.md).
 - **AutoConfig boards only.** RAM and accelerator boards with no AutoConfig ROM are invisible to this mechanism — `lszorro` cannot see them ✅.
 
 Grounding: this page is built from §2 and §6 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), the [Ditto driver paper](../reference/bibliography.md), and the `asokero/lszorro-amix` source. The `autocon()` signature is **repo-confirmed but community-tier** 🟡 — do not treat it as primary-verified.
@@ -47,6 +47,12 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 `autocon()` is part of the same Amix DDI/DKI surface a driver draws on (`copyin`/`copyout`, `uiomove`, `sleep`/`wakeup`, `spl2`/`splx`, …); see [Key kernel APIs in the driver model](driver-model.md#key-kernel-apis-the-driver-side).
 
+> ⚠ **Stock `autocon()` cannot match a manufacturer id ≥ `0x8000`** ✅. The manufacturer half of the
+> id is compared after a *signed* right shift, so a high id comes back sign-extended and never
+> matches; the board sits in `bootinfo.autocon[]` with the right id and no driver ever attaches. The
+> A4092 (`0xC0DE0001`) was the first board to hit it; the fix is an unsigned shift. See
+> [quirks §65](../how-it-works/quirks.md#65-autocon-signed-manufacturer).
+
 **Note:** the four-argument shape above comes from the modern community repos, not from the Ditto paper, which predates them. Carry it as 🟡 and verify against your kernel headers before relying on the exact argument order.
 
 ## Zorro III boards and the real "Zorro II only" wall
@@ -57,9 +63,9 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 ### How the low 1 GB is really mapped {#the-identity-map}
 
-**AMIX does not use the 68030's Transparent-Translation registers at all** ✅. On a running kernel both TT registers read **E = 0 (disabled)** — the boot path zeroes them — and the identity mapping of the low **1 GB** (`0x00000000`–`0x3FFFFFFF`) is produced by the MMU instead: a **section-0 early-termination page descriptor in the root table**, which maps that whole span 1:1 without a second-level table ✅ (measured on a running kernel, 2026-08 RAM campaign). Everything at or below `0x3FFFFFFF` is therefore directly dereferenceable from kernel code; **`0x40000000`–`0x7FFFFFFF` is not mapped at all** ✅.
+**AMIX does not use the 68030's Transparent-Translation registers at all** ✅. On a running kernel both TT registers read **E = 0 (disabled)** — the boot path zeroes them — and the identity mapping of the low **1 GB** (`0x00000000`–`0x3FFFFFFF`) is produced by the MMU instead: a **section-0 early-termination page descriptor in the root table**, which maps that whole span 1:1 without a second-level table ✅ (measured on a running kernel). Everything at or below `0x3FFFFFFF` is therefore directly dereferenceable from kernel code; **`0x40000000`–`0x7FFFFFFF` is not mapped at all** ✅.
 
-> **Correction (2026-08-14).** This page — and roughly ten others across this site — previously attributed that identity map to `tt0 = 0x003F0143` / `tt1 = 0x807F0143`, values that do appear in `amiga/ml/ttrap.s`. The constants are in the source; the running kernel does not use them. **Every conclusion is unchanged** — a Zorro II board is still directly dereferenceable, a Zorro III board at `0x40000000` still is not, and `sptalloc()` is still the way across — only the mechanism differs ✅. Pages that discuss the boundary now say *"inside the identity-mapped low 1 GB"* and *"the unmapped region above the identity map"* and link here.
+> **Note.** `amiga/ml/ttrap.s` contains `tt0 = 0x003F0143` / `tt1 = 0x807F0143`, but the running kernel does not load them. The identity map comes from the MMU root table, as described above ✅.
 
 A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`.
 
@@ -75,7 +81,7 @@ See [the A4091/53C710 driver](a4091-53c710-driver.md) for the full Zorro III bri
 
 ## `autocon()` and the phantom A3000 internal SCSI
 
-🔴 **What was hardcoded, and why it mis-orders cards.** The A3000 internal SCSI (Commodore DMAC + WD33C93 at `0xDD0000`) is **not** an AutoConfig board, so it never appears in `bootinfo.autocon[]`. Historically, `autocon()` in `amiga/kernel/support.c` faked one in: whenever RAM extended past 7 MB it returned a **phantom A3000 SCSI at `0xDD0000` regardless of whether the hardware exists** ✅ (first-party). The original special case:
+🔴 **What was hardcoded, and why it mis-orders cards.** The A3000 internal SCSI (Commodore DMAC + WD33C93 at `0xDD0000`) is **not** an AutoConfig board, so it never appears in `bootinfo.autocon[]`. Historically, `autocon()` in `amiga/kernel/support.c` faked one in: whenever the kernel's own end address `end` lay above `0x07000000` — i.e. wherever the loader had placed the kernel, not how much RAM there was ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)) — it returned a **phantom A3000 SCSI at `0xDD0000` regardless of whether the hardware exists** ✅ (first-party). The original special case:
 
 ```c
 if (index==0 && end > (char *)0x07000000 && (pc==0x0202F003)) { *bp = 0xdd0000; return 1; }
@@ -91,7 +97,7 @@ On a machine *without* the A3000 SCSI (or a real A4000, which has none) this pha
 if (index==0 && (pc==0x0202F003)) {                 /* A3000 internal SCSI: not an AutoConfig board */
     int a3kscsi = 0;
     unsigned short vposr = *(volatile unsigned short *)0xDFF004;   /* custom chip, always present, bus-safe */
-    if ((((int)vposr >> 8) & 0x7F) < 0x22) {        /* ECS/OCS Agnus (<0x22) = A3000-class; AGA Alice (>=0x22) = A4000 */
+    if ((((int)vposr >> 8) & 0x0F) < 2) {           /* id low nibble < 2: OCS/ECS Agnus = A3000-class; >= 2: AGA Alice = A4000 */
         volatile unsigned char *sasr = (unsigned char *)0xDD0041;  /* WD33C93 SASR */
         volatile unsigned char *scmd = (unsigned char *)0xDD0043;  /* WD33C93 SCMD */
         *sasr = 0x02; *scmd = 0x55;                                /* reg 0x02 <- 0x55 */
@@ -109,13 +115,20 @@ if (index==0 && (pc==0x0202F003)) {                 /* A3000 internal SCSI: not 
 
 How the two steps work ✅:
 
-- **Chipset gate (the safety mechanism).** Read **VPOSR (`0xDFF004`)** — a custom-chip register that is *always* present and bus-safe to read on any Amiga. The identification field is **bits 8–14** (mask the toggling LOF bit at bit 15, i.e. `(vposr >> 8) & 0x7F`): **< 0x22 = ECS/OCS Agnus** (A3000-class), **≥ 0x22 = AGA Alice** (A4000). On AGA the whole block is **skipped**, so the kernel *never reads* `0xDD0000` — eliminating any bus-fault at an address that does not decode on an A4000.
+- **Chipset gate (the safety mechanism).** Read **VPOSR (`0xDFF004`)** — a custom-chip register that is *always* present and bus-safe to read on any Amiga. The identification field is **bits 8–14** (mask the toggling LOF bit at bit 15, i.e. `(vposr >> 8) & 0x7F`): `0x00`/`0x10` OCS (NTSC/PAL), `0x20`/`0x30` ECS (PAL/NTSC), `0x22`/`0x23`/`0x32`/`0x33` AGA Alice. AGA is the id's **low nibble ≥ 2** — **< 2 = OCS/ECS Agnus** (A3000-class), **≥ 2 = AGA Alice** (A4000). On AGA the whole block is **skipped**, so the kernel *never reads* `0xDD0000` — eliminating any bus-fault at an address that does not decode on an A4000.
 - **WD33C93 probe (on A3000-class only).** A **two-register anti-alias** write/readback through the
   chip's indirect `SASR`/`SCMD` ports (`0xDD0041`/`0xDD0043`): write `0x55` into register `0x02` and
   `0xAA` into register `0x03` — both through the *same* data port — then read both back. Open bus
   that echoes the last write would return `0xAA` for the register-`0x02` read, so the probe only
   passes when two genuinely distinct registers hold their own values: a real WD33C93. The board at
   `0xDD0000` is registered only then.
+
+✅ **Do not gate on `id >= 0x22`.** That range test misreads an
+**NTSC ECS Agnus (`0x30`)** as AGA, so on an NTSC A3000 it skips the WD33C93 probe and the
+internal SCSI (with the root disk on it) never registers. The low-nibble test above avoids it (the
+[Z3660 SCSI driver](z3660-scsi-driver.md)'s machine gate uses the same test); with it, an
+emulated ECS-NTSC machine (id `0x30`) finds the WD33C93 as card 0. The pitfall is
+[quirk §61](../how-it-works/quirks.md#61-vposr-low-nibble).
 
 🟡 **Emulation caveat (carry honestly).** An earlier **single-register** form of this probe
 false-positived on Amiberry: its *open bus* at `0xDD0000` echoes writes, so a write/readback against
@@ -198,11 +211,21 @@ On real A4000 metal the fabricated card-0 entry is worse than a mis-ordering. No
 `0xDD0000` on an A4000, so nothing drives DSACK, and the first register access takes a **bus error
 inside the stock driver's initialisation** — that routine is shaped as *"panic unless a board was
 found at exactly the A3000 built-in address"* followed by a register write, and it establishes no
-mapping, so on this machine it is fatal **whenever it is called** ✅ (first-party, observed and
+mapping, so on an A4000 it is fatal **whenever it is called** ✅ (first-party, observed and
 decoded on metal, 2026-08). The only defence is never to issue I/O to that card: a kernel whose
 compiled-in root device names card 1 never enters the routine at all, which is why the same kernel
 can be fully green on a bench (where something answers *and decodes* at `0xDD0000`) and structurally
-unbootable on this metal ✅.
+unbootable on an A4000 ✅.
+
+> **Note — a read there can also simply hang.** On the Z3660's real 68060, a CPU **read** of
+> `0xDD0000` on an A4000D never terminates: the motherboard raises no timeout bus error in local I/O
+> space and the card's CPLD has no cycle timeout, so there is no fault to take ✅
+> ([quirks §66](../how-it-works/quirks.md#66-local-io-read-hangs)). On the Z3660's **emulated**
+> 68030/040 the emulator times out an unacknowledged Amiga read, remaps that 64 KB page to a dummy
+> bank, and its UAE-derived Gary model raises a bus error for a non-range address when the emulated
+> Gary's timeout-enable bit is set ✅ (from the card's firmware sources). The bus error described above
+> comes from that emulated path, not from the board. Either way the rule stands: never let I/O reach
+> the phantom card.
 
 **Card ordering is fragile in both directions.** On an uncured kernel the Z3660-class second
 controller is card 1 *only because* the phantom holds card 0 ✅. Suppress the phantom — this page's
@@ -212,18 +235,9 @@ not hypothetical: on the same physical A4000, a kernel carrying the cure roots t
 while an uncured one must be stamped to **card 1** ✅. Adopting the cure into an existing kernel
 lineage is therefore a **migration** (re-stamp every image's root/swap), not a drop-in patch.
 
-**Which kernels carry the cure** ✅ (audited 2026-08-27): the A4091 project (its origin), the
-install-media builder (unconditionally, with build gates), and the on-box kernel builders. A kernel
-produced by **relinking a stock binary** structurally cannot take it — the cure is a source patch,
-and no C source is in that path — so such kernels avoid card 0 by stamping root/swap to card 1
-instead, with a link-time gate that decodes the artifact's compiled-in root family and refuses a
-mismatch for the target rig. The state is coherent: the cure where source is compiled, the stamp
-plus gate where it is not.
-
-**A method note from the metal root-cause** ✅: the failing and the working kernel differed by *one
-byte* in a megabyte of text — the controller registry's row-count bound — plus an appended driver
-and a two-byte root restamp. A byte-compare that finds exactly one difference has not told you what
-that byte does; **decode the byte before concluding anything** (see [quirks §37](../how-it-works/quirks.md#37-a-one-byte-binary-diff-is-not-understood-until-the-byte-is-decoded-)).
+**A relinked stock kernel cannot take the source cure** ✅ (the cure is a patch to `autocon()`'s
+C source, and relinking a stock binary compiles none), so such a kernel needs the probe injected into
+the binary or its root/swap stamped to card 1 instead.
 
 - [The boot process](../how-it-works/boot-process.md) — how the phantom-A3000 mis-ordering produced the root-mount panic, and the fixed card numbering.
 - [The Amix device-driver model](driver-model.md) — switch tables, major/minor, and where `autocon()` sits in the API surface.
@@ -235,13 +249,18 @@ that byte does; **decode the byte before concluding anything** (see [quirks §37
 
 ## Sources
 
-- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (Zorro II only; no Zorro III mapping; supported expansion), §3 (AUTOCONFIG assigns Zorro II addresses at reset; `autocon()` consumed by the kernel), §5 (`autocon(product_id, dev, &board, &dummy)` 🟡 repo-confirmed; driver API surface), §6 (lszorro mechanism, ranges, nibble encoding, ID database; VA2000 and Hydra AutoConfig IDs).
+- The **CPU-path resolution** of the 2026-08 vs 2026-10-02 `$DD0000` observations ✅ — the Z3660 emulator sources (`Z3660_emu/src/cpu_emulator.cpp` `wait_read_ack()`, `uae_emulator.cpp` `make_dummy_address_bank()`, `uae/memory.cpp` Gary non-range bus error under `gary_toenb`) and the FPGA's forwarding of local I/O to the motherboard on the real-060 path (`z3660.v`), read 2026-10-02.
+- The **2026-10-02 local-I/O peek measurements**, first-party, on an A4000D with a Z3660 ✅ — a supervisor-mode, fault-catching peek tool under AmigaOS: the first read of `$DD0000` never returned; reads of Gary's `$DE0000`/`$DE0001` on the A4000D terminated (`FF`→`7F`, `7F`). The CPLD side is read from the Z3660's CPLD sources (`TERM.vhd`/`BUSTERM.vhd`: termination waits on `DSACK`/`AVEC`/`BERR`, `nTEA` only from the bus-error state, no timeout counter anywhere). The meaning of the A4000's `$DE0000`/`$DE0001` bits is unsourced 🔴.
+- The **signed manufacturer compare in stock `autocon()`** ✅ — `amix-a4091` commit `06a7d96` (2026-10-02, `support.c.patch`: the unsigned shift, codegen `swap`/`ext.l` → `clr.w`/`swap`), the matching one-byte `asr.l` → `lsr.l` patch in the 68040/68060 relink tooling the same day, and an A4000D metal run that proved it (an A4092's `0xC0DE0001` handed over in `bootinfo.autocon[]` but unregistered without the fix, registered as card 1 with it).
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (stock drivers Zorro II only — the old "no Zorro III mapping" wording corrected by this page; supported expansion), §3 (AUTOCONFIG assigns Zorro II addresses at reset; `autocon()` consumed by the kernel), §5 (`autocon(product_id, dev, &board, &dummy)` 🟡 repo-confirmed; driver API surface), §6 (lszorro mechanism, ranges, nibble encoding, ID database; VA2000 and Hydra AutoConfig IDs).
 - `asokero/lszorro-amix` repo — `/dev/mem` `mmap()` scan, `0x80`-byte windows, I/O `0xE90000`–`0xEFFFFF` / mem `0x200000`–`0x9FFFFF`, AutoConfig nibble decode, 461-entry ID DB, register-only fingerprinting: <https://github.com/asokero/lszorro-amix>
 - `asokero/va2000-amix` repo — VA2000 AutoConfig mfr `0x6D6E` product `0x01`, 4 MB Zorro II window, `autocon()` usage: <https://github.com/asokero/va2000-amix>
 - `isoriano1968/hydra-amix` repo — Hydra AutoConfig ID `0x08490001` (2121/1), `autocon()` plus three-way detect: <https://github.com/isoriano1968/hydra-amix>
 - The A4091-on-Amix project — `NOTES.md` §2, §6, §7 (reproduced locally ✅; Zorro III above the identity map, `sptalloc()`, phantom-A3000, chipset-gated WD33C93 detection) and `src/`/`tools/`.
-- `src/kernel-patches/support.c` — the full `autocon()` with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (A4091 product id `0x02020054`). The TT-register constants `tt0=0x003F0143` / `tt1=0x807F0143` also read from `amiga/ml/ttrap.s` there are **not** what the running kernel uses — see the 2026-08-14 correction above.
-- The **2026-08-12/14 RAM campaign** (workspace record): AMIX zeroes the 68030 TT registers (E = 0) and the low-1 GB identity map is a section-0 early-termination page descriptor in the MMU root table, measured on a running kernel ✅ — the correction to the TT0 mechanism carried across this site.
+- `src/kernel-patches/support.c` — the full `autocon()` with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (A4091 product id `0x02020054`). The TT-register constants `tt0=0x003F0143` / `tt1=0x807F0143` also read from `amiga/ml/ttrap.s` there are **not** what the running kernel uses — see [the note above](#the-identity-map).
+- The low-nibble VPOSR correction, 2026-09-28/29 ✅ — `amix-a4091` CHANGELOG 2026-09-29 and the current `src/kernel-patches/support.c.patch` (the id table and the `(id & 0x0F) >= 2` test), found in the review of the contributed `amix-gayle-ide` driver; the matching `amix-z3660scsi` CHANGELOG entry (2026-09-28); and the ECS-NTSC bench row (VPOSR id `0x30`) in `amix-kerntools/docs/k0-families.md`.
+- First-party measurement on a running kernel, 2026-08-12/14: AMIX zeroes the 68030 TT registers (E = 0) and the low-1 GB identity map is a section-0 early-termination page descriptor in the MMU root table ✅.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx` SCRIPTS assembler).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model and kernel API context (see [bibliography](../reference/bibliography.md)).
 - amigaunix.com — historical and hardware reference: <https://www.amigaunix.com/doku.php/home>

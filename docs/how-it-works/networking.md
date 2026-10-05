@@ -152,7 +152,7 @@ Notes and caveats:
 +   /usr/sbin/ifconfig aen0 <this-host-static-ip> up -trailers
 ```
 
-`lo0` is always `127.0.0.1`; `aen0` takes this host's own static address (the same one already in `/etc/hosts` — e.g. `192.168.2.38` in [the LAN setup](../getting-started/networking-on-the-lan.md)). Only the boot path stops calling the resolver; DNS for clients, mail, etc. is untouched ✅.
+`lo0` is always `127.0.0.1`; `aen0` takes this host's own static address (the same one already in `/etc/hosts` — e.g. `192.0.2.38` in [the LAN setup](../getting-started/networking-on-the-lan.md)). Only the boot path stops calling the resolver; DNS for clients, mail, etc. is untouched ✅.
 
 > 🔗 **Edit `S69inet` in place** — it is a hardlink (the same inode is also
 > `/etc/init.d/inetinit`), so unlink/recreate would desync the two ✅. And never leave
@@ -202,7 +202,7 @@ ruled out with these numbers.)
 
 A 2026-07-27 soak of 69 530 cdfs mount/read/unmount cycles measured `FAIL=0` in every STREAMS class
 with `use` at baseline, so cdfs is not a source of this ✅; and a *refused* (rather than timed-out)
-connection is the [`inetd` throttle](#the-inetd-anti-looping-throttle--one-service-refuses-connections-while-the-box-is-healthy),
+connection is the [`inetd` throttle](#the-inetd-anti-looping-throttle-one-service-refuses-connections-while-the-box-is-healthy),
 not this.
 
 ## The `inetd` anti-looping throttle — one service refuses connections while the box is healthy ✅
@@ -211,8 +211,8 @@ not this.
 an undisturbed `login:`, the box is fine — SVR4 `inetd` has disabled that one service because
 something opened 40 connections to it inside 60 seconds** ✅. It re-enables itself within ten minutes
 with no intervention, and it says so only into a log nobody is reading (below). This is the most
-misleading failure shape on a bench Amix box: it was chased for two days as a filesystem/STREAMS wedge
-before being reproduced in four minutes from bare TCP connect/close with the filesystem unmounted ✅.
+misleading failure shape on an Amix box: it looks like a filesystem/STREAMS wedge, yet it reproduces
+from bare TCP connect/close alone, with the filesystem unmounted ✅.
 
 ### The mechanism and its constants ✅
 
@@ -348,6 +348,14 @@ never tripped across 200 invocations; ~575/min tripped within seconds** ✅.
 - Best for bulk work: **run an on-box script and poll for progress at a low rate.** One soak sustained
   ~330 filesystem cycles/min at **0.5 telnet logins/min** for three hours with no trips ✅.
 
+## FTP: passive-mode downloads can arrive short ✅
+
+The stock `in.ftpd` can deliver a **passive** (`PASV`) download **short** — a byte-exact prefix — and
+still reply `226 Transfer complete`; active (`PORT`) mode was clean in every bench run (2026-10-02:
+passive from `cdfs` 18/80 short, passive from UFS 0/80, active 0/40) ✅. The server has no `SIZE`
+command, so a client must length-gate each `GET` against `LIST`/`ls -l` itself. **Use active mode
+for anything you will checksum.** Details: [quirks §64](quirks.md#64-ftpd-passive-truncation).
+
 ## Serial networking: SLIP is buggy, no PPP
 
 - **PPP is not available** on Amix ✅ — there is no PPP stack to dial out with.
@@ -362,13 +370,13 @@ Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card 
 - `hydra-amix` is a **STREAMS / DLPI** network driver for the Hydra card (an **NE2000 / DP8390** design), rev 1.2a, Zorro II, AutoConfig ID **2121/1 (`0x08490001`)** ✅.
 - It registers at **`cdevsw` slot 47** with the `hya` tag. **Amix is SVR4.0 — there is no `ifconfig … plumb`**; you link the interface in with `slink addaen /dev/hya0 hya0`, then `ifconfig hya0 <ip> netmask <m> up -trailers` ✅.
 - Its entry points (`hydraopen`, `hydrawput`, `hydraintr`, `setup_ne2000`) handle DLPI primitives (`DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ`) and the INT2 RX/TX interrupt; `hydraopen` runs a **three-method card detect** (`autocon()`/bootinfo with address validation, then direct Zorro II I/O-slot and memory probes — the bootinfo table can be corrupt on 2.1p2), and it deliberately mirrors the existing A2065 LANCE driver (`aen/`) ✅.
-- It is built **natively on the Amix box** (`make` in the driver dir, `make force` to relink the kernel) with **GCC 2.7.2.3** packaged on [amigaunix.com](https://amigaunix.com) — no cross-compiler; it is **source-only** because building needs a licensed Amix tree ✅.
+- It is built **natively on the Amix box** (`make` in the driver dir, `make force` to relink the kernel) with the stock `cc`/GNU GCC 1.40.5 ✅ or the native **GCC 2.7.2.3** its repo names (the "packaged on amigaunix.com" attribution is unsourced 🔴; the only native 2.7.2.3 tree seen is on a collaborator's own machine) — no cross-compiler; it is **source-only** because building needs a licensed Amix tree ✅.
 
 Full detail — the build line, the DLPI flow, and the LANCE-mirroring design — is on [the Hydra case study](../drivers/case-studies/hydra.md). The general procedure for writing this class of driver is on [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md), and the relink/boot-partition steps are on [the kernel build page](../drivers/kernel-build.md).
 
 A second real-hardware-verified example is the **`z3660eth`** driver for the **Z3660 accelerator's onboard ethernet** (interface `zen0`) — the network analogue of the [A4091 SCSI work](../drivers/a4091-53c710-driver.md), giving Amix full bidirectional TCP/IP on a physical A4000 + Z3660 (2026-06) ✅. It is a contrasting design to hydra: instead of programming a NIC chip directly it speaks the Z3660 firmware's **frame mailbox** over MMIO, registers at **`cdevsw` slot 51** (tag `zen`; 48 until 2026-07-30), and **services RX from a polled `timeout()` callout — no `int2_tbl`/`init_tbl` edit**. The one real-hardware blocker was an **INT6 interrupt storm** (the firmware raised level-6 on every received frame, but Amix has no eth INT6 handler, so ARP broadcasts hard-locked the box); the fix was to disable the firmware interrupt and keep the polled drain. Bring-up is the same `slink` plumbing as hydra (`slink addaen /dev/zen0 zen0`, then `ifconfig zen0 … up -trailers`). See [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) for the mailbox protocol, the storm, and the build/deploy story.
 
-> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (a pkg on amigaunix.com). As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — so you can build driver objects on a modern host too ✅. Either way you need a licensed Amix install (its headers/libs aren't redistributable; the cross-toolchain consumes them as a sysroot). See [the toolchain page](../drivers/toolchain.md).
+> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (the "pkg on amigaunix.com" attribution is unsourced 🔴 — the stock on-box compiler is GNU GCC 1.40.5 ✅). As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — so you can build driver objects on a modern host too ✅. Either way you need a licensed Amix install (its headers/libs aren't redistributable; the cross-toolchain consumes them as a sysroot). See [the toolchain page](../drivers/toolchain.md).
 
 ## Quick reference
 
@@ -403,9 +411,10 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 
 ## Sources
 
+- The **FTP passive-mode truncation** ✅ — the 2026-10-02 bench matrix (passive from `cdfs` 18/80 short, passive from UFS 0/80, active 0/40, `226` on every truncated transfer) and the earlier 68030 measurement plus the length-gate recipe in `amix-kerntools/tools/amixsync.py` ("the truncation trap"; this `ftpd` has no `SIZE`). The short-write mechanism is a diagnosis from behaviour 🟡.
 - Research brief §11 "Networking, X11, userland" (STREAMS TCP/IP; `aen0`/A2065; static IP, no DHCP; DNS off by default + `libsockdns.so` swap, `in.named`, `/etc/resolv.conf`; `route add default <gw> 1`; NFS server+client; SLIP buggy; no PPP).
 - Research brief §2 "Hardware & requirements" (A2065 native; Hydra via `hydra-amix`; Ariadne I via Gateway 🟡).
-- Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x08490001`, three-method autoconfig detect, native `make`/`make force` build with GCC 2.7.2.3 from amigaunix.com, `slink` bring-up).
+- Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x08490001`, three-method autoconfig detect, native `make`/`make force` build with GCC 2.7.2.3 (its "from amigaunix.com" attribution is 🔴, unsourced, per the toolchain page), `slink` bring-up).
 - Research brief §4 "Kernel architecture" (monolithic SVR4; STREAMS, TLI + BSD sockets; no loadable modules).
 - Research brief §3 / §10 (`amix_21_boot.adf` string analysis — embedded NFS/RPC client string table), via `tools/inspect-adf.sh`.
 - Research brief §12 "Quirks checklist" (DNS off by default; SLIP reboot bug).
@@ -424,16 +433,13 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   still tripped at #68), the per-service independence measured both directions (ftp tripped → 23 open;
   telnet tripped → 21 open), and the `syslogd` enablement (`/etc/init.d/syslogd` line-8 `exit`, the
   3-hard-link `cp`-in-place hazard, `daemon.err` already selected by the stock `syslog.conf`, 293 B of
-  growth in 23 min of abuse). Measured on a disposable copy of a golden bench image; the golden masters
-  were never written to.
-- The **amix-cdfs** Packet C wedge soak @ `c3eba7e` (`docs/packet-c-wedge-soak.md`), 2026-07-26/27 ✅ —
-  the discovery story and the rate measurements: the wedge reproduced on the first literal sweep replay
-  with the filesystem loop **paused**; four bare-TCP trips (29.9/min → no trip in 200 invocations;
+  growth in 23 min of abuse).
+- The **amix-cdfs** wedge soak @ `c3eba7e` (`docs/packet-c-wedge-soak.md`), 2026-07-26/27 ✅ —
+  the rate measurements: the refusal reproduced with the filesystem loop **paused**; four bare-TCP trips (29.9/min → no trip in 200 invocations;
   ~550–575/min → trip at 40/61/77); three self-recoveries at 9m48s / 10m11s / 10m00s; FTP up throughout;
   and the box verified healthy *while refusing* (28 processes, zero `in.telnetd`, STREAMS `fail=0` in
   every class, the cdfs mount still traversable).
-- The **2026-09-08/09 Z3660 hand-over campaign**, first-party, real A4000 + Z3660 (workspace record)
-  ✅ — the node-name mechanism: on the 040/060-port kernel line the name is applied at runtime from
+- First-party measurement on a real A4000 + Z3660, 2026-09-08/09 ✅ — the node-name mechanism: on the 040/060-port kernel line the name is applied at runtime from
   `/etc/nodename` (a `strings` scan of the booting boot-slice kernel found neither the old nor the new
   name, while the running system reported the new one), so `setuname -n` — which patches
   `/stand/unix`, the untouched stock kernel on that line — is neither required nor effective there.

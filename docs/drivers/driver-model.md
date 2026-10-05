@@ -150,11 +150,11 @@ The Ditto paper's `par.c` exercises the standard SVR4 DDI/DKI surface that an Am
 | `pollwakeup()` | notify `poll()` waiters of an event |
 | `autocon(product_id, dev, &board, &dummy)` | **Amix-specific** Zorro II board discovery 🟡 (repo-confirmed) |
 
-`autocon()` ties into the Amiga **AUTOCONFIG** mechanism that assigns Zorro II board addresses at reset; see [Zorro II autoconfig for drivers](zorro-autoconfig.md). Note Amix supports **Zorro II only** — there is no Zorro III mapping ✅.
+`autocon()` ties into the Amiga **AUTOCONFIG** mechanism that assigns Zorro II board addresses at reset; see [Zorro II autoconfig for drivers](zorro-autoconfig.md). Note that the **stock** drivers are **Zorro II only**: Zorro III space lies outside the kernel's identity-mapped low 1 GB, so dereferencing the `autocon()` base directly only works for Zorro II boards; a driver that maps its board with `sptalloc()` reaches Zorro III too ✅ — see [the Zorro III correction](zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall).
 
 ## The Amix HBA/DMA driver contract (real hardware)
 
-Everything above is the 1990 Ditto-paper model. This section adds the parts of the contract that the paper never spells out but that **bite hard on real hardware** — recovered by bringing up the native [Z3660 piscsi SCSI driver](z3660-scsi-driver.md) and the [cdfs](../how-it-works/filesystems-and-disks.md) in-kernel filesystem on a physical A4000 + Z3660, and by disassembling the stock Amix kernel. Each item below cost real silent corruption or a wild-jump panic. They are all **✅** (fix commit + real-hardware reproduction, or stock-kernel disassembly) and they **generalize to any HBA/DMA driver on this platform**, the a4091 included.
+Everything above is the 1990 Ditto-paper model. This section adds the parts of the contract that the paper never spells out but that **bite hard on real hardware** — recovered by bringing up the native [Z3660 piscsi SCSI driver](z3660-scsi-driver.md) and the [cdfs](../how-it-works/filesystems-and-disks.md) in-kernel filesystem on a physical A4000 + Z3660, and by disassembling the stock Amix kernel. Getting any of them wrong causes silent corruption or a wild-jump panic. They are all **✅** (fix commit + real-hardware reproduction, or stock-kernel disassembly) and they **generalize to any HBA/DMA driver on this platform**, the a4091 included.
 
 ### Completion runs in the caller's context, iteratively — never from a callout ✅
 
@@ -163,7 +163,7 @@ The SVR4 block layer hands your queue routine a `struct sdcom` (command + buffer
 1. **The `sdcom` may live on the *caller's stack*.** ✅ Callers are allowed to allocate it as a local — the cdfs media backend does exactly this (`struct sdcom` inside a stack-local request struct). So a driver that **defers completion to a clock callout** (`timeout(done, cp)`) reads `cp->intr` from a *dead* stack frame once the caller returns, and jumps through reclaimed memory — kernel corruption and a wild-jump panic (seen the moment `mount -F cdfs` touched the CD). **Rule: complete the command before your queue routine returns**, or the caller must explicitly guarantee the `sdcom` outlives the completion — and nothing in the interface says it does. The a4091 driver was immune only because it already completes inline. ✅
 2. **…but a *bare* inline `(*cp->intr)(cp)` blows the kernel stack**, because disk completion **re-issues the next I/O** (`ihandle → startio → sdqueue → your queue routine`), so a naive recursive completion burns **one stack frame per chunk** and dies on the first big multi-chunk burst (~100 I/Os into boot on real hardware). ✅ The working shape is **synchronous but *iterative*: a driver-owned completion FIFO plus a `completing` guard**, so the first caller drains the queue in a loop and re-entrant completions are *enqueued*, not recursed. A silent, kmem-readable FIFO-overflow counter is cheap insurance and must stay 0. ✅
 
-*(This is exactly the correction the Z3660 piscsi driver landed after its first cut deferred completion to `timeout()`; see [that page](z3660-scsi-driver.md#the-per-io-sequence).)*
+*(See the [Z3660 piscsi driver](z3660-scsi-driver.md#the-per-io-sequence) for an implementation of this pattern.)*
 
 ### `sdcom.addr` is already a physical (bus) address ✅
 
@@ -179,8 +179,8 @@ Amix **callouts dispatch at IPL4** (`SR 0x2400`), which at first suggests every 
 
 This is a **wild-write** bug, and its two traps are what make it nearly invisible ✅:
 
-- **An allocator header silently destroys alignment.** A portable allocator wrapper that prepends an 8-byte length header (SVR4 `kmem_free` needs the original size) shifts every "page-sized" buffer **8 bytes off page alignment** — so cdfs's 2048-byte sector buffers sat 8 bytes into a page and every sector DMA spilled its last 8 bytes into the next frame. The spilled bytes were the CD sector's zero padding, so the signature was **"a short run of zeros at the start of an innocent page"**: it zeroed `/usr/sbin/umount`'s 16-byte ELF ident **on disk** (buffer-cache page → `fsflush`) and scribbled libc's resident pages. (It also rounds a 2056-byte request into the 4096 buddy class — a size no stock consumer uses.)
-- **Byte-correct *reads* prove nothing about wild *writes*.** Bulk file reads verified byte-identical against the source ISO throughout the hunt, because they happened to use a *different*, accidentally page-aligned buffer; only misaligned metadata/mount-time reads did the damage, and the bytes they lost were padding nobody compares. The reliable detector was a **canary soak**: `sum -r` a set of resident binaries (`libc.so.1`, `sh`, `init`, `mount`, `umount`, `ls`, `sum`, `df`) before and after N mount/umount cycles and diff. That one-liner caught in a single cycle what two theories missed (15/15 clean after the fix vs corruption by cycle 2–10 before). ✅
+- **An allocator header silently destroys alignment.** A portable allocator wrapper that prepends an 8-byte length header (SVR4 `kmem_free` needs the original size) shifts every "page-sized" buffer **8 bytes off page alignment**. For example, 2048-byte CD sector buffers behind such a header sit 8 bytes into a page, so every sector DMA spills its last 8 bytes into the next frame. When the spilled bytes are a CD sector's zero padding, the signature is **"a short run of zeros at the start of an innocent page"**: a binary's 16-byte ELF ident (such as `/usr/sbin/umount`'s) can be zeroed **on disk** (buffer-cache page → `fsflush`), and libc's resident pages can be scribbled. (It also rounds a 2056-byte request into the 4096 buddy class — a size no stock consumer uses.)
+- **Byte-correct *reads* prove nothing about wild *writes*.** Bulk file reads verified byte-identical against the source ISO throughout, because they happened to use a *different*, accidentally page-aligned buffer; only misaligned metadata/mount-time reads did the damage, and the bytes they lost were padding nobody compares. The reliable detector was a **canary soak**: `sum -r` a set of resident binaries (`libc.so.1`, `sh`, `init`, `mount`, `umount`, `ls`, `sum`, `df`) before and after N mount/umount cycles and diff. That check catches it in a single cycle (15/15 clean after the fix vs corruption by cycle 2–10 before). ✅
 
 **Fix pattern:** page-align every DMA target (sector == page ⇒ one buffer = exactly one frame), bounce unaligned targets, never DMA into a stack buffer, and add a **permanent kernel-side guard that refuses any request with `(va & (NBPP-1)) + nbyte > NBPP` via `cmn_err`** instead of corrupting memory. ✅ For the allocator internals behind this (why >4096 is scattered, the buddy pools, the freelist-link corruption signature) see [Kernel architecture → the kmem allocator](../how-it-works/kernel-architecture.md#the-kmem-allocator-what-a-driver-can-assume). *(This is the deeper root cause of the "in-kernel SCSI DMA corrupts multi-sector transfers" gotcha noted under [kernel-build](kernel-build.md#gotcha-in-kernel-scsi-dma-corrupts-transfers-larger-than-one-2048-byte-block): a transfer that stays inside one aligned page is one physical frame and is safe.)*
 
@@ -230,7 +230,7 @@ The paper's end-to-end procedure ties the whole model together ✅. Full mechani
   `dd.c:240` and the cdfs media backend), and the callout-IPL verdict (callouts dispatch at IPL4 but
   only the level-2 CIA-A clock triggers them, so spl2 sections are sound; `spl5/6/7` all emit `_spl4`)
   from stock-kernel disassembly; repo `NOTES.md` §"two load-bearing contracts". Validated on a real
-  A4000 + Z3660 (T2.P3, 2026-07-10 → 07-12). ✅
+  A4000 + Z3660 (2026-07-10 → 07-12). ✅
 - **The DMA-alignment contract + the VFS_MOUNT / mnttab contract** — **amix-cdfs** @ `31e8c3b`:
   `fa9db1a`+`31e8c3b` (page-align DMA targets + a permanent `(va & (NBPP-1)) + nbyte > NBPP` guard;
   `NBPP = 2048` from `sys/immu.h`; >4096 kmem is physically scattered so `vtop()` is valid for one page
@@ -240,6 +240,6 @@ The paper's end-to-end procedure ties the whole model together ✅. Full mechani
   `6f727b1`+`d3beca7` (`platform/amix/mount.c` userland helper + `mnttab` special-field semantics);
   `tests/unit/test_remount.c`. Stock-kernel disassembly (symbol-bearing relocatable kernel, period
   m68k binutils). Live on a real A4000 + Z3660 (2026-07-12 → 07-13): canary soak 15/15 byte-identical
-  post-fix vs corruption by cycle 2–10 pre-fix (the `/usr/sbin/umount` ELF-ident zeroing incident);
+  post-fix vs corruption by cycle 2–10 pre-fix;
   mount-stacking reproduction; `mnttab` special-field A/B test. ✅
 - amigaunix.com — historical and end-user reference: <https://www.amigaunix.com/doku.php/home>

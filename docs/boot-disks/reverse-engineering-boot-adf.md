@@ -6,9 +6,8 @@ status: reviewed
 
 # Reverse-Engineering the Boot Floppy
 
-The Amix install/boot floppy (`boot.adf`) was, in this project's first draft, an open problem: its kernel
-was "compressed and checksummed in a raw bootstrap with no AmigaDOS filesystem," format unknown. **That
-is now solved.** This page documents the analysis, the evidence, and the practical upshot: you can build
+The Amix install/boot floppy (`boot.adf`) keeps its kernel compressed and checksummed in a raw bootstrap
+with no AmigaDOS filesystem. This page documents how that format was decoded — the analysis, the evidence, and the practical upshot: you can build
 a custom bootable Amix floppy carrying your own kernel.
 
 All findings here were produced by analysing a real `amix_21_boot.adf` (SHA-256 in
@@ -142,12 +141,12 @@ exactly what `boot2.c` re-derives and compares against `ib_chksum`. ✅ (The sam
 bootstrap itself: `boot1.c` validates *its* `IBLK` by the same mechanism — though there a checksum mismatch
 is **fatal** (`Alert … DeadEnd`), unlike the kernel's non-fatal warning in `boot2.c`.)
 
-This also explains a real failure. A first rebuild that kept the donor's `IBLK` **verbatim** but swapped
-in a re-compressed kernel **failed at boot with `WARNING! Kernel decompression overrun.`** Why: our
-`compress -b16` stream was 668,317 bytes — 5 bytes shorter than the donor's 668,322 — but the stale
-`IBLK` still said "read 668,322 compressed bytes." The bootstrap therefore read our stream **plus 5 bytes
-of the zero-padding**, decoded those zeros into extra output past the 1,171,200-byte buffer, and tripped
-the overrun check. **Lesson: the `IBLK` fields must describe *your* stream.**
+This also explains the overrun failure mode. A rebuild that keeps the donor's `IBLK` **verbatim** but swaps
+in a re-compressed kernel **fails at boot with `WARNING! Kernel decompression overrun.`** For example, a
+`compress -b16` stream of 668,317 bytes is 5 bytes shorter than the donor's 668,322, but the stale
+`IBLK` still says "read 668,322 compressed bytes." The bootstrap therefore reads the stream **plus 5 bytes
+of the zero-padding**, decodes those zeros into extra output past the 1,171,200-byte buffer, and trips
+the overrun check. **The `IBLK` fields must describe *your* stream.**
 
 ## Step 5 — rebuild (patch `IBLK`) and round-trip ✅
 
@@ -177,10 +176,8 @@ bootblock checksum (in the first 1 KB) stays valid (verified: recomputes to 0).
 - ✅ **Verified in an emulator (Amiberry).** A rebuilt floppy (same kernel, re-`compress`'d, `IBLK`
   patched) boots and reaches the original's `Insert floppy disk 2 (root file system)` prompt — no
   overrun, no warning. This proves the rebuild *pipeline* and the format work.
-- 🟡 **Next validations:** boot a floppy carrying a *driver-modified, relinked* kernel (needs a kernel
-  built on Amix/`/usr/sys`), and run a full install through (the tape stage needs A3000 SCSI/tape
-  emulation — see [Amiberry status](../getting-started/emulation-amiberry.md)). The kernel must fit
-  (compressed) in `880 KB − 0x2800`.
+- Booting a floppy with a *driver-modified, relinked* kernel and running a full install through it
+  are recorded on [adding drivers to a boot disk](adding-drivers-to-boot-disk.md).
 
 For the broader "add a driver to a boot disk" decision (this vs. relinking the on-HD boot partition),
 see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).

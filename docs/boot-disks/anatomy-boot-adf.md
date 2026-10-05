@@ -206,7 +206,7 @@ At install time the boot floppy's kernel comes up first, then you swap in the ro
 
 ## Where to get the image
 
-The Amix install floppies are **proprietary Commodore media** — treated as abandonware but **not licensed for redistribution**, so this repo never ships them. Obtain your own copy and verify by hash (filenames vary, e.g. `amix_2.1_boot.adf` vs `amix_21_boot.adf` — match on SHA-256, not name):
+The Amix install floppies are **Commodore media**, and this repo never ships them (it is a text knowledge hub). Until 2026-09-23 this project treated them as abandonware, not licensed for redistribution; since then the Amix release restriction is lifted — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary). Obtain your own copy and verify by hash (filenames vary, e.g. `amix_2.1_boot.adf` vs `amix_21_boot.adf` — match on SHA-256, not name):
 
 - amigaunix.com → Downloads: <https://www.amigaunix.com/doku.php/downloads>
 - Internet Archive: <https://archive.org/details/commodore-amiga-operating-systems-amix>

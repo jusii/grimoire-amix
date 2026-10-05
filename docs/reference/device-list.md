@@ -8,7 +8,7 @@ status: draft
 
 This is the quick-reference table for two things you keep needing when you work with Amix: the **`/dev` major/minor numbers** the kernel uses, and the **expansion cards** Amix actually supports. The two tables below are the answer; the notes after each table explain the encodings and caveats.
 
-A device node in Amix carries a **major** number (which driver) and a **minor** number (which sub-device). The kernel indexes a per-class switch table by the major and never looks at the file name — see [the device-driver model](../drivers/driver-model.md) for the mechanism. Hardware support is constrained by hard kernel rules (Zorro II only, 68020/030 + MMU + FPU, 4–16 MB Fast RAM, SCSI disk at ID 6 / tape at ID 4) — those are covered in full on [the hardware page](../how-it-works/hardware.md).
+A device node in Amix carries a **major** number (which driver) and a **minor** number (which sub-device). The kernel indexes a per-class switch table by the major and never looks at the file name — see [the device-driver model](../drivers/driver-model.md) for the mechanism. Hardware support is constrained by hard kernel rules (stock drivers Zorro II only, 68020/030 + MMU + FPU, ≥ 4 MB Fast RAM, SCSI disk at ID 6 / tape at ID 4) — those are covered in full on [the hardware page](../how-it-works/hardware.md).
 
 Each row carries the same confidence tag the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) uses: ✅ verified (primary source / repo source / reproduced locally), 🟡 community-reported, 🔴 unverified.
 
@@ -212,7 +212,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 - [Composing multi-driver kernels](../drivers/kernel-composition.md) — the SDCARDS/rootdev constraints behind the two-card limit, and the admission checklist that requires a registry entry.
 - [Supported hardware & requirements](../how-it-works/hardware.md) — the CPU/RAM/SCSI/Zorro rules behind the card list.
 - [Building and installing a kernel](../drivers/kernel-build.md) — how a driver claims a major slot in `master.d/kernel.c`.
-- [Quirks](../how-it-works/quirks.md) — the SCSI ID rules (tape hard-coded at ID 4, disk ID 6 by convention) and the 16 MB / Zorro III limits.
+- [Quirks](../how-it-works/quirks.md) — the SCSI ID rules (tape hard-coded at ID 4, disk ID 6 by convention) and the RAM / Zorro III limits.
 - [Versions](versions.md) — which Amix releases these numbers and cards apply to.
 
 ## Sources

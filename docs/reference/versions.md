@@ -24,7 +24,7 @@ exactly this **2.1p2a / kernel 2.1c** combination.
 | 1.1 | 1991 | SVR4 | First widely-referenced **SVR4** release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | SVR4 | Color X via the A2410 graphics card; archive.org carries the 2.01 and 2.03 installers | 🟡 |
 | **2.1** | **Feb 1992** 🟡 | SVR4 | **Last retail release.** Ships **pre-formatted man pages only** — the `nroff` man sources were dropped | ✅ (installer exists locally; month 🟡) |
-| 2.1 patch 2a → kernel **2.1c** | post-1992 | SVR4 patch on 2.1 | Unofficial but treated as definitive; inet/NFS/Y2K fixes. Our `patch.adf` *is* this patch | ✅ (the patch ADF exists locally) |
+| 2.1 patch 2a → kernel **2.1c** | post-1992 | SVR4 patch on 2.1 | Unofficial but treated as definitive; inet/NFS fixes (often credited with a Y2K fix, but it carries none — [quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)). Our `patch.adf` *is* this patch | ✅ (the patch ADF exists locally) |
 | "2.2" | — | — | **Does not exist** in any primary source; almost certainly confusion with 2.1c | 🔴 |
 | "2.1c, 1994" (gunkies) | — | — | The **1994 date is almost certainly wrong** — support ended in 1993 | 🔴 |
 
@@ -53,8 +53,9 @@ gets emulated. One concrete, frequently-tripped-over change in 2.1: the distribu
 you cannot regenerate or easily edit the manuals on a stock 2.1 system.
 
 Our local boot/root/patch floppies are the **2.1** install set (`amix_21_boot.adf`,
-`amix_21_root.adf`, `amix_21_patch.adf`). They are proprietary Commodore material — do not redistribute
-them; obtain them from [amigaunix.com](https://www.amigaunix.com/doku.php/home) or
+`amix_21_root.adf`, `amix_21_patch.adf`). They are Commodore material — this repo does not redistribute
+them (the Amix release restriction was lifted on 2026-09-23, see
+[`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); obtain them from [amigaunix.com](https://www.amigaunix.com/doku.php/home) or
 [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix). Verify any copy
 against the SHA-256 values in `sources/CHECKSUMS.txt` and inspect with `tools/inspect-adf.sh <image>`.
 
@@ -62,7 +63,7 @@ against the SHA-256 values in `sources/CHECKSUMS.txt` and inspect with `tools/in
 
 The practical end of the Amix line is the **2.1 patch 2a** release, applied on top of retail 2.1. ✅
 After it is applied, the patched kernel identifies itself as **2.1c** — this is the same thing, named
-from the kernel's point of view rather than the patch's. It bundles inet, NFS, and **Y2K** fixes and
+from the kernel's point of view rather than the patch's. It bundles inet and NFS fixes and
 is widely regarded as the definitive state of the system.
 
 Our `patch.adf` *is* this patch. It self-identifies as:
@@ -143,6 +144,7 @@ you are realistically going to meet today.
 - [Glossary](../how-it-works/glossary.md) — SVR4, 3B2, RDB, and other terms used above.
 
 ## Sources
+- The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - Research brief §1 (Identity / lineage / history, including the version matrix) and §13 (open
   questions / conflicts), `sources/research-brief.md`.
 - `amix_21_patch.adf` analysis via `tools/inspect-adf.sh` — the patch's self-identification string and

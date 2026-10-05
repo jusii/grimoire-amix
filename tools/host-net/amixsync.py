@@ -17,11 +17,11 @@ Examples:
   amixsync.py pull /usr/lib/fs/nfs /tmp/grab  # pull a whole remote dir
 
 Target/creds via env (defaults shown):
-  AMIX_HOST=192.168.2.38  AMIX_PORT=21  AMIX_USER=root  AMIX_PASS=changeme
+  AMIX_HOST=192.0.2.38 (an RFC 5737 example -- set it)  AMIX_PORT=21  AMIX_USER=root  AMIX_PASS=changeme
 """
 import ftplib, os, sys
 
-HOST = os.environ.get("AMIX_HOST", "192.168.2.38")
+HOST = os.environ.get("AMIX_HOST", "192.0.2.38")   # RFC 5737 example; set AMIX_HOST
 PORT = int(os.environ.get("AMIX_PORT", "21"))
 USER = os.environ.get("AMIX_USER", "root")
 PASS = os.environ.get("AMIX_PASS", "changeme")   # set AMIX_PASS to your root password

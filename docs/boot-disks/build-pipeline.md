@@ -18,8 +18,10 @@ If you just want the end-to-end "I have a driver, how do I get it onto a disk" s
 [adding drivers to a boot disk](adding-drivers-to-boot-disk.md) first; this page is the reference for
 the underlying tooling.
 
-> **Licensing — read this first.** The boot/root/patch ADFs and the driver PDF are proprietary
-> Commodore material (abandonware, **not** licensed for redistribution). **Never commit them.** They
+> **Licensing — read this first.** The boot/root/patch ADFs are Commodore material and the driver
+> PDF is a third-party conference paper. Until 2026-09-23 this project treated the ADFs as
+> abandonware, not licensed for redistribution; since then the Amix release restriction is lifted
+> (see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)). The repo policy is unchanged: **never commit them.** They
 > are `.gitignore`d. Obtain them yourself from [amigaunix.com](https://www.amigaunix.com/doku.php/home)
 > or archive.org, verify against `sources/CHECKSUMS.txt`, then point the tools at your local copy. The
 > tools never bundle media; they read whatever path you give them. ✅

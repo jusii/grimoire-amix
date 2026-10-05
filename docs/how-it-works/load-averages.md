@@ -83,11 +83,9 @@ magic words (`fpe_magic` = `"FPE!"` `0x46504521`, `f60_magic` = `"FP60"`, and si
 *computed* address and compare it against the value the ELF artifact actually holds (read from the
 artifact, never a hardcoded table). A mismatch means the base is wrong — **refuse loudly** and try
 the other candidate; probing `{0x08000000, 0x07000000}` and keeping the base whose magic reads back
-correct turns a silent megabyte-off read into a caught, named error. This is implemented and verified
-in `amix-kerntools/tools/comaddr.py` (commit `4cc29cc`): `--load-base` with the fail-closed gate (a
-deliberate wrong base is refused, exit 3, naming the base to try; `--discover` picks the correct
-candidate), a host-static 18-case selftest — the box read is an input, so the check is
-offline-testable ✅. The magic words themselves are the [software-FPE lane](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)'s
+correct turns a silent megabyte-off read into a caught, named error. This is implemented
+in `amix-kerntools/tools/comaddr.py` (`--load-base` with the fail-closed gate; `--discover` picks the
+correct candidate) ✅. The magic words themselves are the [software-FPE lane](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)'s
 counter anchors; reported firsthand from real hardware, where a 68060→68040 card swap moved the base
 and the magic-word check caught it on the first read ✅.
 

@@ -12,10 +12,10 @@
 # family host with Docker present, Amiberry 8.1.6, Amix 2.1 (SVR4.0).
 set -e
 
-GUEST_IP="${GUEST_IP:-192.168.2.38}"        # the guest's reserved LAN address
+GUEST_IP="${GUEST_IP:-192.0.2.38}"          # the guest's LAN address -- the default is an RFC 5737 example: SET GUEST_IP
 TAP="${TAP:-tap0}"
 TAP_OWNER="${TAP_OWNER:-$(logname 2>/dev/null || echo "$SUDO_USER")}"
-TAP_ANCHOR="${TAP_ANCHOR:-192.168.2.2}"     # host-side /32 on the tap (host<->guest)
+TAP_ANCHOR="${TAP_ANCHOR:-192.0.2.17}"      # host-side /32 on the tap (host<->guest); SET it to an address unused on your LAN
 # LAN uplink = the interface carrying the default route, unless overridden.
 ETH="${ETH:-$(ip route show default 2>/dev/null | awk '/default/{print $5; exit}')}"
 

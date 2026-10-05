@@ -11,7 +11,7 @@
 # Override target/credentials via env: AMIX_HOST, AMIX_USER, AMIX_PASS.
 import os, re, socket, sys, time
 
-HOST = os.environ.get('AMIX_HOST', '192.168.2.38')
+HOST = os.environ.get('AMIX_HOST', '192.0.2.38')   # RFC 5737 example; set AMIX_HOST
 PORT = int(os.environ.get('AMIX_PORT', '23'))
 USER = (os.environ.get('AMIX_USER', 'root') + '\r\n').encode()
 PW   = (os.environ.get('AMIX_PASS', 'changeme') + '\r\n').encode()   # set AMIX_PASS to your root password

@@ -53,7 +53,7 @@ firmware and the driver talks to it over a register protocol.
 | Board AutoConfig id | **`0x144B0001`** | ✅ |
 | Fixed combo base (AGA fallback) | **`0x10000000`** | ✅ |
 | Station MAC observed on the wire | `00:80:51:01:02:03` | ✅ |
-| Example IP | `192.168.2.39` (the build box keeps `.38`) | ✅ |
+| Example IP | `192.0.2.39` (documentation address; the build box sits at `.38` in the same example LAN) | — |
 | DLPI style / limits | Style-1; `Z3660ETH_MAXDEV = 5` SAP streams, `Z3660ETH_MAXBOARDS = 1`, MTU 1500 | ✅ |
 
 ## The firmware mailbox: the protocol contract
@@ -185,8 +185,8 @@ there is **no `ifconfig plumb`** — you link the stream in with `slink`, then `
 mknod /dev/zen0 c 51 0                                      # major 51 since 2026-07-30 (was 48)
 slink                                                       # ensure the base inet streams are linked
 slink addaen /dev/zen0 zen0                                 # STREAMS multiplexor link
-ifconfig zen0 192.168.2.39 netmask 255.255.255.0 up -trailers
-route add default 192.168.2.1 1                             # trailing 1 = the (required) metric
+ifconfig zen0 192.0.2.39 netmask 255.255.255.0 up -trailers
+route add default 192.0.2.1 1                             # trailing 1 = the (required) metric
 ```
 
 ## ★ The INT6 interrupt storm — *the* real-hardware blocker
@@ -268,13 +268,12 @@ those flags has its own trap — they are one-byte objects and `adb`'s int forma
 
 ## Build & the `nm -u` clean-gate
 
-The kernel is built **on a networked Amix box** (the WinUAE/Amiberry build box at `192.168.2.38`).
+The kernel is built **on a networked Amix box** (the WinUAE/Amiberry build box at `192.0.2.38`).
 On-box `ld` corrupts a high fraction of kernel links (the "D245" boot-breaker), so the link must be
 repeated until it produces a clean kernel ✅ — the same hazard the [A4091 build](a4091-53c710-driver.md#build-install)
 and [the kernel-build page](kernel-build.md) describe.
 
-**★ The correct clean-kernel bar is `nm -u`, not `sum -r` recurrence or `checkunix`.** ✅ This was
-learned the hard way (2026-06-21) and supersedes older notes:
+**★ The correct clean-kernel bar is `nm -u`, not `sum -r` recurrence or `checkunix`.** ✅ In detail:
 
 - `relocunix` is literally `ln unix relocunix`, gated by the kernel Makefile's own test:
   `nm -h -u unix | egrep -v '(etext|edata|end)'` **must be empty** (no undefined symbols).
@@ -287,35 +286,31 @@ learned the hard way (2026-06-21) and supersedes older notes:
 
 > ⚠️ **Never delete the 22 generic SVR4 `exp` blobs** (os, io, netinet, rpc, vm, …): they ship
 > pre-linked with no source on the box and are not regenerable. Only the `amiga/` tree + `master.d` +
-> `fs/exp` + `local/exp` are re-rolled. (Deleting them once cost a painful restore.) ✅
+> `fs/exp` + `local/exp` are re-rolled. ✅
 
 Other on-box build realities (✅, validated on the build box): Makefiles have **no header-dependency
 tracking** — after editing a `.h`, force-recompile the dependent `.o` (or `touch` the `.c`) and verify
 the `md5`; **FTP is asymmetric** on the a2065 build box — `push` (PUT) is reliable but large `pull`
 (GET) is flaky, so patch `kernel.c` on the box with `ed` and use **NFS** (`nfsvers=2`) for large
-pulls; and a **fresh `/usr/sys` rebuild faults at `$40000000`** unless the `amix-base` DDR memory fix
-(the `wip-emulated-ram` work) is in the image — the config that boots is the xfer-memory `.uae`.
+pulls; and an emulated build box needs its Zorro III/DDR memory configured, or a **fresh `/usr/sys`
+rebuild faults at `$40000000`**.
 
 ## Deploy & bring-up to the real box
 
 The real A4000 + Z3660 has **no network until `zen0` is up** (chicken-and-egg), so deployment is
 out-of-band ✅. Two paths:
 
-1. **Kernel-only shuttle** — copy the clean `relocunix` to the box via `transfer.hdf` (a small scratch
-   Amiga hardfile on SCSI `c5d0`), stage it, `cd /stand; make`, reboot. Never re-image the root.
+1. **Kernel-only shuttle** — copy the clean `relocunix` to the box via a small scratch Amiga
+   hardfile on a spare SCSI target, stage it, `cd /stand; make`, reboot. Never re-image the root.
 2. **Full-image / firmware deploy (no-console)** — the Z3660 ARM firmware console has a **TFTP
    server**. Power-cycle into the ARM console (spam `C` at power-on), `P` to start TFTP at
-   `192.168.2.29`, `PUT` the artifact, `R` to reboot: path **`0:`** (FAT32) holds `Z3660.bin` (the
+   `192.0.2.29`, `PUT` the artifact, `R` to reboot: path **`0:`** (FAT32) holds `Z3660.bin` (the
    firmware, ~12.3 MB, ~21 s TFTP; built with `cd <your Z3660 checkout> && ./docker/run.sh make
    bootbin` → `…/Alfa/sd_card/BOOT.BIN`, incremental control-core builds in seconds); path **`1:`**
-   (exFAT) holds `hdf/Amix.hdf` (the full root image, ~629 MB, ~20 min TFTP). The host↔box TFTP host is
-   the laptop wired directly to the Z3660.
+   (exFAT) holds `hdf/Amix.hdf` (the full root image, ~629 MB, ~20 min TFTP).
 
-> ⚠️ **Operational gotchas (✅, all hit this session).** Whatever switches power to the box, verify the
-> **serial has actually gone silent** before powering back on — a remote switch reporting success is not
-> proof the machine went down, and a cut on a still-running box costs you an `fsck` on the next boot.
-> Do not rely on remote video to read the Amiga console either: a video-capture path can show a solid
-> black frame while the machine is perfectly alive. Detect state from the **firmware serial `[PC]`
+> ⚠️ **Operational gotchas (✅).** A power cut on a still-running box costs you an `fsck` on the next
+> boot, so confirm the machine is down before powering back on. Detect state from the **firmware serial `[PC]`
 > heartbeat** (pinned PC = hung; varying = alive) and, once `zen0` is up, over **telnet/ftp**. Keep the
 > serial stream logged to a file — a bring-up is reconstructed from the log, not from the screen.
 
@@ -343,8 +338,8 @@ if root mounted, the board is demonstrably in the chain ✅.
 
 > 🟡 **The corollary that costs the most time: this is a property of the firmware build, not of the
 > hardware.** Other Z3660 firmware builds *do* present an A2065 façade, and a box running one of them
-> networks perfectly on `aen0` — observed on a second SD carrying a different build, same machine,
-> same card, 2026-09-09. **An observation that "that box networks on `aen0`" therefore never transfers
+> networks perfectly on `aen0` — observed on the same machine and card under a different firmware
+> build, 2026-09-09. **An observation that "that box networks on `aen0`" therefore never transfers
 > across a firmware boundary.** Establish which build is running before concluding anything about
 > which interface can work; the runtime proof is the firmware's own `[SD Init] Done (…)` line, not a
 > checksum of the files on the card.
@@ -375,8 +370,8 @@ The amix-z3660net repo ships `userland/S99zen` (installed as `/etc/rc2.d/S99zen`
     sleep 3
     i=`expr $i + 1`
   done
-  /usr/sbin/ifconfig zen0 192.168.2.39 netmask 255.255.255.0 up -trailers
-  /usr/sbin/route add default 192.168.2.1 1
+  /usr/sbin/ifconfig zen0 192.0.2.39 netmask 255.255.255.0 up -trailers
+  /usr/sbin/route add default 192.0.2.1 1
   /usr/sbin/ifconfig zen0
 ) > /tmp/zen-bringup.log 2>&1 &
 ```
@@ -390,10 +385,10 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 
 | Test | Result |
 |---|---|
-| `ifconfig zen0` | `flags=23<UP,BROADCAST,NOTRAILERS>`, inet `192.168.2.39`, mask `ffffff00` |
+| `ifconfig zen0` | `flags=23<UP,BROADCAST,NOTRAILERS>`, inet `192.0.2.39`, mask `ffffff00` |
 | Inbound flood ping (laptop → `.39`, 40 pkts @ 50 ms) | **40/40 received, 0% loss** (~3–19 ms RTT) |
-| Outbound: box → laptop (`ping 192.168.2.66`) | `192.168.2.66 is alive` |
-| Outbound: box → gateway (`ping 192.168.2.1`) | `192.168.2.1 is alive` |
+| Outbound: box → laptop (`ping 192.0.2.66`) | `192.0.2.66 is alive` |
+| Outbound: box → gateway (`ping 192.0.2.1`) | `192.0.2.1 is alive` |
 | `netstat -in` for `zen0` | **Ierrs = 0  Oerrs = 0  Collis = 0** (e.g. 895 Ipkts / 376 Opkts) |
 | Remote login (`telnet` / `ftp` over `zen0`) | works (drove the box entirely over the network) |
 | Sustained FTP throughput | **~185 KiB/s**, stable across 3 consecutive ~3.4 MB transfers |
@@ -417,10 +412,6 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   mainly help latency/CPU.
 - ✅ **Cache flush left OFF**; revisit only if a future board/firmware revision changes the
   cacheability of the eth windows.
-- 🟡 **The in-repo amix-z3660net docs lag the real-hardware state.** The lower `## Status` block of
-  `README.md` and the `## Real-world build notes` in `BUILD.md` still describe the pre-real-hardware
-  state and the superseded `sum -r` clean-gate; the authoritative facts are the ones on this page (the
-  `nm -u` gate and the real-hardware status).
 
 ## See also
 
@@ -463,25 +454,25 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   breadcrumbs (a temporary `rtg.c` build, since reverted).
 - **Kernel build tooling** (✅): the **amix-kerntools** project — `tools/build-clean-net-kernel.sh`
   (the `nm -u` clean-gate), `tools/build-net-kernel.sh` (consumes `driver.conf`).
-- **The 2026-08-12/14 RAM campaign** (workspace record): the ">80 MB board not found" root cause —
+- **The RAM-ceiling investigation** (first-party record, 2026-08-12/14): the ">80 MB board not found" root cause —
   `sptmap` exhaustion against the fixed 4 MiB kernel arena, with the firmware-map-clash hypothesis
   falsified (banks byte-identical at every window, host DDR empty) — and the `base < VSECT1`
   direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅. Kernel-side context on
   [the RAM ceiling](../how-it-works/ram-ceiling.md).
-- **The 2026-09-09 `aen0`-vs-`zen0` determination** (workspace record) ✅ — the board-ID mismatch read
+- **The `aen0`-vs-`zen0` determination** (first-party record, 2026-09-09) ✅ — the board-ID mismatch read
   from both ends of the interface: the Amix kernel's `aenautoconfig` pushing the packed A2065 id
   `0x02020070` to `autocon()` (disassembled from the linked kernel), against the Amix-interop
   firmware's `MANUF_ID 0x144B` for every emulated board with A2065 emulation commented out of the
   embedded UAE core (`Z3660_emu/src/cpu_emulator.cpp:263`; `uae/include/sysconfig.h:79`) — line
   references re-verified against the firmware source 2026-09-09. Confirmed on real hardware the
   same day: `aen -S` returning 1 under `autoconfig_rtg` both NO and YES, and the five-command `zen0`
-  bring-up succeeding first try on a real 68LC060 — while a second SD carrying a *different* firmware
+  bring-up succeeding first try on a real 68LC060 — while a *different* firmware
   build networked on `aen0` on the same machine and card, which is the evidence for the
   firmware-build dependency (🟡 for that build's façade, which we did not read).
-- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — both direct-map flags read
+- A **live-kernel check** (first-party record, 2026-08-14/15) ✅ — both direct-map flags read
   set in the live kernel on a real A4000 + Z3660 (98 arena pages reclaimed across the ethernet and
   SCSI drivers), read with `adb -k` against the on-box native-linked kernel; and the byte-vs-int
   `adb` format trap that makes a set flag print as `16777216`.
 - Magic numbers (✅): cdevsw major **51** (48 until 2026-07-30); board autocon `0x144B0001`; fixed combo base `0x10000000`;
-  iface `zen0` @ `192.168.2.39`; build box `192.168.2.38`; TFTP `192.168.2.29`; station MAC
+  iface `zen0` @ `192.0.2.39`; build box `192.0.2.38`; TFTP `192.0.2.29`; station MAC
   `00:80:51:01:02:03`.

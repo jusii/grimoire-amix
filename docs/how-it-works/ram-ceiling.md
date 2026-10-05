@@ -16,7 +16,7 @@ Two limits live on this page, and they are **not the same limit**:
 
 | Limit | Value | What goes wrong past it | Tag |
 |---|---|---|---|
-| ~~Fast RAM configuration ceiling~~ **16 MB working point (retracted as a ceiling 2026-09-15)** | 16 MB | Nothing observed: the "mis-mapped SCSI drive" failure has no first-party sighting; 32 MB (stock), 64 MB (bench golden, daily) and 128 MB (040/060 kernels, metal) all run | 🟡 history |
+| ~~Fast RAM configuration ceiling~~ **16 MB: a layout requirement of the stock kernel, not a RAM ceiling** (corrected 2026-09-29) | 16 MB A3000 motherboard bank | Stock kernel only: a bigger bank loads the kernel below `0x07000000`, the A3000 SCSI guess skips, no card 0, root not mounted (`VOP_OPEN error 6`) — [quirks §57](quirks.md#57-loader-placement-a3000-scsi). Probing kernels run 64 MB; 040/060 kernels 128 MB (metal) | ✅ |
 | **Total describable RAM** | **≈64 MB** on a stock 68030 kernel (a 4 KB-page 68060 kernel reaches ≈128 MB) | `page_init()` wild-writes from address 0 — total silence | ✅ |
 
 Present the RAM your kernel can describe (below) and the second limit cannot bite you; the first was folklore. The rest of this page is for when something has already handed the guest more
@@ -25,7 +25,7 @@ memory — and you are staring at a machine that produces nothing.
 
 ## The short version
 
-- **The "16 MB ceiling" is retracted** (2026-09-15): no first-party observation of its failure mode exists; 32 MB boots on a stock kernel, the bench golden runs at **64 MB** every day, the project owner reports the stock 030 line at **≥ 80 MB**, and the 040/060 kernels run at **128 MB** on real silicon ✅. See [hardware](hardware.md#fast-ram-4-mb-minimum-and-the-retracted-16-mb-hard-ceiling).
+- **The "16 MB ceiling" had the wrong mechanism** (corrected 2026-09-29): it is not a RAM limit but the stock kernel's A3000-SCSI guess, which fires only when the loader placed the kernel above `0x07000000` — on a motherboard-RAM-only A3000, the 16 MB bank ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)) ✅. Kernels that probe for the controller run **64 MB** and the 040/060 kernels **128 MB** on real silicon ✅. (The 2026-09-15 retraction cited 32 MB and ≥ 80 MB boots on stock kernels without recording their RAM layout; they are withdrawn as evidence 🔴.) See [hardware](hardware.md#fast-ram-4-mb-minimum-and-the-retracted-16-mb-hard-ceiling).
 - **528 MB is proven fatal**, in exactly the way described below. ✅
 - **The ceiling is a fixed 4 MiB kernel arena, not an arithmetic accident** — ≈64 MB on the stock
   68030 kernel, ≈128 MB on a 4 KB-page 68060 kernel, and it moves only if the arena moves. ✅
@@ -75,8 +75,8 @@ that much**. ✅
 
 > **Correction (2026-08-14).** This page previously derived the ceiling as an arithmetic accident —
 > the kernel virtual map *happened* to have 4 MB free at the moment of failure — and quoted
-> **≈128 MB (computed)** with the exact figure tagged 🔴. The 2026-08 RAM campaign measured the
-> mechanism rather than inferring it, and the 4 MB is **not** an accident: it is a fixed arena that
+> **≈128 MB (computed)** with the exact figure tagged 🔴. The RAM-ceiling work (first-party record,
+> 2026-08-12/14) measured the mechanism rather than inferring it, and the 4 MB is **not** an accident: it is a fixed arena that
 > the kernel's own layout constants define, so the ceiling is a property of the kernel and not of how
 > much virtual space that particular boot had already spent ✅. The stock figure is **≈64 MB**, not
 > ≈128 MB. The wild-write mechanism below is unaffected.
@@ -117,8 +117,8 @@ other tenants, which is where the factor of two went ✅.
 ### Lifting it — and the coupling law that governs any attempt ✅ {#lifting-the-ceiling}
 
 The ceiling is not a check to switch off; it *is* the arena's size. Raising it means **moving the
-arena** and then re-sizing, from the new arena, every constant that was sized from the old one. The
-campaign did exactly that on a stock 030 kernel and booted the result on real hardware.
+arena** and then re-sizing, from the new arena, every constant that was sized from the old one. That
+work (first-party record, 2026-08-12/14) did exactly that on a stock 030 kernel and booted the result on real hardware.
 
 The load-bearing rule — and the reason a partial job yields a machine that boots and then dies:
 
@@ -129,8 +129,7 @@ The load-bearing rule — and the reason a partial job yields a machine that boo
 
 And the neighbour that is *not* sized from the arena at all: `segkmap` — the map between `kvsegmap`
 and `kvsegu` — is sized from **physmem**, so moving `kvsegmap` upward silently **shrank** it. The
-fixed distance between `kvsegmap` and `kvsegu` has to be preserved as part of the same edit ✅. This
-is the concrete case behind [the neighbour-sweep method law](quirks.md#42-neighbour-sweep-law).
+fixed distance between `kvsegmap` and `kvsegu` has to be preserved as part of the same edit ✅.
 
 The individual patch sites — file, offset, before/after instruction — are deliberately **not**
 published here: they are edit points inside a proprietary binary kernel, and it is the mechanism and
@@ -145,8 +144,7 @@ On real hardware, on a kernel whose arena had been moved (except where the row s
 | **32 MB** | Boots. The largest value with positive evidence on a **stock** kernel | ✅ |
 | **88 MB** | **Boots durably and networks** — a working multiuser machine, not just a banner | ✅ |
 | **128 MB** (arena-moved 030 kernel) | Prints the **full** SVR4 banner (`134215680` bytes of memory), then **hangs post-banner** | ✅ observed / 🔴 cause open |
-| **128 MB** (4 KB-page **68060** kernel, real 68LC060, A4000D + Z3660, 2026-09) | **Boots, installs, runs multiuser** — `Total Unix memory 134213632`; the unattended installs and the daily dev box run here | ✅ |
-| **≥ 80 MB** (stock 030 line) | Reported working by the project owner 2026-09-15; not measured here | 🟡 |
+| **128 MB** (4 KB-page **68060** kernel, real 68LC060, A4000D + Z3660, 2026-09) | **Boots, installs, runs multiuser** — `Total Unix memory 134213632` | ✅ |
 | **≈151 MB** | **End stop** — a further page-table extent bound in the root map; nothing beyond it was reached | ✅ |
 | **528 MB** | Fatal, in exactly the way described above | ✅ |
 
@@ -182,8 +180,7 @@ frames the kernel wanted for `page[]`.
 The failure has no error message, so recognise it by shape ✅:
 
 - **Zero guest output.** No SVR4 banner, no memory line, black screen, no serial log. It presents
-  identically to a dead driver, a mis-built kernel, or missing hardware — this cost one project a
-  weeks-long "early hang" investigation attributed to a SCSI driver.
+  identically to a dead driver, a mis-built kernel, or missing hardware.
 - **In an emulator log** (Amiberry/WinUAE style host logging), a storm of bus-timeout messages at
   low Zorro II addresses from a single PC pair, with a constant **stride of 0x3C (60)**:
 
@@ -210,7 +207,7 @@ Uniformly ✅ unless tagged.
 | Knob | Value | Why |
 |---|---|---|
 | Chip RAM | 2 MB (4 MB on the A4000-style rigs) | Standard; not counted against the Fast RAM rule |
-| Fast / motherboard RAM | **16–64 MB** on the stock 030 line (the bench golden runs 64); **128 MB** on the 040/060 line | 16 MB is only the historical working point; less than 8 MB livelocks under package-install workloads; stay under the describable-RAM ceiling for your kernel |
+| Fast / motherboard RAM | **16 MB** A3000 motherboard RAM for the stock kernel; up to **64 MB** for a 030 kernel that probes for the A3000 SCSI; **128 MB** on the 040/060 line | a bigger motherboard bank breaks the stock kernel's root mount ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)); less than 8 MB livelocks under package-install workloads; stay under the describable-RAM ceiling for your kernel |
 | A debug/DDR window (e.g. a stand-in for accelerator memory) | **32 MB** if you need one at all | The only oversized value with positive boot evidence *on a stock kernel* — the 88 MB result below needed the kernel arena moved |
 | Zorro III fastmem board | avoid | It is AutoConfig RAM counted straight from the memory list, so it reaches the ceiling faster than a mapped window 🟡 |
 
@@ -228,8 +225,9 @@ See the per-emulator config tables in [WinUAE](../getting-started/emulation-winu
 The same kernel code runs, so the same limit applies to a real memory map ✅. In practice the
 supported machines cannot reach it with motherboard RAM alone — the exposure is expansion:
 
-- **Accelerator memory.** The Z3660's Amix-interop firmware mode hard-wires a single 16 MB window at
-  compile time and maps a dummy bank above it so nothing can coalesce past the ceiling; the same
+- **Accelerator memory.** The Z3660's Amix-interop firmware mode presents a single window — sized
+  by the `amix_ram` knob (default 16 MB, bounded 128; the investigation-era firmware fixed it at 16 MB
+  at compile time) — and maps a dummy bank above it so nothing can coalesce past it; the same
   mode disables the accelerator's large CPU-RAM board ✅. That is what a *correct* accelerator
   memory map looks like for Amix. See [real hardware](../getting-started/real-hardware.md).
 - **Zorro III RAM boards.** AutoConfig RAM is counted directly, and a modern board can be far larger
@@ -239,9 +237,23 @@ supported machines cannot reach it with motherboard RAM alone — the exposure i
 
 Because that envelope is the one that always fits ✅. The period advice was empirical — nobody in
 1992 had a memory map large enough to *reach* the `page_init()` failure, and everything at or below
-16 MB Fast RAM works. The mechanism on this page is what sits underneath the folklore; it does not
-replace the 16 MB rule, and it is **not** the explanation for the 16 MB rule's own failure mode
-(mis-mapping the SCSI drive — a separate, older, separately-verified claim ✅).
+16 MB Fast RAM works. The mechanism on this page is what sits underneath the folklore. The "16 MB
+rule" itself — "more than 16 MB mis-maps the SCSI drive" — had the **mechanism** wrong, not the
+symptom (corrected 2026-09-29): on the stock kernel a bigger A3000 motherboard bank loads the kernel
+below `0x07000000`, the A3000-SCSI guess skips and root is lost ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)) ✅.
+Kernels that probe for the controller run 64 MB, and the 040/060 kernels 128 MB on metal ✅.
+
+**Where "16 MB" came from (dated note, 2026-09-26).** The figure is what amigaunix.com and the
+common FS-UAE/WinUAE configs document as the Fast RAM setting, and this site repeated it as a
+kernel ceiling with a failure mode nobody had measured. The measured record replaced it: 64 MB on
+a 030 kernel that probes for the A3000 SCSI, and 128 MB on the 040/060 kernels on real 68LC060
+silicon (2026-09-14) ✅.
+
+**Dated note, 2026-09-29.** 16 MB was also the one A3000 motherboard layout in which the stock
+kernel's A3000-SCSI guess fires ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)): the period
+advice was right for the stock kernel, for the wrong stated reason. The 2026-09-26 version of this
+note also cited "≥ 80 MB on the stock 030 line"; that report did not record the RAM layout or the
+root controller and is withdrawn as evidence 🔴.
 
 ## Provenance — how this was measured
 
@@ -265,15 +277,14 @@ code path — see [reverse-engineering the kernel](../drivers/kernel-reverse-eng
    bounded. Six boots, one variable at a time.
 
 The **arena** half of this page (the fixed `[syssegs, kvsegmap)` extent, the `sptmap` sharing, the
-≈64/≈128 MB figures and the 88/128/≈151 MB rows) comes from a second, later lineage ✅ — the 2026-08
-RAM campaign, which located every constant **by instruction context in a disassembly diff, never by
-offset**, and validated each step by booting a real A4000 rather than an emulator. Its method laws
-are recorded on [quirks and gotchas](quirks.md#42-neighbour-sweep-law).
+≈64/≈128 MB figures and the 88/128/≈151 MB rows) comes from a second, later lineage ✅ — the RAM-ceiling
+measurements (first-party record, 2026-08-12/14), which located every constant **by instruction context in a disassembly diff, never by
+offset**, and validated each step by booting a real A4000 rather than an emulator.
 
 ## See also
 
-- [Hardware and requirements](hardware.md) — the 16 MB Fast RAM rule in its full context, plus the
-  CPU/MMU/FPU and SCSI-ID limits.
+- [Hardware and requirements](hardware.md) — the Fast RAM envelope (and the retracted 16 MB rule) in
+  its full context, plus the CPU/MMU/FPU and SCSI-ID limits.
 - [Quirks and gotchas](quirks.md) — the ceiling as a one-line checklist item.
 - [Kernel architecture](kernel-architecture.md) — the HAT/MMU layer this memory description feeds.
 - [Emulation fidelity](emulation-fidelity.md) — the *other* class of silent Amix boot failure, where
@@ -283,8 +294,9 @@ are recorded on [quirks and gotchas](quirks.md#42-neighbour-sweep-law).
 
 ## Sources
 
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
 - `sources/research-brief.md` §2 (hardware envelope: 4–16 MB Fast RAM) and §4 (kernel HAT/MMU, RAM
-  ceiling) — grounding for the 16 MB configuration rule.
+  ceiling) — grounding for the 16 MB figure, now tagged 🟡 and retracted as a ceiling (2026-09-15).
 - The **amix-kerntools** root-cause investigation, 2026-07-26 (`docs/kernel-52550-hang.md`, commit
   `7cdcdc9`): the live `/proc/<pid>/mem` read of a running guest, the `page_init()`/`rmalloc()`
   disassembly and live globals (`pages` = 0, `epages` = `0x00E75C34`, `maxpfn` = `0x50000`), the
@@ -297,19 +309,22 @@ are recorded on [quirks and gotchas](quirks.md#42-neighbour-sweep-law).
 - The **amix-packagemanager** bench-RAM investigation, 2026-07-22 (Amiberry, fixed kernel `sum -r`
   42265): 16 MB-exactly proven clean (SCSI read / write-readback / double-read plus a byte-exact
   base-set tree digest) and the 8 MB memory-exhaustion livelock signature ✅.
-- The **Z3660** Amix-interop firmware fork — the compile-time-fixed single 16 MB window, the dummy
-  bank preventing coalescing past the ceiling, and the `amix_mode`-forces-CPU-RAM-off contract ✅.
-- The **2026-08-12/14 RAM campaign** (amix-kerntools with Z3660 and amix-z3660net, workspace record):
+- The **2026-09-15 retraction** of the 16 MB figure as a ceiling, with the 040/060 kernels measured
+  at 128 MB on metal ✅.
+- The **Z3660** Amix-interop firmware fork — the single Amix window (compile-time fixed at 16 MB in
+  the investigation-era firmware, since sized by `amix_ram`), the dummy bank preventing coalescing
+  past it, and the `amix_mode`-forces-CPU-RAM-off contract ✅.
+- The **RAM-ceiling measurements** (first-party record, 2026-08-12/14):
   the fixed 4 MiB kernel arena `[syssegs 0x40040000, kvsegmap 0x40440000)`, the 60 B/frame `page[]`
   cost and its `sptmap` sharing with `sptalloc()` and u-areas, the ≈64 MB stock-030 / ≈128 MB
   4 KB-page-060 figures, the `seed ≤ page-table extent ≤ arena` coupling law and the `segkmap`
   sized-from-physmem neighbour, and the metal results at 88 MB (durable, networked), 128 MB (full
   banner then a post-banner hang, cause open) and ≈151 MB (end stop) ✅. The individual patch sites
   are deliberately held back — see the note under *Lifting it*.
-- The **2026-08-14/15 golden-regeneration event** (workspace record) ✅ — the live-on-metal
+- A **2026-08-14/15 live readback on metal** ✅ — the
   confirmation that both direct-map flags read set on the running kernel, i.e. the 98 reclaimed
   arena pages are measured rather than inferred, read with `adb -k` against the on-box
   native-linked kernel.
-- The same campaign's **`z3660eth` >80 MB investigation** — the ">80 MB board not found" failure
+- The **`z3660eth` >80 MB investigation** (first-party record, 2026-08-12/14) — the ">80 MB board not found" failure
   root-caused to `sptmap` exhaustion rather than a firmware map clash (banks byte-identical at every
   window, host DDR empty), and the direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅.

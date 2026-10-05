@@ -50,6 +50,21 @@ buffer ✅.
 > (`z3660.c:246-250,374`) corroborate "no IRQ", and the lower-risk rationale is in `NOTES.md`
 > (§"Why this is lower-risk") and `README.md:8-10` ✅.
 
+> **CD units come from the firmware's `isoN` key — and N must equal the SCSI target.** The firmware
+> presents an `isoN` image as a read-only 2048-byte-block CD-ROM (PDT `0x05`), but it records the CD
+> flag by image slot and applies it by target, so `iso2` works only with `scsi2 2`; a mismatch
+> silently turns the ISO into a read-write disk and another target into a CD. Only `iso0`–`iso6`
+> exist ✅. Details: [quirk §60](../how-it-works/quirks.md#60-z3660-iso-slot-equals-target).
+
+> **Never trust the stock count on a CD unit — the driver caps it (since 2026-10-02).** Stock `dd.c`
+> counts every unit in 512-byte blocks; on a 2048-byte CD unit the driver used to multiply that count
+> by 2048 and ask the firmware for 4× the caller's buffer, which it wrote over unrelated memory — the
+> kernel hang behind a raw `dd` of a CD unit. `z3660queue()` now refuses any READ/WRITE whose blocks ×
+> block size exceeds `nbyte` (`EIO`, counted in `z3660_short_n`); `cdfs` and disk requests are
+> unchanged. Metal-proven on an A4000T (raw `dd` at 512/2048/65 536-byte blocks → `I/O error`, box up,
+> counter +3) ✅. Kernels without it still hang on a raw CD read. See
+> [quirk §63](../how-it-works/quirks.md#63-dd-512-unit-overrun).
+
 > 🟡 **Leftover scaffolding.** Some `siop_softc` / `a4091`-flavoured symbol names survive in the
 > sources. Per the project's notes these are vestigial **AmigaOS device / boot-ROM scaffolding** from
 > the upstream `shanshe/Z3660` `z3660_scsi.h` (which lived in a now-removed vendored `repo/` clone),
@@ -166,8 +181,13 @@ combo window ✅. The firmware exposes other products on the same manufacturer:
 | `0x03` | Z2 RTG + SCSI combo (advertises a 64 KB window) | ❌ no — see below |
 | `0x02` | Z3 fast RAM | n/a |
 
-With `autoconfig_rtg NO` the combo window **never enters the AutoConfig chain** — it sits at a
-**fixed base `0x10000000`** (`Z3660_FIXED`) ✅. The driver **`sptalloc`-maps** both the register
+With `autoconfig_rtg NO` the combo window is **hard-mapped at a fixed base `0x10000000`**
+(`Z3660_FIXED`) instead of being placed by the AutoConfig walk ✅. *Qualified 2026-09-26:* whether it
+then appears in the kernel's `bootinfo.autocon[]` board list depends on the configuration — on the
+2026-06 bring-up it did not (see [detection](#detection-the-silent-hang-trap-and-multi-method-detect)),
+but on the first metal boot of the RTG driver (060 kernel, 2026-09) the hard-mapped combo **was** in
+the list, naming its real base `0x10000000`, because it advertises itself for SCSI boot 🟡. Drivers
+should therefore discriminate by the base an entry names, not by whether an entry exists. The driver **`sptalloc`-maps** both the register
 window and the bounce buffer into kernel VA (`z3660.c:139-142`) — the **same `sptalloc` primitive the
 [A4091 driver](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution) uses** ✅. The
 meaningful difference from the A4091 is therefore **not** how the board is reached (both page-map their
@@ -193,10 +213,12 @@ so here the mapping is a clean convenience rather than being *forced* by the A40
 
 ## Detection: the silent-hang trap and multi-method detect
 
-The single most important integration lesson. Amix 2.1's `bootinfo.autocon[]` table **misses the
-board** — both with `autoconfig_rtg NO` (expected: the window is at a fixed base, not in the
-AutoConfig chain) **and** with `YES` (Kickstart configures it at `0x40000000` but the 2.1 table still
-misses it) ✅. With an `sd.c` that registers controllers **only** via `autocon()`, `z3660queue` never
+The single most important integration lesson. On the 2026-06 bring-up, Amix 2.1's
+`bootinfo.autocon[]` table **missed the board** — both with `autoconfig_rtg NO` (the window at a
+fixed base, not placed by the AutoConfig walk) **and** with `YES` (Kickstart configured it at
+`0x40000000` but the 2.1 table still missed it) ✅. (Not universal: a later 060-kernel metal boot found
+the hard-mapped combo *in* the list at `0x10000000` 🟡 — see [above](#board-identity-and-window-placement); the
+multi-method detect below covers both.) With an `sd.c` that registers controllers **only** via `autocon()`, `z3660queue` never
 runs — so the kernel prints its banner and then goes **silent**: no panic, no I/O, just a dead box.
 This was the original silent hang ✅.
 
@@ -204,14 +226,29 @@ This was the original silent hang ✅.
 
 1. `autocon()` — the normal path (works when the table is right).
 2. An **AGA-gated probe of the fixed base `0x10000000`**, accepted only if `P_DRVTYPE` reads a valid
-   `0`/`1` (so an absent board can't false-positive). The AGA gate is the same `VPOSR >= 0x22` Alice
-   check the [A4091 driver](a4091-53c710-driver.md) uses.
+   `0`/`1` (so an absent board can't false-positive). The AGA gate is the same Alice check the
+   [A4091 driver](a4091-53c710-driver.md) uses — since 2026-09-28 the VPOSR id's **low nibble ≥ 2**;
+   the earlier `VPOSR >= 0x22` form misread an NTSC ECS Agnus (`0x30`) as AGA
+   ([quirk §61](../how-it-works/quirks.md#61-vposr-low-nibble)) ✅.
 3. A **`driver.conf` `probe=` fallback hook** (`probe=z3660present`) the build's `sd.c` template calls
    when the autocon table misses the board.
 
 This multi-method detect is **what carried the real-hardware boot past the silent banner** ✅.
 
-> **Source.** `src/z3660.c` `z3660map` (autocon → AGA gate `VPOSR>=0x22` → fixed-base `DRVTYPE`
+> **What `autocon()` returns is not only real boards — the A4000T case.** The stock `autocon()` also
+> fabricates the A3000 internal SCSI at `0xDD0000` whenever the kernel is loaded above `0x07000000` (a load-address
+> guess, [quirks §41](../how-it-works/quirks.md#41-scsi-by-ram-size)), and it sorts as **card 0**
+> (`c0`). On an A4000 that address is empty; on an **A4000T** it is the **onboard NCR 53C710** — real
+> hardware, the wrong driver ✅ (read from the shipped kernel's `autocon()` and the stock sources,
+> 2026-09-24). It is **safe at boot** — the stock `sd` initialises a card lazily, on its first I/O —
+> but the **first open of any `c0` device** runs the A3000 WD33C93 initialisation against the 53C710's
+> registers 🟡 (read from the source). Under the Z3660 an unanswered CPU read in local I/O space never
+> terminates ([quirks §66](../how-it-works/quirks.md#66-local-io-read-hangs)), so if the uninitialised
+> 53C710 does not answer, a `c0` open is expected to freeze the machine on a hung bus cycle 🟡. A kernel meant for an A4000T needs
+> the chipset-gated `autocon()` fix from the [A4091 project](a4091-53c710-driver.md) (the Alice-ID
+> gate that stops the phantom); until then, never open a `c0` device there.
+
+> **Source.** `src/z3660.c` `z3660map` (autocon → AGA gate on the VPOSR id's low nibble, `>=0x22` before 2026-09-28 → fixed-base `DRVTYPE`
 > probe, :131-155) and the exported `z3660present()` (:163-171), wired via `driver.conf:5`
 > `probe=z3660present`; causal chain in `NOTES.md`:173-179; the boot-past-silence in `NOTES.md`:204 ✅.
 
@@ -258,7 +295,7 @@ box to a stable **multiuser** process tree, with `fsck` running on the piscsi ro
 **correct from the first real-hardware boot**.
 
 > **Source.** Live boots 2026-06-12/13 on a real A4000 + Z3660 — `NOTES.md` §"2026-06-13 ~08:00:
-> RESOLVED" (:269-296) and §"Overnight 2026-06-12/13" (:204-208); `CLAUDE.md` status line ✅. Spot
+> RESOLVED" (:269-296) and §"Overnight 2026-06-12/13" (:204-208) ✅. Spot
 > checks confirmed the **page-in first-longs** of `/sbin/init` and `libc.so.1` matched file content,
 > alongside the aggregate "every transfer byte-correct".
 
@@ -309,40 +346,13 @@ lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS
 
 ## Exercising this driver without the board ✅
 
-The results above are all real-hardware. Since 2026-07 the same driver can also be exercised on a
-desktop bench: a **downstream fork of Amiberry** (not upstream — see the caveat below) emulates the
-Z3660 as a Zorro III board carrying the piscsi mailbox, and a current `z3660scsi` kernel boots on it
-and drives both **disk and CD** units through that mailbox ✅.
-
-> ⚠️ **This is not released Amiberry.** The board emulation lives on a private branch of a fork of
-> [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) (`src/z3660_scsi.cpp`); upstream
-> Amiberry has no Z3660 support and no published build does. The capability is recorded here because
-> it changes what this driver's *documented* coverage rests on, not because you can go and use it
-> today. Everything else on this page is real-hardware and independent of it.
-
-What the facility establishes ✅:
-
-| | |
-|---|---|
-| Guest | Amix 2.1c, **32 MB** guest RAM (`Total Unix memory = 33552384`), well under [the RAM ceiling](../how-it-works/ram-ceiling.md) |
-| Boot/root | the **A3000** onboard SCSI (`c6d0s1`, card 0) — the rig exercises the mailbox as a *second* controller, it does not root through it |
-| Card index | the A3000 sits at `0xdd0000`, the emulated Z3660 in Zorro III space at `0x40000000`; controllers register in AutoConfig **address** order, so the A3000 is always card 0 and the Z3660 card 1 |
-| Disk | ~**261 MB** of mixed raw/UFS read + write traffic through the mailbox, **40** digest comparisons against host truth, **0** mismatches, **0** timeouts, across 8 soak rounds and 2 cold boots |
-| CD | `mount -F cdfs 1,2 /cdrom` on a combined `z3660scsi`+`cdfs` kernel; **6/6** files digest-identical to host truth, repeated on a **second cold boot** (6/6 again) |
-| Not covered | rooting *through* the mailbox (the address sort pins the A3000 to card 0 and the compiled-in `ROOTDEV` names card 0), error/timeout paths, and reselect under contention |
-
-The CD result is the one that mattered: the mailbox is now exercised for the **CD command set**
-(PDT 0x05, 2048-byte blocks), not only for hard disks ✅.
-
-**How "host truth" is established on a box with no `md5`.** Amix has no `md5` and no `cksum`, and an
-FTP **GET** off the box is unreliable above ~1 KB, so neither a strong on-box digest nor a host-side
-byte compare is available out of the box. The bench supplies both halves: a **chunked CRC-32** in K&R
-C, compiled by the box's **own 1992 `cc`**, printing a per-chunk line plus a completion marker (so a
-transcript truncated in flight is not mistaken for a clean digest), and a host twin with identical
-CRC, chunking and output grammar. It is **calibrated first** by pushing a random payload over FTP and
-digesting both sides — which proves the two implementations agree *and* that the FTP **PUSH** path is
-byte-exact — before any on-box digest is allowed to mean anything about a disk ✅. That pattern is
-reusable on any Amix bench, not just this one.
+The mailbox has also been exercised for both **disk and CD** units under a **downstream fork of
+Amiberry** that emulates the Z3660 as a Zorro III board; upstream Amiberry has no Z3660 support ✅.
+That covers the **CD command set** (PDT 0x05, 2048-byte blocks) as well as hard disks ✅. With the A3000
+onboard SCSI at `0xdd0000` and the Z3660 at `0x40000000`, controllers register in AutoConfig
+**address** order, so the A3000 is card 0 and the Z3660 card 1 ✅; rooting *through* the mailbox was
+not covered. Amix has no `md5` and no `cksum`, so a data check against a host copy needs a small
+digest tool built with the box's own `cc` ✅.
 
 ## Status
 
@@ -380,6 +390,12 @@ reusable on any Amix bench, not just this one.
 
 ## Sources
 
+- The **2026-10-02 local-I/O peek measurements**, first-party, on an A4000D with a Z3660 ✅ — a supervisor-mode, fault-catching peek tool under AmigaOS: the first read of `$DD0000` never returned; reads of Gary's `$DE0000`/`$DE0001` on the A4000D terminated (`FF`→`7F`, `7F`) (first-party record, 2026-10-02). The CPLD side is read from the Z3660's CPLD sources (`TERM.vhd`/`BUSTERM.vhd`: termination waits on `DSACK`/`AVEC`/`BERR`, `nTEA` only from the bus-error state, no timeout counter anywhere). The meaning of the A4000's `$DE0000`/`$DE0001` bits is unsourced 🔴.
+- The **CD-unit overrun fix** ✅ — `amix-z3660scsi` CHANGELOG 2026-10-02 (commit `e072408`: refuse a READ/WRITE larger than `nbyte`; host harness 184/0) and its metal check on an A4000T the same day (raw `dd` at three block sizes → `I/O error`, counter +3; first-party record, 2026-10-02).
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
+- The machine gate's low-nibble correction — `amix-z3660scsi` CHANGELOG 2026-09-28 (`z3660map()`
+  decides AGA by the VPOSR id's low nibble; found in the `amix-gayle-ide` review) ✅; the `isoN`
+  slot/target rule — the **Z3660 firmware fork's** `docs/AMIX.md`, "`isoN <file>` — CD-ROM images" ✅.
 - **Driver source we wrote** (primary, ✅): the **amix-z3660scsi** project at commit `8ea1605` —
   `src/z3660.c` (the piscsi mailbox driver: `PISCSI_OFFSET 0x2000`, `P_WRITE`/`P_READ`, `P_DRVNUMX`,
   the separate READ/WRITE address triples `P_READ_ADDR1/2/3` `0x20`/`0x24`/`0x28` and
@@ -404,7 +420,7 @@ reusable on any Amix bench, not just this one.
   the AMIX-RAM move to `0x08000000`), owned by that repo, cited not reproduced ✅; the **completion
   lifetime** rework — **amix-z3660scsi** @ `2a463b8`, `a5af58a` (synchronous in-context iterative
   completion, replacing the `timeout(z3660done)` callout deferral that read a dead-stack `sdcom`) and
-  `908f40a` (spl6 mailbox bracket) ✅, validated on a real A4000 + Z3660 (T2.P3, 2026-07-10 → 07-12:
+  `908f40a` (spl6 mailbox bracket) ✅, validated on a real A4000 + Z3660 (2026-07-10 → 07-12:
   `mount -F cdfs 0,2 /cdrom` rc=0, CD read suite 7/7 byte-identical, `z3660_nest_hits`/`z3660_cq_overflow`
   reading 0). The generalized contract is on [the driver model](driver-model.md#the-amix-hbadma-driver-contract-real-hardware).
 - **Magic numbers** (✅): AutoConfig product id `0x144B0001`; fixed combo base `0x10000000`; piscsi
@@ -413,14 +429,10 @@ reusable on any Amix bench, not just this one.
 - Delta verified against [`llms-full.txt`](https://github.com/Jusii/grimoire-amix/blob/master/llms-full.txt):
   grimoire documents the Z3660 *ethernet* (`zen0`) and A4091 *53C710* drivers; this page adds the
   previously-undocumented Z3660 *piscsi SCSI* driver.
-- **The emulated piscsi bench** — amix-kerntools `docs/piscsi-rig.md` @ `33ab7c3` (rig stood up in
-  `c1cd679`), 2026-07-26 ✅: a current `z3660scsi` kernel (`sum -r` 64119, four-arm gate green) cold-boots
-  twice to multiuser and LAN on a downstream Amiberry fork's Z3660 board emulation at 32 MB guest RAM;
-  8 soak rounds moved ~261 MB through the mailbox for **40/40** digest matches against host truth with
-  zero timeouts; a combined `z3660scsi`+`cdfs` kernel (`sum -r` 55619) then mounted the mailbox's CD unit
-  (`mount -F cdfs 1,2 /cdrom`) and read all six fixture files digest-identical to `bsdtar`-extracted host
-  truth, on each of two cold boots. Card ordering (A3000 `0xdd0000` = card 0, Z3660 `0x40000000` = card 1)
-  is the AutoConfig address sort. Rooting through the mailbox remains untested.
-- **The board emulation itself is a downstream fork**, not upstream Amiberry: `src/z3660_scsi.cpp` on a
-  workspace branch; `origin/master` (BlitterStudio/amiberry) carries no Z3660 sources. Cited as provenance
-  for the results above, not as an available capability.
+- **The emulated mailbox coverage** (2026-07) ✅ — a `z3660scsi` kernel and a combined
+  `z3660scsi`+`cdfs` kernel on a downstream Amiberry fork's Z3660 board emulation (`src/z3660_scsi.cpp`;
+  upstream BlitterStudio/amiberry carries no Z3660 sources): disk and CD reads digest-identical to host
+  copies. Card ordering (A3000 `0xdd0000` = card 0, Z3660 `0x40000000` = card 1) is the AutoConfig
+  address sort. Rooting through the mailbox remains untested.
+- The **A4000T `$DD0000` reading** (amix-kerntools; first-party record, 2026-09-24): the shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c` — the load-address phantom at `0xDD0000` sorting as card 0, the lazy first-I/O initialisation, the no-timeout busy-wait; on an A4000T that window is the onboard NCR 53C710. The hang itself is predicted from source, not reproduced on the metal 🟡.
+- The **RTG driver's first metal boot** (amix-z3660rtg commit `7e5c0e8`, 2026-09): with `autoconfig_rtg NO` the hard-mapped combo entered the board list at its real base `0x10000000` because it advertises itself for SCSI boot 🟡.

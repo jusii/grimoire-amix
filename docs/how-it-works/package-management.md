@@ -148,9 +148,9 @@ installer). Two findings generalize beyond that port ✅:
   crash site (`nhash.c`'s name-cache `HASH()` returning garbage → a negative bucket index → a
   wild store in `add_cache`).
 - **The root cause was the cross-assembler**, not the SVR4 code: the tdivs divide-with-remainder
-  mis-encoding (see [the toolchain fixup family](../drivers/toolchain.md#the-assembler-fixup-family-swbeg-fcmp--and-the-tdivs-divide-with-remainder-bug))
+  mis-encoding (see [the toolchain fixup family](../drivers/toolchain.md#the-assembler-fixup-family-swbeg-fcmp-and-the-tdivs-divide-with-remainder-bug))
   made `hv % hsz` — a perfectly valid C expression — return garbage at every optimization
-  level. Forcing suspect files to `-O0` never could have helped, and didn't. With the toolchain
+  level, so forcing suspect files to `-O0` cannot help. With the toolchain
   fixed and the engine rebuilt, plain empty-root `pkgadd -R` runs clean (4/4, zero cores) on
   the same box that cored 4/4 before ✅.
 
@@ -181,10 +181,10 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 
 - amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): the pkgadd -R altroot SIGSEGV root cause (adb on the in-altroot core; nhash HASH), engine rebuilt + re-verified 4/4 on the bench box 2026-07-20/21.
 - **Firsthand, reproduced live** (✅): a clean **Amix 2.1c** image (`UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, 2026-07-01 (the **amix-packagemanager** project; command transcripts retained there). Specifically: `ls -l /usr/{bin,sbin}/pkg*` + the `No such file or directory` for `pkgask`/`removef`/`amixpkg` (F1); `ls -laR /var/sadm`, `/var/sadm/install/admin/default`, `pkginfo -x`, `/var/sadm/pkg/*/pkginfo` (F2); `head`/`grep` of `/var/sadm/install/contents` (F3); an on-box throwaway package built with `pkgmk`/`pkgtrans` and its `pkgmap` + `.pkg` header dissected with `od -c` (F4); a before/after `diff` of `contents` across a controlled `pkgadd` (F5); `find /var/sadm/pkg -type f` showing only `pkginfo` + `*.mi` (F6); the `pkgrm`/`pkginfo -l` abort, the offending `contents` record, and its removal-and-retry (F7); the `# Last modified by amixpkg …` marker with `amixpkg` absent from the filesystem (F8).
-- The **2026-08-12/14 RAM campaign proof reports** (workspace record) ✅ — the SVR4 `pkgmap`
+- First-party work, 2026-08-12/14 ✅ — the SVR4 `pkgmap`
   checksum is a folded 32-bit byte sum (the `sum(1)` family), not a CRC, established while
   reproducing the manifest arithmetic outside the stock tooling.
 - **`sources/research-brief.md` §20** (the stock SVR4 pkg-system internals, media formats, DB mutation, and the F7 `contents` corruption) — the grounding for this page, carrying the tags above.
 - **Community distribution practice** (🟡): [amigaunix.com `more_software`](https://www.amigaunix.com/doku.php/more_software) (`.pkg` / cpio / `tar.zoo` distribution) and Michael Parson's **AmixBP** ([amixbp.sourceforge.net](https://amixbp.sourceforge.net), SourceForge group 263433) — the datastream-`.pkg` distribution channel.
 - **Licensing:** no proprietary `pkg*` source or media reproduced; this page documents runtime behaviour and on-disk **data-record** layout observed live. The single malformed `contents` record in the F7 section is cited as **factual defect data** (interoperability / bug documentation), not vendored source (per [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
-- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The **Installer-NG** project (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — blank-disk→bootable installs under Amiberry and on a real A4000 + Z3660 (install captures, s5/UFS state reads, and an on-metal digest attestation) ✅ (🟡 where tagged).

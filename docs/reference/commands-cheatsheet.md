@@ -51,9 +51,13 @@ canonical "I changed the kernel, now reboot into it" step throughout these docs 
 shutdown -i6 -g0 -y
 ```
 
+⚠ **Run it from a console root shell.** Requested over telnet while nobody is logged in on the
+console, a reboot stalls at `INIT: New run level: 6` and never runs `rc6` — stock `init`,
+reproduced on the stock kernel; only a power cycle recovers ✅. See [quirks §58](../how-it-works/quirks.md#58-console-getty-shutdown-stall).
+
 **Finishing an install ✅.** After the distribution is laid down and the kernel is built,
 `amixadm` walks you through the final configuration: node name, NIS/DNS domain, timezone, the
-date (**set the year to 1999 or earlier on unpatched systems — see [Time and the clock](#time-and-the-clock)**),
+date (**`amixadm` accepts only a year ≤ 1999 — set the real date afterwards; see [Time and the clock](#time-and-the-clock)**),
 the root password, and X11 setup. This is reconstructed from the `root.adf` install scripts (brief §9).
 
 > **Note on the default password 🟡.** Community reports a post-install login password of
@@ -106,10 +110,8 @@ distribution form seen in the wild is a `zoo`-compressed `cpio` archive 🟡.
 **HTTP package-repo layout gotcha ✅.** When serving packages over HTTP for a network client, the
 payloads sit one directory *below* the catalog: a catalog `filename` field of `stock/foo.pkg` is
 relative to a `pkgs/` segment, so the real URL is `<repo>/pkgs/stock/foo.pkg`, not
-`<repo>/stock/foo.pkg`. A hand-rolled probe that drops the `pkgs/` segment gets a 404 and
-mis-reads it as "the payloads were never published" — the client itself builds the correct URL, so
-only manual host-side checks fall into this. Verify against the client's own catalog, not a guessed
-path. Full format spec — tree, catalog grammar, integrity model, client behaviour:
+`<repo>/stock/foo.pkg`. The client itself builds the correct URL; a manual probe that drops the `pkgs/` segment gets a 404,
+so verify against the client's own catalog, not a guessed path. Full format spec — tree, catalog grammar, integrity model, client behaviour:
 [the package repository format](../how-it-works/package-repository.md).
 
 ---
@@ -233,13 +235,15 @@ The kernel-side half of this contract (writing an in-kernel filesystem) is on
 | `setclk` | Read/write the hardware (battery-backed) clock | ✅ |
 | `date` | Show/set the system time (set via `amixadm` at install) | ✅ |
 
-**Y2K warning ✅.** Unpatched Amix has a Y2K problem on two fronts:
-- `setclk` has a **`%02d` year-formatting bug** ✅, and
-- the **kernel caps the date at 1999** ✅.
+**Y2K warning ✅** (corrected 2026-09-29). The kernel has **no** year cap; the bug is in the tooling:
+- `setclk`, run by `/etc/sysinit` at every boot, writes the year `%02d` (`126` for 2026), so `date`
+  rejects it (`date: bad conversion`) and the system clock is never set from the battery clock ✅;
+- `amixadm` accepts only a year ≤ 1999, and the 2-digit `date` form reads `yy` as `19yy` ✅.
 
-So on an unpatched system, set the install date to **1999 or earlier** ✅. The community fix is
-the **patch disk** (raising the system to 2.1p2a / kernel 2.1c), which ships a **Y2K-corrected
-`setclk`** ✅. After applying the patch, run the patched `setclk` to set a correct post-1999 date.
+To set a post-1999 date by hand use the 4-digit form `date MMDDhhmmCCYY`. The lasting fix is the
+community-patched `setclk` (the AmigaUnix wiki's y2k-dst page — **not** on the patch disk, whose cpio
+carries no `setclk`) plus `/etc/clkzone` naming the zone the battery clock holds ✅. Details:
+[quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap).
 
 See the [quirks page](../how-it-works/quirks.md) for the clock-drift and Y2K details, and the
 [patch disk anatomy](../boot-disks/anatomy-patch-adf.md) for how the patch is applied.
@@ -303,6 +307,9 @@ For the install in full, see the [install walkthrough](../getting-started/instal
   historical material (we cross-link rather than duplicate it).
 
 ## Sources
+- The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
+- The stock-`init` shutdown stall over telnet — first-party, eight discriminating runs, 2026-09-29
+  (`amix-gayle-ide/README.md`) ✅.
 - `sources/research-brief.md` §3 (boot/kernel build, `make bootpart KERNEL=relocunix`), §4
   (run levels, virtual consoles, `pkg*`/`amixpkg`, monolithic kernel), §5 (device-driver model,
   `mknod`, major/minor, `/usr/sys`, `kernel.c`), §7 (toolchain & packaging, `pkgproto` symlink
@@ -314,13 +321,13 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — `/dev/rmt/4hn`, `amixpkg -i -m -d -r /mnt -y standard`,
   `viper.README`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` (SCSI ID hard-coding).
 - `amix_21_patch.adf` analysis via `tools/inspect-adf.sh` — `uname -v` match `^2\.1.* 08004..$`,
-  Y2K-fixed `setclk`, patch-apply mechanism.
+  patch-apply mechanism (no `setclk` among its 103 cpio members, checked 2026-09-29).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver install
   procedure (`/usr/sys` → `make` → `mknod` → reboot), `cdevsw`/`bdevsw`, `rdbunix`.
 - `asokero/va2000-amix` repo — `rm -f amiga/config/unix.o master.d/exp unix`, `cp relocunix /stand`,
   `make bootpart KERNEL=relocunix`, `mknod /dev/va2000 c 68 0`, pre-POSIX `/bin/sh` note.
 - `isoriano1968/hydra-amix` repo — `slink addaen /dev/hya0 hya0`, native `make` / `make force`, `mknod /dev/hya0 c 47 0`, STREAMS `cdevsw` slot 47.
-- The **amix-kerntools** bench forensics @ `8a76775` — SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660, 2026-07-12 ✅.
+- The **amix-kerntools** notes @ `8a76775` — SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660, 2026-07-12 ✅.
 - The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
 - The **amix-packagemanager** repo tooling (`tools/repo/publish.sh`, `gen-catalog.py`) — the HTTP package-repo `pkgs/`-segment URL layout, verified live 2026-07-22 ✅.

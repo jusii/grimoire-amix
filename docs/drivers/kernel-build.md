@@ -241,7 +241,7 @@ floppy* instead of a live disk, see
 - **Boot-partition vs filesystem.** A kernel sitting on the filesystem is not enough; it must be
   written into the boot partition with `make bootpart` to actually boot ✅.
 
-## The "D245 boot-breaker" — an intermittent `ld` corruption
+## The "D245 boot-breaker" — an emulator-only kernel-image corruption {#the-d245-boot-breaker-an-intermittent-ld-corruption}
 
 This is a **load-bearing gotcha for anyone relinking the Amix kernel**, not just A4091 work. It was
 first-party reproduced locally on Amix 2.1c under Amiberry. If you ever see a kernel Guru at boot
@@ -249,9 +249,9 @@ with `D245 4C41`, this section is the answer.
 
 ### What it is *not* (a corrected misconception) 🔴
 
-🔴 Kernels that grew past a certain size Guru'd at boot with `D245 4C41`, and the cause was twice
-mis-attributed: first to the SCSI driver's **completion poll loop**, then to the **bootstrap
-relocator** misbehaving. **Both were wrong.** The constant `0xD2454C41` decodes as
+🔴 Kernels that grew past a certain size Guru'd at boot with `D245 4C41`. This is **not** a bug in
+the SCSI driver's **completion poll loop**, and **not** the **bootstrap relocator** misbehaving.
+The constant `0xD2454C41` decodes as
 `"RELA" | AT_DeadEnd` — it is the **bootstrap relocator's own `Alert()`** in `amiga/boot/rel.c`,
 fired when `rel()` is handed a **corrupt kernel image** to relocate. So `D245` is a *symptom of a
 bad kernel binary*, not a bug in the relocator or in any driver. ✅
@@ -262,9 +262,8 @@ the Guru requester. ✅
 
 ### What it actually is — an emulator MMU defect, **not** `ld` ✅ (root-caused 2026-07-26)
 
-🔴 **Superseded attribution.** This page previously said the corruption was introduced "when `ld`
-writes the linked kernel to disk". That was wrong, and so was every variant of it: **`ld` is
-innocent** and computes correct output every time. The corruption is injected by the *emulator*,
+🔴 **Not `ld`.** The corruption is not introduced when `ld` writes the linked kernel to disk, in
+any variant: **`ld` is innocent** and computes correct output every time. The corruption is injected by the *emulator*,
 inside the guest kernel's copy loop, while the guest is demand-paging.
 
 ✅ **The mechanism.** On the 68030, a bus-fault format-`$B` stack frame packs two unrelated fields
@@ -290,7 +289,7 @@ constant across page boundaries — which is precisely what excludes every page-
 ≡ `0x19f`–`0x1a4` (mod 2048) and ends on an 8192 boundary.
 
 ✅ **The rate is configuration-dependent, and quoting one number is a mistake.** At `a3000mem_size=8`
-it reproduces at **85%** of relinks; on the standing **16 MB** bench config the same measurement
+it reproduces at **85%** of relinks; at **16 MB** the same measurement
 pooled **0/354** (95% upper bound 0.84%). Measurement itself suppresses it: adding I/O around each
 link drove the observed rate 85% → 45% → 35% → 28%. Always state the capture mode with the rate.
 
@@ -339,11 +338,11 @@ Disk-level assurance needs a **boot-chain check**: the build pipeline laminates 
 flags-based boot2 into `/stand/boot2.boot` before the bootpart rebuild and fail-closes on
 `bootchain-verify.py` (RDB walk → `UNI\0` slice → `boot1@+0x000`, `IBLK@+0x400`,
 `boot2@+0x600` sha check, `IBLK@+0x2600`, kernel ELF@`+0x2800`; `ib_chksum` = folded 16-bit
-SVR4 sum). The first golden gated this way validated 5/5 on the real A4000+Z3660 (2026-07-15) ✅.
+SVR4 sum). A kernel gated this way booted 5/5 on a real A4000 + Z3660 (2026-07-15) ✅.
 
 **Measured rate (2026-07-20) ✅:** a fixed-N measurement on a RAW (non-VHD) disk image put the
-emulated relink-corruption rate at **85% (17/20 rounds)** — confirming the historical ~70%
-figure and refuting the hypothesis that dynamic-VHD block-remapping explained it. Every
+emulated relink-corruption rate at **85% (17/20 rounds)** on the unfixed emulator at 8 MB —
+refuting the hypothesis that dynamic-VHD block-remapping explained it. Every
 linked-but-corrupt round kept `nm -h -u` **empty**: the ~8 KB block-shift never perturbs the
 symbol table, so **sum-recurrence is the load-bearing arm** of the gate for SCSI/combined
 kernels (the nm-empty arm covers the larger cdfs kernel's distinct silent-symbol-drop mode).
@@ -376,7 +375,7 @@ wholesale) can crash the analyser rather than being reported as corrupt.
 ### Who is exposed to a cross-toolchain bug — the build-model boundary ✅
 
 When the cross toolchain's **tdivs divide-with-remainder mis-assembly** was found (see
-[toolchain](toolchain.md#the-assembler-fixup-family-swbeg-fcmp--and-the-tdivs-divide-with-remainder-bug)),
+[toolchain](toolchain.md#the-assembler-fixup-family-swbeg-fcmp-and-the-tdivs-divide-with-remainder-bug)),
 the blast radius was bounded by the build model, and the boundary is worth recording ✅:
 
 - The **kernel objects and all native drivers never carried the bug** — the harness is a
@@ -429,7 +428,7 @@ Two more SVR4-box gotchas that bite build scripts ✅:
 
 **If your kernel boots by reading its root disk through the A3000 onboard SCSI, it needs the
 `a3091.c` chip-mem DMA bounce patch — whatever else is in it.** ✅ This is not an A4091 requirement
-and not a cdfs requirement, though it was documented as both for months: `a3091.c` is the **A3000
+and not a cdfs requirement: `a3091.c` is the **A3000
 onboard** SCSI driver (super-DMAC + WD33C93 at `0xDD0000`), it is in the stock `amiga/alien` Makefile,
 and it links into **every** kernel. It lives under `amix-a4091/src/kernel-patches/` only because that
 project did the work ✅.
@@ -444,19 +443,18 @@ copy-back after a read, freed in `stopdma`). The patch ports that same chip-mem 
 
 **Who is exposed** ✅:
 
-| Rig | Roots through | Needs the patch? |
+| Machine | Roots through | Needs the patch? |
 |---|---|---|
-| Any emulated bench box (`c6d0s1`, card 0) | A3000 onboard SCSI | **Yes** — regardless of which add-on HBA the kernel carries |
-| A4091 bench profiles | A3000 onboard SCSI (A4091 sorts to card 1) | **Yes** |
-| Real A4000 + Z3660, root on the piscsi mailbox | the Z3660 | No — `a3091` is linked but never carries the root read |
+| A3000 (real or emulated) rooting on `c6d0s1`, card 0 | A3000 onboard SCSI | **Yes** — regardless of which add-on HBA the kernel carries |
+| A3000 + A4091 (A4091 sorts to card 1) | A3000 onboard SCSI | **Yes** |
+| A4000 + Z3660 rooting on the piscsi mailbox | the Z3660 | No — `a3091` is linked but never carries the root read |
 
-That last row is why the defect survived so long: **the metal-proven kernels were never exposed to
-it**, so a build path that silently skipped the patch produced kernels that were fine on real
-hardware and unbootable on every bench box ✅.
+So a kernel built without the patch can boot fine on a Z3660-rooted A4000 and still fail on any
+machine that roots through the A3000 onboard SCSI ✅.
 
 > **Build-harness note.** A patch keyed to a *driver repo* is only applied when that repo is part of
-> the build. Keying this one to `amix-a4091` meant `build-kernel.sh <some-other-driver>` silently
-> omitted it — a boot-critical patch skipped by an unrelated repo-selection rule. If your harness
+> the build. This one is boot-critical for every kernel that roots through the A3000
+> onboard SCSI, whichever driver repos it carries. If your harness
 > selects patches by repo, mark this one **unconditional** and fail closed when its file is
 > missing ✅.
 
@@ -487,9 +485,9 @@ that returns 0, and prints the **last** return value it saw. So:
 controller on that card) and `sdpartition()` (the RDB/PART walk). `sdpartition()`
 (`amiga/alien/sdpart.c`) reads the RigidDiskBlock into a **file-static 512-byte buffer**
 (`static union block block;`) and `dd.c`'s `startio()` hands the SCSI layer `vtop()` of that kernel
-static as the DMA destination. With stock `a3091.c` the super-DMAC is pointed straight at it; when
-that address is one the DMAC cannot reach, **the transfer completes without an error and the buffer
-reads back all-zeros** — no `RDSK`, so `getrdb()` walks all 16 blocks and returns `ENXIO`.
+static as the DMA destination. With stock `a3091.c` the super-DMAC is pointed straight at it, and in
+the failing kernels **the transfer completes without an error and the buffer reads back all-zeros** —
+no `RDSK`, so `getrdb()` walks all 16 blocks and returns `ENXIO`.
 
 **Savestate-diff corroboration** ✅ (independent, 2026-07-10): comparing an Amiberry savestate of a
 *booting* kernel against a *panicking* one, the same RDB buffer held a valid `RDSK`/`PART` block named
@@ -525,16 +523,38 @@ of the two images' whole `/usr/sys` is byte-identical **except** `amiga/alien/` 
 Unlike the **D245 boot-breaker** (a *random* emulator-injected corruption, covered above), this
 failure is **deterministic**: the same kernel fails the same way every time.
 
-> **Distinct from the error-*5* panic.** This is `VOP_OPEN error 6` (`ENXIO` — a super-DMAC
-> high-address DMA failure). The `s5mountroot VOP_OPEN error 5` (`EIO`) seen on an A4091-only machine
+> **`VOP_OPEN error 6` has two known causes on an A3000** ✅. Either **no card 0 is registered** —
+> the stock kernel's load-address guess skipped the internal SCSI ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi); `queue[0].f`
+> is empty) — or **this DMA failure**: card registered, `queue[0].f` populated, RDB buffer all zeros.
+> The savestate diff above is what tells them apart.
+>
+> **Distinct from the error-*5* panic.** The `s5mountroot VOP_OPEN error 5` (`EIO`) seen on an A4091-only machine
 > was a *different* fault — the "phantom A3000" device-**dispatch** bug, where the root read went to a
 > non-existent internal SCSI — see the [boot process](../how-it-works/boot-process.md) and the
 > [`autocon()` phantom-A3000 special case](zorro-autoconfig.md). Don't conflate them.
 
-🔴 **Open:** the exact reach limit of the super-DMAC is uncharacterized. The `≥ 0x1000000` (16 MB)
-threshold is `a2091`'s proven-safe cutoff, not a measured `a3091` boundary — and the failing buffer
-sat around VA `0x078F0000`, well above 16 MB, so a plain 24-bit-address story is incomplete. Treat the
-bounce as a safe over-approximation pending real-hardware measurement.
+**"The super-DMAC cannot reach RAM at or above `0x1000000`" is refuted** ✅ (corrected 2026-10-02).
+The `≥ 0x1000000` (16 MB) threshold is `a2091`'s proven-safe cutoff, never a measured `a3091`
+boundary, and the evidence on this page already contradicts a reach limit: the stock-`a3091` kernel
+`64119` in the table reads its RDB into a buffer loaded above `0x07000000` and boots, and the bench
+the failure was seen on is an emulator whose A3000 super-DMAC model is a full **32-bit** master —
+Amiberry's `src/a2091.cpp` initialises it with the 24-bit DMA mask off and no option to turn it on
+(`dma24bit` exists only for the add-on cards) ✅. **Real hardware agrees** ✅: the public 68040/68060
+port ([`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port), `STATUS.md`) runs on an A3000 whose accelerator RAM sits at `0x08000000`, loads the
+kernel there (load base `0x08000000`, e.g. its 2026-09-06 Zorro III acceptance and the 68060 rows of
+2026-09-28) and drives the A3000 SCSI with the A3091/SDMAC driver; its 2026-08-30 68060 record
+(`docs/REALHW-ISSUE54-STAGED-260830-06.md`) prints the super-DMAC's address counter at `sac=96D99F0`
+— about 150 MB up — with the root disk on the same controller still answering. Its "DMA coherence
+(A3091 / SDMAC)" row is hardware-verified with cache-maintenance hooks, and the chip-RAM bounce in its
+documents belongs to the A2091, not the A3091. So the super-DMAC reaches RAM far above 16 MB on a real
+A3000, and the bench failure was real but was not an address-reach failure. What it was is
+**open** 🔴: the leading hypothesis is a **stale data cache** — the CPU reading cached contents of
+the static buffer instead of what the DMA put in memory — which the chip-RAM bounce cures as a side
+effect, because the copy comes from a different, freshly written buffer. The port's need for explicit
+cache maintenance around SDMAC transfers on the 68040/68060 is consistent with that family 🟡, but the
+savestate diff (buffer all-zeros *in memory*) does not obviously fit a cache-only story for the 68030
+bench, so the specific cause stays 🔴 until a cache-flush experiment decides it. The bounce remains the
+shipped fix, as a safe over-approximation.
 
 ### The separate GSIO `scsi.c.patch` — userspace only ✅
 
@@ -551,7 +571,7 @@ bounce patch has been built and booted, which is what isolates the two ✅.
 > `BOUNCESZ` (one 4 KB page) reaches `panic("a3091: DMA too big")`. The patch's own comment assumes
 > GSIO "bounces through a low kernel iobuf that never trips the `>=0x1000000` test", which is not
 > true on this memory map ✅ (the code facts) / 🟡 (the reachable panic — reasoned from source and the
-> bench memory map, **not yet reproduced**). It ships today in the a4091 bench kernels.
+> bench memory map, **not yet reproduced**).
 
 ## Two kernel gotchas that bite any module (found porting cdfs)
 
@@ -569,37 +589,44 @@ ISO directory walk skip every child (empty directory). **Fix:** a `memset` that 
 is exposed** — audit for it. (Working theory: a size/alignment/`int`-truncation bug in `bzero` around
 ~1 KB.)
 
-### Gotcha: in-kernel SCSI DMA corrupts transfers larger than one 2048-byte block ✅
+### Gotcha: in-kernel SCSI DMA corrupts transfers larger than one 2048-byte block 🟡 {#gotcha-in-kernel-scsi-dma-corrupts-transfers-larger-than-one-2048-byte-block}
 
-On this board an **in-kernel** SCSI transfer (`struct sdcom` + `sdqueue()`) of **more than one CD
+On the **A3000's internal SCSI** (WD33C93 + Super DMAC, the `a3091` driver) — most likely on the
+emulated A3000, which is where the CD work ran 🟡 — an **in-kernel** SCSI transfer (`struct sdcom` + `sdqueue()`) of **more than one CD
 sector (2048 B)** comes back as **kernel text / garbage** and can **wedge the box**; **single-block
 (2048 B) transfers are reliable** (PVD, mount reads, and RDB reads are all single-block and fine) ✅.
 cdfs's block-cache read-ahead issued one 16 KB (8-sector) DMA → garbage → empty/garbage directory +
 hang; the fix **caps the media transfer to one sector** and lets the chunk loop split multi-sector
-requests (amix-cdfs `a5c6915`). This is the **same DMA-limitation family** as the `a3091` super-DMAC
-high-address bounce above.
+requests (amix-cdfs `a5c6915`). It is not an A4091 limit (the 53C710 is a full 32-bit bus master).
+It may share a cause with the `a3091` boot failure above (whose "high-address reach" explanation is
+refuted; the leading hypothesis there is cache coherence) 🔴. Caveat: the same day a separate
+reentrancy bug in the in-kernel SCSI issue path, which also scrambled in-flight transfers, was fixed
+(amix-cdfs `2172772`), so how much of the multi-sector failure was that bug is not established 🟡.
 
 The **userspace** `/dev/scsi` **GSIO** path is *not* affected — it bounces through the 64 KB iobuf
 (`scsi.c.patch`) and *does* do multi-sector reads; this limit is specific to the in-kernel `sdqueue`
-path ✅. 🔴 **Open:** the real HBA/DMA limit is uncharacterized, so the one-sector cap can't yet be
-raised.
+path ✅. 🔴 **Open:** the real multi-sector limit on this path was never characterized, so the
+one-sector cap stays.
 
 > The concrete in-kernel cdfs fixes for both gotchas above live in the **amix-cdfs** repo — the
 > byte-loop `memset` (`ad09035`) and the one-sector DMA cap (`a5c6915`).
 
-### `make install` does not update `/stand/unix` — copy it yourself ✅
+### Verify `/stand/unix` after an install ✅ {#make-install-does-not-update-standunix-copy-it-yourself}
 
-A successful `cd /usr/sys; make install` prints `installed. Old kernel kept as /stand/OLDunix` but
-was observed to leave **`/stand/unix` still holding the *previous* kernel** ✅ — confirmed by
-`sum -r`: `/usr/sys/relocunix` was the freshly-built image (checksum 44416) while `/stand/unix` was
-still the old one (38553). Because the Amiga bootstrap boots the **boot-partition image written from
-`/stand/unix`**, rebooting at that point silently re-boots the **old** kernel and any "verified on the
-new kernel" result is worthless. Do the copy explicitly and rebuild the bootpart, then re-check:
+The stock `/usr/sys/Makefile` `install` rule copies the new kernel to `/stand/NEWrelocunix`, moves
+any existing `/stand/unix` to `/stand/OLDunix`, links `NEWrelocunix` as `/stand/unix` and runs
+`make` in `/stand` to rewrite the boot partition ✅ — so when it **completes**, `/stand/unix` is the
+new kernel. The Amiga bootstrap boots the **boot-partition image written from `/stand/unix`**, so an
+install that stopped part-way (or a wrapper script that reports success regardless) silently
+re-boots the **old** kernel, and any "verified on the new kernel" result is worthless. Check before
+you reboot, and if they differ, do the copy explicitly and rebuild the bootpart:
 
 ```sh
+sum -r /stand/unix /usr/sys/relocunix   # the two sums must match before you reboot
+# if they do not:
 cp /usr/sys/relocunix /stand/unix
 cd /stand; make            # (or: cd /usr/sys; make bootpart KERNEL=relocunix)
-sum -r /stand/unix         # must now match sum -r /usr/sys/relocunix
+sum -r /stand/unix         # now matches relocunix
 ```
 
 This is the same hazard the [D245 clean-gate](#the-fix-build-until-the-checksum-is-stable) guards
@@ -608,9 +635,7 @@ image you're about to boot is the one you just built. ✅
 
 ### Verify which kernel actually booted 🟡
 
-Warm reboot (`shutdown -i6`) was intermittently a **no-op** in one bench session — the box stayed
-multiuser on the **old** kernel — while **cold boot** (Amiberry down/up, which reloads the boot
-partition) was reliable 🟡. Always identity-check *which* kernel actually booted (a version marker, or
+Always identity-check *which* kernel actually booted (a version marker, or
 `sysfs(GETFSIND, …)`) before trusting a test result.
 
 ## Scripting the `kernel.c` edits with `ed` — the half-patch trap ✅
@@ -618,8 +643,7 @@ partition) was reliable 🟡. Always identity-check *which* kernel actually boot
 Sooner or later everyone automates Step 2: a script pushes an `ed` heredoc that inserts the
 `extern` declarations, address-searches the target `cdevsw[]` row, changes it, and writes the
 file. This section is uniformly first-party ✅ — every failure mode below was reproduced with GNU
-`ed` over fixture copies of the real stock file layouts (2026-07-30/31), and the fail-closed
-pattern at the end is what this family's own build tooling now enforces. It applies to any stock
+`ed` over fixture copies of the real stock file layouts (2026-07-30/31). It applies to any stock
 file you patch in place — `master.d/kernel.c`, `master.d/filesys.c` (`vfssw[]`), the subdir
 Makefiles — and, in general, to anyone patching SVR4 sources with `ed`.
 
@@ -654,9 +678,7 @@ Three measured variants of the same trap ✅:
 - **The renumber skew.** After a driver changes major number, a name-wide guard running on a tree
   integrated *before* the renumber sees the old claim and no-ops — while rebuilt `/dev` nodes open
   the new major. Kernel on the old slot, nodes on the new one, every build and every symbol check
-  green; the only runtime evidence is a dead device. This exact shape was produced by this
-  family's own tooling when `z3660eth` moved 48 → 51, and is now mechanically refused (a
-  "name found at a *different* row" probe outranks every other verdict).
+  green; the only runtime evidence is a dead device.
 - **The wrapping search.** `ed`'s `/re/` address search **wraps around the buffer**, so an address
   computed as "the first TAB-indented `};` after the anchor" can resolve inside a *different*
   switch table once the file drifts. Measured: a `vfssw[]` row landed inside `fmodsw[]` — exit
@@ -668,7 +690,7 @@ host-side, SVR4 on the box) do not agree, wrappers habitually print "patched" un
 a remote-shell transport that swallows the on-box exit status turns every other guard silent ✅.
 **The reliable mechanism is verification in the file itself, before and after the write.**
 
-The fail-closed pattern the family's builders converged on ✅:
+The fail-closed pattern ✅:
 
 1. **Pre-probe before any write** (verify-then-apply). Probe every anchor the script depends on,
    **row-scoped, not name-wide**, and classify the file: target row free / already exactly ours
@@ -691,7 +713,7 @@ This is the scripted-edit companion to the registry's manual rule — match the 
 refuse anything but the free filler
 ([conventions](../reference/major-number-registry.md#7-conventions-for-adding-a-driver)) — and to
 the pre-POSIX shell warning in Step 2. One-line checklist entry:
-[quirk 28](../how-it-works/quirks.md#28-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file).
+[quirk 28](../how-it-works/quirks.md#30-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file).
 
 ## See also
 
@@ -705,8 +727,11 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
 - [Boot process](../how-it-works/boot-process.md) — how the bootstrap loads the kernel you wrote.
 
 ## Sources
+- The public 68040/68060 port, `asokero/amix-040-060-port` @ `upstream/main` (2026-09-29): `STATUS.md` (the A3000 + accelerator rig with RAM and load base at `0x08000000`; the hardware-verified "DMA coherence (A3091 / SDMAC)" row; rows `68040-260906-06` and `68040-260928-05`), `docs/REALHW-Z3-040-260906.md`, `docs/REALHW-ISSUE54-STAGED-260830-06.md` (the `sac=96D99F0` line) and `docs/contracts/A3091-PHASE-MISMATCH-RESUME-AUDIT.md` (the chip-RAM bounce is the A2091's) ✅ — <https://github.com/asokero/amix-040-060-port>.
 
-- amix-kerntools briefs `boot2-d245-trap` (2026-07-16), `e2-relink-corruption-measured` + `tdivs-cross-assembler-miscompile` (2026-07-21): relsim scope correction, bootchain-verify gate, measured 85% relink corruption, tdivs blast-radius map, __udivdi3 metal closure (kernel 10842→00961, validate-metal ALL GREEN 2026-07-21).
+- The **super-DMAC reach refutation** (2026-10-02) ✅ — the `64119` row of the kernel table on this page (stock `a3091`, RDB buffer above `0x07000000`, boots) and Amiberry's `src/a2091.cpp` (the A3000 super-DMAC initialised with the 24-bit DMA mask off; `dma24bit` applies only to the add-on cards), read in the Amiberry source. The stale-cache explanation is a hypothesis 🔴.
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
+- amix-kerntools briefs `boot2-d245-trap` (2026-07-16), `e2-relink-corruption-measured` + `tdivs-cross-assembler-miscompile` (2026-07-21): relsim scope correction, bootchain-verify gate, measured 85% relink corruption, tdivs blast-radius map, __udivdi3 metal closure (2026-07-21).
 - Ditto, *Writing Amix Device Drivers*, **1990 European Amiga Developer's Conference** (project PDF;
   see [bibliography](../reference/bibliography.md)) — `/usr/sys` object libraries, `kernel.c`
   switch tables, the "Adding a device driver" procedure, `rdbunix` image name, keep-old-`/unix`
@@ -721,7 +746,7 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
   §5 (driver model / "Adding a driver"), §6 (VA2000 patch set), §13 (open questions:
   `rdbunix`/`relocunix` rename).
 - The A4091-on-Amix project — `NOTES.md` §17–§18 (the `D245` boot-breaker: relocator `Alert()`
-  mechanism, the intermittent ~70% `ld`-write corruption, the build-until-stable gate; reproduced
+  mechanism, the emulator-only kernel-image corruption (configuration-dependent; see the D245 section), the build-until-stable gate; reproduced
   locally ✅) and the handoff brief §5/§10, plus `src/`/`tools/`.
 - [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
   — the relink-until-`sum -r`-recurs clean-gate that dodges the `D245` corruption.
@@ -735,7 +760,8 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
   assembler), referenced by the A4091-on-Amix work.
 - amix-a4091 kernel patches `src/kernel-patches/scsi.c.patch` (userspace `/dev/scsi` GSIO bounce iobuf
   → 64 KB) and `src/kernel-patches/a3091.c.patch` (commit `e70c1d7`) — the A3000 super-DMAC
-  high-address chip-mem DMA bounce for buffers ≥ `0x1000000`, ported from the `a2091.c` sibling;
+  chip-mem DMA bounce for buffers ≥ `0x1000000` (the threshold is `a2091`'s, not a measured `a3091`
+  reach limit — see the refutation above), ported from the `a2091.c` sibling;
   evidence = source + Amiberry-savestate differential (amix-a4091 CD-ROM-effort handoff, 2026-07-10),
   including the savestate pair showing a valid `UNIX_Root` `RDSK`/`PART` in the booting kernel vs
   all-zeros in the panicking one with `queue[0].f` populated in both.
@@ -750,8 +776,7 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
   byte-identical except `amiga/alien/`) and the `vfs_mountroot` disassembly (empty `rootfstype` ⇒
   iterate `vfssw`, print the *last* errno ⇒ errno 30 is not diagnostic; `error 6` = `ENXIO` from
   `ddopen`→`sdpartition`→`getrdb`) are all first-party measurements. Real hardware rooting through a
-  Z3660 is indifferent to the patch, which is why metal never caught it; the 2026-07-11 kernel
-  `52550` that "stopped at `vfs_mountroot`" and was attributed to code staleness is the same defect.
+  Z3660 is indifferent to the patch.
 - amix-cdfs `ad09035` — byte-loop `memset` replacing the SVR4 kernel `bzero` that under-clears a
   > ~1 KB region (tail left as garbage); it bit cdfs twice from one ~1.1 KB struct clear
   (`has_child_link`, `is_relocated`).
@@ -759,13 +784,10 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
   2048-byte sector; a multi-sector in-kernel DMA returns kernel text / wedges the box, while the
   userspace `/dev/scsi` GSIO path (64 KB iobuf) is unaffected (Amix kernel-RE + gotchas handoff,
   CD-ROM effort, 2026-07-10).
-- Bench caveat (2026-07-10): warm reboot (`shutdown -i6`) was intermittently a no-op (box stayed on
-  the old kernel); cold boot reloads the boot partition reliably — always identity-check which kernel
-  actually booted.
-- The **amix-kerntools** bench forensics @ `8a76775` — `cd /usr/sys; make install` prints "installed"
-  yet leaves `/stand/unix` holding the previous kernel (proven by `sum -r`: `relocunix` 44416 vs
-  `/stand/unix` 38553); copy `relocunix` to `/stand/unix` explicitly and rebuild the bootpart, then
-  re-check `sum -r /stand/unix`. Real A4000 + Z3660, 2026-07-12 ✅. Same brief also confirms SVR4
+- The stock `/usr/sys/Makefile` `install` rule (`install : all` → `cp … /stand/NEWrelocunix`,
+  `mv /stand/unix /stand/OLDunix`, `ln NEWrelocunix unix`, `make` in `/stand`), read from a stock
+  2.1c tree ✅; the `sum -r /stand/unix` versus `relocunix` check from the **amix-kerntools** notes
+  @ `8a76775` (real A4000 + Z3660, 2026-07-12) ✅. The same notes also confirm SVR4
   `grep` has no `\|` alternation (already noted above under build-script gotchas).
 - The **amix-kerntools** cdevsw free-row gate + 2026-07-31 half-patch audit fix packets
   (`2b23808`, `1c6a57e`, `a81d7c9`, `f0c517c`, `f90756b`, `f025444`, `dac78a0`) and the

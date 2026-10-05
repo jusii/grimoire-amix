@@ -10,7 +10,7 @@ The canonical Amix character driver is **`par.c`**, the Amiga parallel-port driv
 
 This page is **uniformly ✅** (primary source: the Ditto paper, pp. 8–22) except where a tag says otherwise. For the conceptual model behind switch tables and major/minor numbers, read [the Amix device-driver model](driver-model.md) first; for how `par.c` gets linked into a kernel, see [building and installing a kernel](kernel-build.md). For a *modern* character driver that also implements `mmap`, jump to [the VA2000 framebuffer case study](case-studies/va2000.md).
 
-> **Licensing note.** `par.c` is reproduced and quoted here only in short excerpts for documentation, from the publicly circulated Ditto paper. The full driver listing is in that paper; the Amix distribution itself ships the stock driver sources under `/usr/sys`. Do not redistribute the disk images or the PDF — point readers to [amigaunix.com](https://www.amigaunix.com/doku.php/home) and archive.org instead.
+> **Licensing note.** `par.c` is reproduced and quoted here only in short excerpts for documentation, from the publicly circulated Ditto paper. The full driver listing is in that paper; the Amix distribution itself ships the stock driver sources under `/usr/sys`. This repo does not redistribute the disk images or the PDF (the 2026-09-23 lifting of the Amix release restriction, [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary), does not change that) — point readers to [amigaunix.com](https://www.amigaunix.com/doku.php/home) and archive.org instead.
 
 ## What par.c does
 
@@ -88,7 +88,7 @@ static unsigned char currentbyte;    /* byte being output, for retry */
 
 Three things to notice:
 
-- **`splpar()` is just `spl2()`** ✅ — the driver runs the parallel port off the **level-2 (INT2) autovector**, so it masks at SPL 2 whenever it touches shared state. See [`spl2()/splx()`](#interrupt-masking-spl2--splx).
+- **`splpar()` is just `spl2()`** ✅ — the driver runs the parallel port off the **level-2 (INT2) autovector**, so it masks at SPL 2 whenever it touches shared state. See [`spl2()/splx()`](#kernel-apis-used-at-a-glance).
 - The **output queue is a `clist`** (`par_outq`), with high/low watermarks (`PAR_HIWAT` = 400, `PAR_LOWAT` = 100) used for flow control ✅.
 - `parflags` is a bitfield of driver states; the interrupt routine and the syscall routines coordinate purely through it (under `splpar()`).
 

@@ -64,8 +64,8 @@ Evidence the HAT layer is live in the shipped kernel: the install bootstrap on `
 
 Two hard memory facts follow from this layer ✅:
 
-- **16 MB Fast RAM ceiling**, hard-coded in the kernel. Exceeding it **mis-maps the SCSI drive** ✅. (A separate, far-higher limit on total *describable* RAM fails silently — see [the RAM ceiling](ram-ceiling.md).)
-- **No Zorro III.** The memory-mapping layer cannot address Zorro III space, and that source was never shipped, so it cannot be community-fixed — Amix is **Zorro II only** ✅.
+- **A limit on total *describable* RAM** — ≈64 MB on the stock 68030 kernel's fixed arena, ≈128 MB on the 4 KB-page 040/060 kernels — past which the kernel fails silently ✅; see [the RAM ceiling](ram-ceiling.md). A 16 MB symptom on the stock kernel is real, but it comes from loader placement, not a RAM ceiling; see [hardware](hardware.md) and [quirks §57](quirks.md#57-loader-placement-a3000-scsi).
+- **Zorro III lies outside the identity map.** The low 1 GB is identity-mapped, so a stock driver can dereference a Zorro II board's `autocon()` address directly but not a Zorro III one; a driver that maps the board with `sptalloc()` reaches Zorro III ✅ — the **stock** drivers are Zorro II only. (This bullet used to say the layer *cannot* address Zorro III space and that the limit could not be community-fixed; corrected, see [the Zorro III correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall).)
 
 The processor cutoff is set by this same MMU dependency: the kernel **predates the 68040 MMU**, so there is **no 68040/68060 support**, and an **A4000 cannot officially run Amix** ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md); for the current 040/060 situation see [Amix on 68040 and 68060](68040-68060-status.md).
 
@@ -110,7 +110,7 @@ One userland gotcha worth flagging at the kernel/system level: Amix's `/bin/sh` 
 - [The device-driver model](../drivers/driver-model.md) — `cdevsw`/`bdevsw` internals, major/minor numbers, entry-point naming.
 - [Building and installing the kernel](../drivers/kernel-build.md) — the exact relink, `make bootpart`, and reboot recipe.
 - [Hardware and requirements](hardware.md) — MMU/FPU/RAM/Zorro envelope.
-- [Quirks](quirks.md) — the 16 MB ceiling, no-Zorro-III, pre-POSIX `/bin/sh`, and friends.
+- [Quirks](quirks.md) — the RAM limits, no-Zorro-III, pre-POSIX `/bin/sh`, and friends.
 - [Glossary](glossary.md) — HAT, STREAMS, TLI, run level, major/minor.
 
 ## Sources

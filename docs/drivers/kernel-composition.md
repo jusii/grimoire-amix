@@ -40,7 +40,7 @@ A third detected controller is **silently dropped** with only a console message 
 overflow branch prints `sd: too many controllers` and discards the board ✅. Which two survive is
 decided by *detection order* (the `scsicard[]` row order, then any direct-probe fallbacks), after
 which the two survivors are index-sorted by base address. See
-[the exact minor decode](../reference/device-list.md#exact-minor-decode-and-the-cn-computation-)
+[the exact minor decode](../reference/device-list.md#exact-minor-decode-and-the-cn-computation)
 in the device reference.
 
 ### Card 0 is decided by an address sort, and the root device is compiled in ✅
@@ -55,18 +55,23 @@ installer** ✅.
 This is not a theoretical hazard — it is exactly how both "phantom card" incidents broke boot:
 
 - **The phantom A3000**: stock `autocon()` hard-faked an A3000 internal SCSI at `0xDD0000` whenever
-  RAM > 7 MB, whether or not the hardware existed. On an A4000+A4091 the phantom claimed card 0,
+  the kernel was loaded above `0x07000000` ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)), whether or not the hardware existed. On an A4000+A4091 the phantom claimed card 0,
   shoved the real A4091 to card 1, and the compiled-in root device pointed at nothing →
   `vfs_mountroot` panic ✅. Fixed by a chipset-gated probe — see
   [the A4091 case study](a4091-53c710-driver.md) and
   [Zorro AUTOCONFIG](zorro-autoconfig.md).
 - **The phantom Z3660**: the Z3660 driver's fallback probe reads a **fixed base** (`0x10000000`);
   under Amiberry, unmapped addresses read as zero, which the probe took as a live board → phantom
-  card 0, A4091 shifted to card 1, install disk invisible ✅. The bench install kernel had to be
-  built **A4091-only** to clear it.
+  card 0, A4091 shifted to card 1, install disk invisible ✅.
 
-Both phantoms were emulator open-bus artifacts (real hardware reads differ ✅), but the structural
-lesson stands: **every storage driver added to a shared kernel multiplies the ways card 0 can be
+Both phantoms surfaced as emulator open-bus artifacts (real hardware reads differ ✅) — **with one
+real-hardware exception**: on an **A4000T** the phantom-A3000's `0xDD0000` is the machine's **onboard
+NCR 53C710**, so stock `autocon()` hands the A3000 WD33C93 driver a real, different chip as card 0
+(`c0`). It is safe at boot because the card is initialised lazily, but the first open of a `c0`
+device busy-waits forever in that initialisation 🟡 (from the shipped kernel's `autocon()` and the
+stock sources, 2026-09-24; not reproduced on the metal). A4000T kernels must carry the chipset-gated
+fix; see [the Z3660 SCSI detection note](z3660-scsi-driver.md#detection-the-silent-hang-trap-and-multi-method-detect).
+The structural lesson stands: **every storage driver added to a shared kernel multiplies the ways card 0 can be
 stolen from the root controller.**
 
 ### Every absent-hardware probe path is boot-correctness surface
@@ -80,27 +85,34 @@ postmortems above are the canonical examples of getting this wrong.
 
 ### Size: irrelevant to RAM, real for floppies — and DMA reach
 
-Driver code is tens of KB against the 16 MB Fast-RAM ceiling — RAM footprint is a non-issue. Two
+Driver code is tens of KB against tens of MB of Fast RAM (16–64 MB on the 030 line depending on kernel and RAM layout, 128 MB on
+the 040/060 kernels) — RAM footprint is a non-issue. Two
 size effects *are* real:
 
 - **The boot-floppy budget.** A floppy-boot kernel must fit *compressed* in roughly 868 KB
   (880 KB ADF minus the boot area) 🟡; the current single-HBA install kernel already leaves only
   ~160 KB of compressed headroom ✅. Universal kernels and boot floppies do not mix. See
   [Adding drivers to a custom boot disk](../boot-disks/adding-drivers-to-boot-disk.md).
-- **The DMA-reach trap.** Growing the kernel moves static buffers. Adding ~64 KB (cdfs) once pushed
-  the RDB read buffer past the A3000 super-DMAC's reach and produced a deterministic mountroot
-  panic — a pure *size* effect, proven with a same-size inert stub ✅. Fixed by a bounce-buffer
-  patch, but any large size delta on A3000-class hardware deserves a boot test. See
+- **The moved-buffer trap.** Growing the kernel moves static buffers. Adding ~64 KB (cdfs) once
+  moved the RDB read buffer and produced a deterministic mountroot panic on the A3000 onboard SCSI
+  with the stock `a3091` driver ✅. It is **not** a size threshold and **not** a DMA reach limit (a
+  larger patched kernel boots; the emulated super-DMAC is 32-bit) — the cause is open, a stale data
+  cache being the leading hypothesis 🔴. Fixed by the `a3091` chip-RAM bounce patch, but any large
+  size delta on A3000-class hardware deserves a boot test. See
   [Building & installing a kernel](kernel-build.md).
 
-### Licensing: a kernel binary is never redistributable ✅
+### Licensing: kernel binaries (history, and the 2026-09-23 outcome)
 
 Every Amix kernel links the stock Commodore object libraries under `/usr/sys` — so **every built
-kernel image is proprietary-derived and cannot be published**, no matter whose drivers it carries.
-What *can* be public is what the community model already publishes: **driver source, build
-instructions, and configuration** (the va2000/hydra/zz9000 pattern). A "universal public install
-medium" is therefore impossible on licensing grounds alone; the publishable artifact is the
-**recipe**, and each licensed Amix owner links their own kernel.
+kernel image is Commodore-derived**, no matter whose drivers it carries ✅. *History (until
+2026-09-23):* this project therefore held that a built kernel could not be published, and that a
+"universal public install medium" was impossible on licensing grounds alone; the publishable artifact
+was the **recipe** (driver source, build instructions, configuration — the va2000/hydra/zz9000
+pattern), and each licensed Amix owner linked their own kernel. **Since 2026-09-23** that licensing
+bar is lifted — Amiga Corporation's approval and the project owner's ruling, see
+[`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) — so publishing a kernel or an install medium is now a per-release owner
+decision, not a licensing impossibility. The recipe-first pattern remains how the community
+driver repos publish.
 
 ### The root card and the linked driver set are ONE decision ✅
 
@@ -118,28 +130,22 @@ a deploy decision turns on.
 
 ## The family-kernel convention
 
-The convention this project settled on (a project decision, recorded here as practice, not a fact
-claim about stock Amix):
+Recommended practice (guidance, not a fact claim about stock Amix):
 
-**One installed-system kernel per *root-storage family* — not per driver, and not one universal
-image.** A family is "the controller the compiled-in root device lives on". Each family kernel
-folds in all *admitted* non-storage drivers, because those stack safely:
-
-| Family kernel | Storage (root) | Folded-in drivers | Status |
-|---|---|---|---|
-| bench / A4091-family | a4091 (+ fixed a3091/a2091 stock rows) | cdfs | ✅ in use (Amiberry) |
-| Z3660-family | z3660scsi | z3660eth, cdfs | ✅ in use, real-hardware-proven |
-| *(future)* | — | + admitted community net/fb drivers (hydra, zz9000/va2000 kernel side) | planned |
+**Build one installed-system kernel per *root-storage family* — not per driver, and not one
+universal image.** A family is "the controller the compiled-in root device lives on". A family
+kernel can fold in all *admitted* non-storage drivers, because those stack safely. For example, a
+kernel that roots on an A4091 (with the fixed a3091/a2091 stock rows) can also carry cdfs; a kernel
+that roots on the Z3660 piscsi mailbox (z3660scsi) can also carry z3660eth and cdfs.
 
 > **Every** family kernel whose root device hangs off the A3000 onboard SCSI carries the patched
 > `a3091.c`/`a2091.c` stock rows — it is not a property of the A4091 family. See
-> [the bounce patch](kernel-build.md#the-a3000-onboard-scsi-dma-bounce-patch--nearly-every-kernel-needs-it) ✅.
+> [the bounce patch](kernel-build.md#the-a3000-onboard-scsi-dma-bounce-patch-nearly-every-kernel-needs-it) ✅.
 
-- **Install kernels stay minimal**: source medium + target disk (+ net where the install needs it)
-  + cdfs, nothing else. At install time an extra driver is pure probe risk with zero benefit — the
-  bench install only worked once its kernel was stripped to a single HBA ✅.
-- **Finished kernels reach users as prebuilt whole-kernel packages** (`/stand/unix` +
-  `/stand/boot2.boot` in an SVR4 package), made bootable by the separately-gated boot-slice reframe —
+- **Keep install kernels minimal**: source medium + target disk (+ net where the install needs it)
+  + cdfs, nothing else. At install time an extra driver is pure probe risk with zero benefit.
+- **Finished kernels can reach users as prebuilt whole-kernel packages** (`/stand/unix` +
+  `/stand/boot2.boot` in an SVR4 package), made bootable by a separate boot-slice reframe step —
   the machine boots from the raw `UNI\0` slice, never `/stand/unix` directly ✅
   (see [How Amix boots](../how-it-works/boot-process.md)). "Installing a driver" therefore means
   *installing the family kernel package whose mix includes it*, then reframing.
@@ -147,13 +153,8 @@ folds in all *admitted* non-storage drivers, because those stack safely:
   and community drivers install that way ✅ — but it is only trustworthy **on real hardware**: under
   emulation the native `ld` intermittently corrupts its output (the D245 boot-breaker,
   emulation-only ✅; see [Building & installing a kernel](kernel-build.md)).
-- **Public/private split**: driver source, `driver.conf` build contracts, and these docs are public;
-  kernel binaries and disk images stay private (licensing, above).
 
-Current scope note (project decision, 2026-07): the next admitted-track candidates are the
-**community net/display drivers** (hydra; the zz9000/va2000 kernel-side framebuffer drivers).
-IDE (no Amix IDE driver exists anywhere — the largest genuine coverage gap) and GVP Series II
-are explicitly out of scope for now.
+
 
 ## The driver admission checklist
 
@@ -169,7 +170,7 @@ Before a driver is admitted into a shared family kernel, it must pass all five g
 3. **Major number registered.** The driver's `cdevsw[]`/`bdevsw[]` major must be recorded
    collision-free in the [major-number registry](../reference/major-number-registry.md) — community trees have
    already collided on major 48 ✅.
-4. **Size delta checked.** Against the A3000-class DMA-reach hazard for installed-system kernels,
+4. **Size delta checked.** Against the A3000-class moved-buffer hazard (above) for installed-system kernels,
    and against the compressed floppy budget for any kernel that ships on a boot floppy.
 5. **Boot-chain gates re-derived.** The kernel package's identity locks (kernel checksum, boot2
    loader identity) regenerated, and the result proven by an actual cold-boot cycle through the
@@ -207,10 +208,13 @@ Neither is committed work; the family-kernel convention above deliberately avoid
 
 ## Sources
 
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
+- The **super-DMAC reach refutation** (2026-10-02) ✅ — the `64119` row of the kernel table on [building a kernel](kernel-build.md) (stock `a3091`, RDB buffer above `0x07000000`, boots) and Amiberry's `src/a2091.cpp` (the A3000 super-DMAC initialised with the 24-bit DMA mask off; `dma24bit` applies only to the add-on cards), read in the Amiberry source. The stale-cache explanation is a hypothesis 🔴.
 - `amiga/alien/sd.h` macros (`SDCARDS`, `sdunit`/`sdcard`/`sdpart`), reproduced locally on Amix 2.1c ✅; the generated `sd.c` selector (`scsicard[]`, `init()`/`insert()` address-sorted registration, the `sd: too many controllers` overflow branch) as templated in the amix-kerntools build harness (`templates/sd.c.in`).
 - The A4091-on-Amix project — `NOTES.md` (phantom-A3000 root cause + chipset-gated probe fix; the anti-alias WD33C93 readback; the universal A3000/A4000 kernel) and `README.md`.
 - The amix-kerntools project — `docs/miniroot-kernels.md` (install-kernel mixes, the A4091-only bench install kernel and the phantom-Z3660 card-shift note, floppy headroom), `docs/kernel-packages.md` (the KERNBENCH/KERNZ3660 whole-kernel package contract), `README.md` (the D245 clean-gate, emulation-only).
 - The amix-installng project — `payload/updbootpart` + `docs/installer.md` (the gated backup → pkgadd → reframe → cold-boot kernel-upgrade flow, proven on A3000+A4091).
-- [Building & installing a kernel](kernel-build.md) sources — the cdfs size-delta / super-DMAC DMA-reach mountroot panic ✅ and the relink-kit workflow.
+- [Building & installing a kernel](kernel-build.md) sources — the cdfs size-delta / super-DMAC mountroot panic (its reach explanation refuted 2026-10-02) ✅ and the relink-kit workflow.
 - [Device & card reference](../reference/device-list.md) sources — stock and community major assignments, the cross-tree major-48 collision ✅.
 - Floppy budget: [Adding drivers to a custom boot disk](../boot-disks/adding-drivers-to-boot-disk.md) (compressed-kernel budget 🟡) and amix-kerntools `docs/miniroot-kernels.md` (current fd0unix headroom ✅).
+- The **A4000T `$DD0000` reading** (2026-09-24): the shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c` — the load-address phantom at `0xDD0000` sorting as card 0, the lazy first-I/O initialisation, the no-timeout busy-wait; on an A4000T that window is the onboard NCR 53C710. The hang itself is predicted from source, not reproduced on the metal 🟡.

@@ -23,7 +23,7 @@ login: root
 Password:
 ```
 
-- The **post-install root password is reported to be `wasp`** 🟡 (community-reported; this is the value seen on pre-built emulator disk images, not something the installer hard-codes). On a system you installed yourself, the password is whatever you set during the `amixadm` finish step at the end of the [install](install-walkthrough.md#finish-with-amixadm). Change it immediately with `passwd`.
+- The **post-install root password is reported to be `wasp`** 🟡 (community-reported; this is the value seen on pre-built emulator disk images, not something the installer hard-codes). On a system you installed yourself, the password is whatever you set during the `amixadm` finish step at the end of the [install](install-walkthrough.md#stage-6-first-boot-and-finish-with-amixadm). Change it immediately with `passwd`.
 - If `wasp` doesn't work and you didn't set a password, you're looking at a fresh install that expects you to set one during `amixadm`.
 
 ```sh
@@ -146,7 +146,7 @@ ps -ef              # SVR4-style full process list
 ```
 
 - `uname -v` matching `^2\.1.* 08004..$` is exactly the test the patch disk runs before applying ✅ — if your string matches, you're on a patchable 2.1.
-- The **system date is capped at 1999** by a kernel Y2K limitation; the patched `setclk` works around it ✅. Don't be surprised if naive date-setting refuses years ≥ 2000. See the [quirks checklist](../how-it-works/quirks.md).
+- The kernel accepts any year, but the stock date tooling does not ✅ (corrected 2026-09-29): the 2-digit `date` form reads `yy` as `19yy`, `amixadm` accepts only ≤ 1999, and the stock `setclk` cannot set a year ≥ 2000 from the battery clock (`date: bad conversion` at boot). Set the date by hand with the 4-digit form `date MMDDhhmmCCYY`, or install the community-patched `setclk` — see [quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap).
 - Man pages on 2.1 are **pre-formatted only** (the nroff sources were dropped) ✅ — `man` works, but you can't reformat.
 
 When you're ready to do real work, the next stops are the [commands cheat-sheet](../reference/commands-cheatsheet.md) and, if you want to build kernels or drivers, the [driver model](../drivers/driver-model.md) and [kernel build](../drivers/kernel-build.md) pages.
@@ -159,7 +159,8 @@ When you're ready to do real work, the next stops are the [commands cheat-sheet]
 - [Glossary](../how-it-works/glossary.md) — SVR4 / Amix jargon
 
 ## Sources
-- Master research brief, §4 (kernel architecture: virtual consoles Alt+F1..F8, `/usr/sys`, `/stand`, `kernel.c`), §8 (default login password "wasp" 🟡), §11 (default shell ksh, pre-POSIX `/bin/sh`; X11R4 default, `tvtwm` mono, A2410 TIGA `olinit -- -tiga`, OpenLook `olwm`/`olwsm`, keymap y/z + `/`=SHIFT-8), §12 (Y2K date cap, `/bin/sh` pre-POSIX), §3/§9 (`/stand`, `make bootpart KERNEL=relocunix`, `rdbunix`→`relocunix` rename), §5 (`/dev` major/minor examples)
+- The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap); first-party record, 2026-09-29).
+- Master research brief, §4 (kernel architecture: virtual consoles Alt+F1..F8, `/usr/sys`, `/stand`, `kernel.c`), §8 (default login password "wasp" 🟡), §11 (default shell ksh, pre-POSIX `/bin/sh`; X11R4 default, `tvtwm` mono, A2410 TIGA `olinit -- -tiga`, OpenLook `olwm`/`olwsm`, keymap y/z + `/`=SHIFT-8), §12 (Y2K — corrected 2026-09-29: a `setclk` bug, not a kernel cap; `/bin/sh` pre-POSIX), §3/§9 (`/stand`, `make bootpart KERNEL=relocunix`, `rdbunix`→`relocunix` rename), §5 (`/dev` major/minor examples)
 - `asokero/va2000-amix` install-script gotcha (Amix `/bin/sh` has no `$(...)`, no `grep -q`) — https://github.com/asokero/va2000-amix (brief §6)
 - `amix_21_patch.adf` analysis (`#!/sbin/sh` header, `uname -v` `^2\.1.* 08004..$` match) via `tools/inspect-adf.sh` (brief §10)
 - amigaunix.com DokuWiki pages: x11, networking, tips-tricks, y2k-dst — https://www.amigaunix.com/doku.php/home

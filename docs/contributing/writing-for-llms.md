@@ -102,7 +102,7 @@ These are the conventions that let a model (and a human) jump straight to the ri
 
 ## The licensing boundary
 
-The Amix distribution, the boot/root/patch ADFs, the HDFs/tape images, and the scanned manuals are **proprietary Commodore material** (treated as abandonware, not licensed for redistribution) and are `.gitignore`d. **Never commit them, and never tell anyone else to.** Refer to them by name + checksum (`sources/CHECKSUMS.txt`) plus a pointer to [amigaunix.com](https://www.amigaunix.com/doku.php/home) or archive.org. Tooling must operate on **user-supplied** images. Quoting short script snippets or string excerpts for documentation is fine; bulk-reproducing files is not. ✅
+The Amix distribution, the boot/root/patch ADFs, the HDFs/tape images, and the scanned manuals are **Commodore material** and are `.gitignore`d. Since 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's approval, the project owner's ruling — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); until then this project treated them as abandonware, not licensed for redistribution. The repo policy is unchanged: **never commit them** — this is a text knowledge hub, and publishing media is a separate owner decision. Refer to them by name + checksum (`sources/CHECKSUMS.txt`) plus a pointer to [amigaunix.com](https://www.amigaunix.com/doku.php/home) or archive.org. Tooling must operate on **user-supplied** images. Quoting short script snippets or string excerpts for documentation is fine; bulk-reproducing files is not. ✅
 
 ## A checklist for AI contributors
 

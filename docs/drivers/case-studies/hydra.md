@@ -39,7 +39,7 @@ The Hydra is a Zorro II Ethernet board in the NE2000 family ✅:
 | Property | Value | Tag |
 |---|---|---|
 | Card | Hydra Systems AmigaNet, **rev 1.2a** | ✅ |
-| Bus | **Zorro II** only (no Zorro III — see [Quirks](../../how-it-works/quirks.md)) | ✅ |
+| Bus | **Zorro II** (the card is Zorro II; stock-style drivers reach only Zorro II — Zorro III needs an explicit mapping, see [the Zorro III correction](../zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall)) | ✅ |
 | Ethernet chip | National Semiconductor **DP8390** (NE2000-class NIC) | ✅ |
 | Media | **10Base2** (BNC / thin coax) and **10BaseT** (RJ-45) | ✅ |
 | AutoConfig ID | **2121 / 1**, i.e. manufacturer `2121` (0x0849), product `1` → combined **0x08490001** | ✅ |
@@ -112,9 +112,9 @@ make force
 mknod /dev/hya0 c 47 0
 ```
 
-The native compiler is **GCC 2.7.2.3 for Amix**, distributed as an installable **pkg on [amigaunix.com](https://amigaunix.com)** (the stock AT&T SVR4 `cc` also compiles kernel C) ✅. The kernel-image/boot-relocatable conversion (`elf2brel`, the `stand/`/`boot/` tooling) is part of the on-box kernel build, not a cross step. See [Building and installing a kernel](../kernel-build.md) for the general relink-and-write-boot-partition cycle, and keep the old `/unix` as a fallback.
+The stock on-box compilers are the AT&T SVR4 `cc` and the Commodore-patched **GNU GCC 1.40.5** at `/usr/public/bin/gcc` ✅. The hydra repo says it builds with a native **GCC 2.7.2.3**; where that compiler comes from is unsourced — the often-repeated "installable pkg on amigaunix.com" attribution has no source found, and no public source for a native 2.7.2.3 build is known 🔴 (see [the compiler table](../toolchain.md#native-compilers-on-the-box)). The kernel-image/boot-relocatable conversion (`elf2brel`, the `stand/`/`boot/` tooling) is part of the on-box kernel build, not a cross step. See [Building and installing a kernel](../kernel-build.md) for the general relink-and-write-boot-partition cycle, and keep the old `/unix` as a fallback.
 
-> **Note on the toolchain.** hydra builds **on-box** with the amigaunix.com GCC pkg. As of 2026-06 a Linux-hosted cross-toolchain — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — also exists, closing the earlier "no public cross recipe" gap ✅. Either way you need a **licensed Amix install** (its headers/libs are the non-redistributable part — which is why the repo is source-only). See [Toolchain](../toolchain.md).
+> **Note on the toolchain.** hydra builds **on-box** (its README names a native GCC 2.7.2.3, whose source is unsourced 🔴 — see above). As of 2026-06 a Linux-hosted cross-toolchain — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — also exists, closing the earlier "no public cross recipe" gap ✅. Either way you need a **licensed Amix install** (its headers/libs are the non-redistributable part — which is why the repo is source-only). See [Toolchain](../toolchain.md).
 
 ## Bringing the interface up: slink, not `ifconfig plumb`
 

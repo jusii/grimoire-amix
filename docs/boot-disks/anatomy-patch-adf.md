@@ -22,7 +22,7 @@ add-on disk, so it doubles as the reference model for
 
 > **What this disk is.** Our copy self-identifies as *"Patch Disks 1 and 2 for International,
 > USA-Only, 2-user, and Unlimited-User Amiga UNIX System V Release 4.0 Version 2.1"* ✅ — i.e. the
-> patch that takes a stock 2.1 system to **2.1p2a / kernel 2.1c** (inet/NFS/Y2K fixes), widely
+> patch that takes a stock 2.1 system to **2.1p2a / kernel 2.1c** (inet/NFS fixes), widely
 > considered the definitive build. See the [version matrix](../reference/versions.md) for where this
 > sits in the release history.
 
@@ -177,7 +177,7 @@ The mechanism, in order ✅/🟡:
 
 Because the patch can both add new files and *delete* existing ones, and because it carries its own
 decompressor, it is effectively a tiny package format layered on top of cpio. The
-[2.1c kernel](../reference/versions.md) and the inet/NFS/Y2K fixes arrive through `archive.lha` this
+[2.1c kernel](../reference/versions.md) and the inet/NFS fixes arrive through `archive.lha` this
 way ✅.
 
 ## Why this disk is the model for custom add-on disks
@@ -200,8 +200,9 @@ running-system patch like this one — follow
 pattern together with the
 [`make bootpart KERNEL=relocunix`](../drivers/kernel-build.md) boot-partition step.
 
-**Licensing.** Do not redistribute `amix_21_patch.adf`. It is proprietary Commodore material
-(abandonware, not licensed) ✅. Obtain it from [amigaunix.com](https://www.amigaunix.com/) or the
+**Licensing.** `amix_21_patch.adf` is Commodore material; this repo does not ship it. Until
+2026-09-23 this project treated it as abandonware, not licensed for redistribution; since then the
+Amix release restriction is lifted — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) ✅. Obtain it from [amigaunix.com](https://www.amigaunix.com/) or the
 [archive.org Amix collection](https://archive.org/details/commodore-amiga-operating-systems-amix);
 verify against `sources/CHECKSUMS.txt`
 (`674f3ac691fd032c2c79c2fe90e2cd158e3f7d6004da03c4820373c50060fdfe`).
@@ -236,10 +237,11 @@ dd if=amix_21_patch.adf bs=1k skip=1 2>/dev/null | cpio -itv
 - [Adding drivers to a boot disk](adding-drivers-to-boot-disk.md) — uses this self-extraction pattern for custom disks.
 - [Boot-disk build pipeline](build-pipeline.md) — end-to-end tooling for assembling disks.
 - [Versions](../reference/versions.md) — where 2.1p2a / kernel 2.1c fits, and the `^2\.1.* 08004..$` fingerprint.
-- [Quirks](../how-it-works/quirks.md) — the pre-POSIX `/bin/sh` and Y2K context this patch addresses.
+- [Quirks](../how-it-works/quirks.md) — the pre-POSIX `/bin/sh` context this patch addresses, and the Y2K `setclk` fix it does **not** carry (§7).
 
 ## Sources
 
+- The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - `amix_21_patch.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and a `newc`-cpio header walk (offsets, modes, sizes reproduced locally) — SHA-256 `674f3ac6…0060fdfe` in `sources/CHECKSUMS.txt`.
 - Master research brief, [§10 "Boot / root / patch disk anatomy"](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) and §1 version matrix (`^2\.1.* 08004..$` gate, 2.1p2a / kernel 2.1c).
 - Verbatim 1 KB header script captured from the image (`dd … bs=1 count=1024 | strings`).

@@ -9,7 +9,7 @@
 import os, sys
 from ftplib import FTP
 
-HOST = os.environ.get('AMIX_HOST', '192.168.2.38')
+HOST = os.environ.get('AMIX_HOST', '192.0.2.38')   # RFC 5737 example; set AMIX_HOST
 USER = os.environ.get('AMIX_USER', 'root')
 PASS = os.environ.get('AMIX_PASS', 'changeme')   # set AMIX_PASS to your root password
 local, remote = sys.argv[1], sys.argv[2]

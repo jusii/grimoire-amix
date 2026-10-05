@@ -93,7 +93,7 @@ printf 'SAVESTATE\t/tmp/x.uss\t/tmp/x.cfg\n' \
   | socat - UNIX-CONNECT:/run/user/<uid>/amiberry.sock
 ```
 
-It works even at a kernel **panic screen**, so you can snapshot a wedged kernel and read *why* it wedged ✅. A bench scanner, `scan_a3k1.py`, automates pulling the `A3K1` chunk and resolving globals out of the resulting `.uss` ✅.
+It works even at a kernel **panic screen**, so you can snapshot a wedged kernel and read *why* it wedged ✅.
 
 ### Locating a global by symbol — `nm` values are *section-relative*
 
@@ -282,7 +282,7 @@ When the console is dead but a savestate still works ([Step 3](#step-3-read-a-ru
 - On-box reproduction on Amix 2.1c: `sysfs(GETFSIND,"cdfs")` and a string-form `mount(2)` probe, showing `errno 22` ⇔ fstype absent from the booted kernel's `vfssw[]` ✅.
 - `<sys/mount.h>` (`MS_RDONLY=0x01`, `MS_FSS=0x02`, `MS_DATA=0x04`; `int mount(const char *, const char *, int, ...)`), `<sys/fstyp.h>` (`GETFSIND=1`, `GETFSTYP=2`, `GETNFSTYP=3`), `<sys/errno.h>` (`EINVAL=22`) from the Amix sysroot ✅.
 - SVR4.0 reference behaviour cross-checked against `calmsacibis995/svr4-src` `uts/i386/fs/vfs.c` (the `mount()`/`vfs_getvfssw` ordering) — Amix is a straight SVR4.0 port ✅.
-- Two-arg Amiberry `SAVESTATE` IPC (`statefile` + `configfile`; one arg saves nothing, works at a panic screen) and the `A3K1`-chunk global scanner `scan_a3k1.py` — firsthand bench, amix-cdfs CD-ROM port effort (2026-07-09/10) ✅.
+- Two-arg Amiberry `SAVESTATE` IPC (`statefile` + `configfile`; one arg saves nothing, works at a panic screen) — firsthand, amix-cdfs CD-ROM port effort (2026-07-09/10) ✅.
 - Section-relative `nm` offset model for the linked kernel image `/usr/sys/relocunix` (bss offset = `text_size + data_size + nmval`, data offset = `text_size + nmval`; sizes from `size`), validated against the `scsicard[]` `0xc0de0001`/`0xc0de0002` product codes and the `block` global's `UNIX_Root` `PART` record in the A3K1 dump — firsthand ✅.
 - Same `objdump -dr` reloc-annotated method extended to the in-kernel SCSI path — `sdopen` and `getrdb` (RDB parser) traced by name out of their `exp` objects — firsthand ✅.
 - cdfs's `cdfs_diag` throwaway-global diagnostic (magic `0x0DF50001` written last; scan the `A3K1` chunk for the 4-aligned hit) — firsthand from the amix-cdfs port ✅.

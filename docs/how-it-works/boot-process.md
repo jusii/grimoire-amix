@@ -70,7 +70,7 @@ The installer's **default partition layout** is four partitions ✅:
 | **boot** | Holds the bootable kernel image | **2 MB**, fixed by `BOOTSIZE` (see below) ✅ |
 | data | Remaining user space | Keep partitions ≲1 GB 🟡 |
 
-**Warning:** The **tape must be at SCSI ID 4** — hard-coded as the literal `/dev/rmt/4h` in the install scripts ✅. The **disk is ID 6 by convention**: the installer prompts for the disk target and templates the boot partition from it (`BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`), so any target works, but the chosen ID is then baked into the device names in `/etc/vfstab` 🟡. Also keep total Fast RAM ≤ **16 MB**: the kernel hard-codes that ceiling and **>16 MB mis-maps the SCSI drive** ✅. All covered in [hardware](hardware.md#scsi-target-ids) and the [quirks checklist](quirks.md).
+**Warning:** The **tape must be at SCSI ID 4** — hard-coded as the literal `/dev/rmt/4h` in the install scripts ✅. The **disk is ID 6 by convention**: the installer prompts for the disk target and templates the boot partition from it (`BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`), so any target works, but the chosen ID is then baked into the device names in `/etc/vfstab` 🟡. The old "keep Fast RAM ≤ 16 MB, more mis-maps the SCSI drive" warning had the wrong mechanism: on the stock kernel a bigger A3000 motherboard bank loads the kernel below `0x07000000` and the internal SCSI is never registered ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)) ✅; kernels that probe for it run 64 MB, the 040/060 kernels 128 MB; see [the RAM ceiling](ram-ceiling.md) for the real, describable-RAM limit. All covered in [hardware](hardware.md#scsi-target-ids) and the [quirks checklist](quirks.md).
 
 The **RDB partition type IDs** Amix stamps on each partition (via `/etc/rdb -F`) are now read directly from the installer script ✅: boot **`0x554e4900`** (`UNI\0`), UNIX root **`0x554e4901`** (`UNI\1`), swap **`0x72657376`** (`resv`). The installer's own comment notes the Kickstart 2.04 boot-priority algorithm *requires* the bootable UNIX partition to be type `0x554e4900`. Full decode on the [root floppy anatomy](../boot-disks/anatomy-root-adf.md#rdb-partition-type-tags) page.
 
@@ -166,6 +166,38 @@ The machine boots the kernel out of the raw **`UNI\0`** boot slice, **never `/st
 
 The stock first-boot node-name/timezone dialog is gated by a single mode bit. `/etc/inittab` runs `/etc/sysinit` at sysinit, which runs `/usr/amiga/bin/system.setup` **iff that file is executable**; `system.setup` ends by `chmod -x`-ing *itself* — that exec bit is the stock once-only mechanism. So an unattended/automated install disarms the interactive dialog simply by `chmod -x /usr/amiga/bin/system.setup` (mode only — the package content, and therefore the package database, is untouched) and drops its own additive `/etc/rc2.d/S??` hook to bake identity. Proven across two cold boots: no dialog, identity applied exactly once ✅.
 
+## Two disks: the boot priority picks the loader, the kernel picks the root {#boot-node-vs-root}
+
+With more than one bootable disk attached, **two different rules** decide what happens, and they
+are easy to conflate:
+
+1. **Which disk's boot code runs — AmigaOS's rule** ✅. The Kickstart strap runs the bootblock of the
+   highest-priority bootable node: boot ROMs register each bootable partition with
+   `expansion.library`'s `AddBootNode` using its RDB boot priority (`de_BootPri`), and ties go by the
+   order the nodes were added. The Z3660's own boot ROM does the same — it reads each partition's
+   bootable flag and priority from the RDB (non-bootable = `-128`) and calls `AddBootNode` with it
+   (Z3660 sources, `scsi/scsi.c` and `z3660-drivers/scsi/bootrom.asm`).
+2. **Which filesystem becomes `/` — the kernel's rule** ✅. Amix's `boot1` (stock
+   `amiga/boot/boot1.c`) reads the info block and `boot2` through the **strap's own I/O request**,
+   i.e. from the node AmigaOS chose, and `boot2` (`boot2.c`) loads the kernel sector by sector through
+   the same request. Neither rescans, neither looks at priorities or units, and neither prefers a
+   miniroot; the `bootinfo` block handed to the kernel has **no boot-device field** at all
+   (`bootinfo.h`). The 68040/68060 loader changes (`copyit.s`, `rel.c`) do not touch any of this. So
+   the root comes **solely from the kernel's compiled-in `rootdev`**
+   ([below](#where-the-root-device-comes-from-standconfig-rootdev)) — for example a kernel stamped
+   `c6d0s1` (card 0, SCSI unit 6, slice 1; `rootdev` `0x00480016`).
+
+**Consequence ✅ (measured 2026-10-03, A4000T + Z3660, the card's own boot ROM):** with an installed
+disk at unit 0 (UNIX_Boot priority 2) and an installer disk at unit 6 (priority 1), both carrying
+the same `c6d0s1` kernel, AmigaOS booted the higher-priority unit-0 node — and the system that came
+up was the **installer's miniroot at unit 6**, because that is where the kernel's root points. The
+boot priority chose *whose copy of the kernel* loaded, not *which disk* Amix ran from.
+
+**Rules:** an installed disk must sit at the unit its kernel is stamped for. Booted alone from any
+other unit, its kernel looks for root at the stamped unit and finds nothing there, so the root mount
+fails (`ENXIO`) 🟡 (follows from the source; not separately measured). With two bootable Amix disks
+attached, decide by **unit**, not by priority — or attach one at a time.
+
 ## Booting Amix with root on an A4091 (and the rootdev dispatch trap)
 
 Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../drivers/a4091-53c710-driver.md) — a Zorro III board Amix shipped with **no driver** for — turned out to hinge not on the driver but on **how the kernel turns the compiled-in root device number into a SCSI card**. This section documents that dispatch path and the panic it produced. All findings here were reproduced locally in Amiberry on the real Amix 2.1c distribution unless tagged otherwise.
@@ -201,9 +233,9 @@ The `sdcard` field is the index into the SCSI driver's per-card queue table (onl
 
 ### 🔴 The mountroot panic was a dispatch bug, not a driver bug
 
-🔴 **What we believed, and why it was wrong:** booting an A4091-only machine panicked at `vfs_mountroot` with `s5mountroot VOP_OPEN error 5`. We assumed an **early-boot driver / `sptalloc`-timing** problem — that the new 53C710 driver couldn't read the disk that early in boot. **Wrong.** The A4091 driver reads perfectly *post-boot* (`rc=0`), and the panic produced **zero** driver diagnostics — meaning the driver was *never called* at all. ✅
+🔴 **A misleading signature:** booting an A4091-only machine panicked at `vfs_mountroot` with `s5mountroot VOP_OPEN error 5`. It looks like an **early-boot driver / `sptalloc`-timing** problem — the 53C710 driver unable to read the disk that early in boot — but it is not: the A4091 driver reads perfectly *post-boot* (`rc=0`), and the panic produced **zero** driver diagnostics — meaning the driver was *never called* at all. ✅
 
-🔴 **What it actually is — the phantom A3000.** `autocon()` (`amiga/kernel/support.c`) hardcoded a **phantom A3000 internal SCSI** at `0xDD0000` whenever RAM > 7 MB, *regardless of whether that hardware exists* ✅:
+🔴 **What it actually is — the phantom A3000.** `autocon()` (`amiga/kernel/support.c`) hardcoded a **phantom A3000 internal SCSI** at `0xDD0000` whenever the kernel's own end address lies above `0x07000000` — i.e. whenever the loader placed the kernel in the A3000's top motherboard bank ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)) — *regardless of whether that hardware exists* ✅:
 
 ```c
 if (index==0 && end > (char *)0x07000000 && (pc==0x0202F003)) { *bp = 0xdd0000; return 1; }
@@ -238,7 +270,7 @@ WARNING: nfs_mountroot called
 PANIC: vfs_mountroot: cannot mount root: errno 89
 ```
 
-The first message comes from the `s5` probe, the second from the `nfs` fallback, and `errno 89` (`ENOSYS`/no more fstypes) is the final give-up. The important point for diagnosis: the **EIO is a genuine device read failure** (`VOP_OPEN error 5` = `EIO`), surfaced by whichever fstype happens to probe first — *not* a filesystem-format mismatch. The real root filesystem is **`ufs`**, confirmed by `/etc/vfstab` ✅. Seeing `s5mountroot` in the message does not mean the disk is s5; it means s5 was simply the first probe to hit the dead device.
+The first message comes from the `s5` probe, the second from the `nfs` fallback, and `errno 89` (`ENOSYS`/no more fstypes) is the final give-up. The important point for diagnosis: the **EIO is a genuine device read failure** (`VOP_OPEN error 5` = `EIO`), surfaced by whichever fstype happens to probe first — *not* a filesystem-format mismatch. The real root filesystem is **`ufs`**, confirmed by `/etc/vfstab` ✅. Seeing `s5mountroot` in the message does not mean the disk is s5; it means s5 was simply the first probe to hit the dead device. The `VOP_OPEN error 6` (`ENXIO`) variant means the root device could not be opened at all, for example no controller at the root's card index, while error 5 (`EIO`) means it opened and the read failed ✅.
 
 ## The install kernel on boot.adf
 
@@ -270,7 +302,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - [Filesystems and disks](filesystems-and-disks.md) — RDB, s5 vs UFS, swap, and the full partition story.
 - [Kernel architecture](kernel-architecture.md) — the monolithic SVR4 kernel, HAT/MMU layer, switch tables.
 - [Kernel build and install](../drivers/kernel-build.md) — `make` → `relocunix` → `make bootpart` in detail.
-- [Hardware and requirements](hardware.md) — Superkickstart ROM, SCSI ID 6/ID 4, the 16 MB ceiling.
+- [Hardware and requirements](hardware.md) — Superkickstart ROM, SCSI ID 6/ID 4, the RAM envelope.
 - [Quirks checklist](quirks.md) — the dual-boot button and other surprises in one place.
 - [Emulation Fidelity](emulation-fidelity.md) — the 68030 bus-error-frame semantics the demand-paging boot leans on, and the SCSI INT2 bootstrap-latency gotcha.
 - [Install walkthrough](../getting-started/install-walkthrough.md) — running the whole flow under emulation.
@@ -280,6 +312,8 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 
 ## Sources
 
+- The **boot node vs root** split (2026-10-03) ✅ — the stock `amiga/boot/boot1.c` (`main(iob, …)`, `readblocks(iob)` for the info block and `boot2`), `boot2.c` (every read through the same `iob`), `bootinfo.h` / `bootdata.h` (no boot-device field), read from a stock 2.1c source tree; the Z3660 sources (`scsi/scsi.c`: per-partition bootable flag and RDB priority, `-128` when not bootable; `z3660-drivers/scsi/bootrom.asm`: `MakeDosNode` + `AddBootNode` with that priority); and a first-party A4000T run with two bootable disks on the Z3660 boot ROM (first-party record, 2026-10-03).
+- The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
 - amix-kerntools brief `boot2-d245-trap` (2026-07-16): single-variable boot2 splice, loader forensics (sha `5ab360b1…` vs `f287ff3a…`), bench + 5/5 metal validation 2026-07-15.
 - Research brief §3 (Boot process & disk layout) and §10 (boot.adf anatomy), `sources/research-brief.md`.
 - `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../boot-disks/anatomy-boot-adf.md): `DOS\0` OFS bootblock, failed `xdftool list` (`Invalid Root Block @880`), kernel decompression/checksum strings, NFS/RPC string table, `hat_vtokp_prot` HAT panic string, no clean ELF.
@@ -291,5 +325,5 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - `amiga/config/unix.c` (`rootdev = ROOTDEV`, `-DROOTDEV`) and `amiga/config/c6s1unix.c` (`C6D0S1 = makedevice(18,22)`, swap `c6d0s2`); `amiga/alien/sd.h` (`SDCARDS`, `sdunit`/`sdcard`/`sdpart` macros).
 - `src/kernel-patches/support.c` — the `autocon()` phantom-A3000 fix replaced by the chipset-gated WD33C93 probe; `src/kernel-patches/sd.c` — the `0x02020054,&a4091queue` registry row; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
-- The **2026-08-12/14 RAM campaign proof reports** (workspace record) ✅ — root-filesystem selection is by probe, not by configuration: the Amiga port ships `rootfstype` **empty** (AT&T generic says `s5`), `vfs_mountroot` walks `vfssw[]`, `s5mountroot` returns `EINVAL` politely so the walk continues, and `ufs` sits at `vfssw[2]` in every kernel including the install kernels. Same source for the `cdfs` errno de-laundering that makes the old `errno 5` probe stale; the 🟡 no-media `errno 25` value is a single live probe from the 2026-08-14/15 golden-regeneration event, carried unchanged. Cross-checked against the `vfs_mountroot` disassembly recorded on [building a kernel](../drivers/kernel-build.md).
-- The **Installer-NG** Waves 5–6 field campaign (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24 — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The **RAM-ceiling measurements** (first-party record, 2026-08-12/14) ✅ — root-filesystem selection is by probe, not by configuration: the Amiga port ships `rootfstype` **empty** (AT&T generic says `s5`), `vfs_mountroot` walks `vfssw[]`, `s5mountroot` returns `EINVAL` politely so the walk continues, and `ufs` sits at `vfssw[2]` in every kernel including the install kernels. Same source for the `cdfs` errno de-laundering that makes the old `errno 5` probe stale; the 🟡 no-media `errno 25` value is a single live probe (first-party record, 2026-08-14/15), carried unchanged. Cross-checked against the `vfs_mountroot` disassembly recorded on [building a kernel](../drivers/kernel-build.md).
+- The **Installer-NG** install work (first-party record, 2026-07-22/24; amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`) — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
