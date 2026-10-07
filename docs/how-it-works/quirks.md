@@ -83,6 +83,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 68 | **Real-060 MAPROM boots take the reset vector from the socket ROM** — a stock Kickstart in the sockets (`00F800D2`) needs nothing; DiagROM (`$F800D6`) needs the mapped image `.d6`-patched (`0xD6`: `00414D49` → `6000007A`, checksum at `0x7FFE8`) | ✅ | [Quirks §68](#68-z3660-d6-reset-vector) |
 | 69 | **A 68040/68060 kernel writes anything over 4 KiB to disk as 2 KiB requests, and flushes a UFS inode block twice per `sync`** (~70 ms apart) — only a fault on a block's last write persists; the disk layer's error path never misplaces data; mask dinode time fields when comparing inode copies | ✅ | [Quirks §69](#69-040-060-disk-write-stream) |
 | 70 | **68040/68060: the stock 1992 `installf` crashes (`User BUS ERROR at 4AFC0002`)**, leaving a core in `/` and a half-registered package entry; APKG's `installf` does the same job cleanly. Route runtime package operations through the APKG tools on 040/060 | ✅ | [Quirks §70](#70-stock-installf-060), [Package management](package-management.md) |
+| 71 | **A boot node's `fssm_Device` BSTR length counts the terminating NUL** — `MakeDosNode()` adds 1 to the device name's length byte (not to `dn_Name`'s) on every Kickstart from 2.0 to 3.2.3. A loader that matches its boot node against an exec `ln_Name` must compare as a C string, as the strap does | ✅ | [Quirks §71](#71-fssm-device-nul), [Boot process](boot-process.md#fssm-device-nul) |
 
 The rest of this page expands each item.
 
@@ -900,6 +901,17 @@ pages) ✅:
   original, because the copies are re-stamped on later use. A detector that compares inode copies
   must mask the dinode time fields, or it misses exactly the cases it is looking for.
 
+### 71. A boot node's `fssm_Device` length counts its NUL — compare it as a C string ✅ {#71-fssm-device-nul}
+
+`expansion.library` `MakeDosNode()` (LVO −144) stores the exec device name as a BSTR and then adds 1
+to its length byte, so `fssm_Device` for `foo.device` has length 11 with the NUL counted; the DOS name
+`dn_Name` is not adjusted ✅. The sequence is the same in all 52 checked Kickstart images from 2.0
+(r36.141) to 3.2.3 (47.115) ✅; 1.x was not checked 🟡. The strap itself opens the device from
+`BADDR(fssm_Device)` + 1 as a C string and never reads the length ✅ (3.2.3; other releases 🟡). A
+loader or mount tool that walks `eb_MountList` and matches `fssm_Device` against a driver's
+`ln_Name` over the counted length reads one byte past that name's NUL, so it must stop at the first
+NUL instead. Layout, offsets and ROM evidence: [boot process](boot-process.md#fssm-device-nul).
+
 ## Emulation & bench quirks
 
 (Two more emulator gotchas live under driver authoring, because that is where they bite:
@@ -1095,6 +1107,7 @@ keep an on-box-authored root at or below 1 234 567 blocks.
 
 ## Sources
 
+- The **`fssm_Device` NUL count** (2026-10-07) ✅ — disassembly of `expansion.library` `MakeDosNode` and the `strap` in Kickstart 3.2.3 and 3.1 r40.68, and a check of 52 Kickstart images from 2.0 to 3.2.3 (first-party record, 2026-10-07); NDK `dos/filehandler.h` (quirk 71). Details on [boot process](boot-process.md#fssm-device-nul).
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
 - Research brief §12 (quirks checklist), with specifics pulled from §2 (hardware & limits), §9 (install flow + `viper_kludge`/Y2K), and §11 (networking, X11, userland).
 - [`amix_21_root.adf`](https://www.amigaunix.com/) analysis via `tools/inspect-adf.sh` — `/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`, `amixpkg -i -m -d -r /mnt -y standard`.

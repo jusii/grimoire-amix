@@ -198,6 +198,42 @@ other unit, its kernel looks for root at the stamped unit and finds nothing ther
 fails (`ENXIO`) 🟡 (follows from the source; not separately measured). With two bootable Amix disks
 attached, decide by **unit**, not by priority — or attach one at a time.
 
+### Finding the boot node from a loader: `fssm_Device` counts its NUL ✅ {#fssm-device-nul}
+
+A loader that wants to know *which* node it was booted from walks `expansion.library`'s
+`eb_MountList`. Each BootNode's `bn_DeviceNode` (BootNode offset 16) points to a DeviceNode, whose
+`dn_Startup` (offset 28, a BPTR) points to a `struct FileSysStartupMsg` (NDK `dos/filehandler.h`) ✅:
+
+| Offset | Field | Type |
+|---|---|---|
+| 0 | `fssm_Unit` | ULONG |
+| 4 | `fssm_Device` | BSTR (the exec device name) |
+| 8 | `fssm_Environ` | BPTR to a `DosEnvec` |
+| 12 | `fssm_Flags` | ULONG |
+
+**The strap opens the boot device from that message as a C string.** In Kickstart 3.2.3
+(A4000.47.115, `$FD3F3E`–`$FD3F54`) it loads `fssm_Unit` and `fssm_Flags`, turns `fssm_Device` into
+a C-string pointer (`BADDR` + 1) and calls exec `OpenDevice`; it never reads the BSTR length ✅
+(3.2.3; other releases are expected to be identical but were not read 🟡).
+
+**The length byte of a `MakeDosNode()`-built `fssm_Device` counts the terminating NUL; `dn_Name`'s
+does not** ✅. `MakeDosNode()` (LVO −144) copies both C strings of its parameter packet into BSTRs
+whose length excludes the NUL, then runs `addq.b #1,(a0)` on the device name's length byte only. A
+boot node for `foo.device` therefore carries a length of 11, not 10, with the NUL as the last counted
+byte. Read in full in Kickstart 3.2.3 (A4000.47.115: `MakeDosNode` at `$F849FC`, the `addq.b` at
+`$F84A78`) and 3.1 r40.68 (A4000: `$FCA6E4` / `$FCA760`).
+
+- **Scope** ✅: all 52 checked 512 KiB Kickstart images that carry `expansion.library` have the same
+  `movea.l 4(a2),a0` / `bsr` (the BSTR copy) / `addq.b #1,(a0)` sequence in `MakeDosNode`. They span
+  2.0 (r36.141) through 3.2.3 (47.115) on the A500+, A600, A1200, A3000, A4000, A4000T, CD32 and CDTV.
+  The 256 KiB 1.x (V34) images were not checked 🟡.
+- **Consequence for a loader** ✅: compare `fssm_Device` with a device's exec `ln_Name` as a C string,
+  so that a NUL inside the counted length ends the name (as the strap does). A compare over the full
+  BSTR length reads one byte past `ln_Name`'s NUL and passes or fails on whatever the driver stores
+  there. The Z3660's SCSI driver stores its id string right after its name
+  (`z3660_scsi.device\0Z3660SCSI 1.5 …`, in `z3660_scsi.rom` and `z3660_scsi.device`) ✅, so on that
+  driver such a compare never matches.
+
 ## Booting Amix with root on an A4091 (and the rootdev dispatch trap)
 
 Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../drivers/a4091-53c710-driver.md) — a Zorro III board Amix shipped with **no driver** for — turned out to hinge not on the driver but on **how the kernel turns the compiled-in root device number into a SCSI card**. This section documents that dispatch path and the panic it produced. All findings here were reproduced locally in Amiberry on the real Amix 2.1c distribution unless tagged otherwise.
@@ -313,6 +349,14 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 ## Sources
 
 - The **boot node vs root** split (2026-10-03) ✅ — the stock `amiga/boot/boot1.c` (`main(iob, …)`, `readblocks(iob)` for the info block and `boot2`), `boot2.c` (every read through the same `iob`), `bootinfo.h` / `bootdata.h` (no boot-device field), read from a stock 2.1c source tree; the Z3660 sources (`scsi/scsi.c`: per-partition bootable flag and RDB priority, `-128` when not bootable; `z3660-drivers/scsi/bootrom.asm`: `MakeDosNode` + `AddBootNode` with that priority); and a first-party A4000T run with two bootable disks on the Z3660 boot ROM (first-party record, 2026-10-03).
+- The **`fssm_Device` NUL count** (2026-10-07) ✅ — disassembly of `expansion.library`
+  `MakeDosNode` (LVO −144) and of the `strap` resident in Kickstart 3.2.3 (A4000.47.115) and 3.1
+  r40.68 (A4000), plus a mechanical check of the same three-instruction sequence across 52 Kickstart
+  images from 2.0 to 3.2.3 (first-party record, 2026-10-07; ROM releases, offsets and instruction
+  names only); the `struct FileSysStartupMsg` layout from NDK `dos/filehandler.h` (the
+  `expansion.library/MakeDosNode` autodoc documents the parameter packet, not the NUL count); the
+  Z3660 driver binaries `z3660_scsi.rom` (data at ROM offset `$21AC`) and `z3660_scsi.device` for the
+  bytes after the device name.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
 - amix-kerntools brief `boot2-d245-trap` (2026-07-16): single-variable boot2 splice, loader forensics (sha `5ab360b1…` vs `f287ff3a…`), bench + 5/5 metal validation 2026-07-15.
 - Research brief §3 (Boot process & disk layout) and §10 (boot.adf anatomy), `sources/research-brief.md`.
