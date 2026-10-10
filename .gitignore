@@ -14,7 +14,9 @@ tools/_work/
 .DS_Store
 *~
 
-# Local Claude Code project dir (settings / session cache) — not for publishing
+# Local Claude Code files (instructions, settings, session cache) — local-only, not for publishing;
+# contributors follow AGENTS.md and README.md
+CLAUDE.md
 .claude/
 
 # MkDocs build output
