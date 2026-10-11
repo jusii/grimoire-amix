@@ -2,6 +2,11 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-11 — quirks 71; station notes local-only (0d766a2, b77b04a)
+
+boot-process, quirks 71: fssm_Device's BSTR length counts the NUL. The station notes file is untracked and ignored
+with .claude/ (owner rule 2026-10-10).
+
 ## 2026-10-05 — 040/060, Z3660, A4092, quirks 58-70, the content review
 
 One entry for the work of 2026-09-14 to 2026-10-04.
