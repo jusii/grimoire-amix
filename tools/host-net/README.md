@@ -44,8 +44,8 @@ Why routed rather than a true L2 bridge:
 | `ETH`, `TAP`, `TAP_OWNER` | `amix-lan-up.sh` | LAN uplink (autodetected from the default route), TAP name (`tap0`), TAP owner (the invoking user) |
 | `AMIX_HOST`, `AMIX_PORT`, `AMIX_USER`, `AMIX_PASS` | `amixsh.py`, `amixput.py`, `amixsync.py` | the guest to talk to (`192.0.2.38`), FTP port, login (`root` / a placeholder password) |
 
-For example: `GUEST_IP=192.168.1.50 TAP_ANCHOR=192.168.1.250 ETH=eth0 sudo -E sh amix-lan-up.sh`,
-then `AMIX_HOST=192.168.1.50 python3 amixsh.py 'uname -a'`.
+For example: `GUEST_IP=192.0.2.50 TAP_ANCHOR=192.0.2.250 ETH=eth0 sudo -E sh amix-lan-up.sh`,
+then `AMIX_HOST=192.0.2.50 python3 amixsh.py 'uname -a'`.
 
 ## Quick start
 
