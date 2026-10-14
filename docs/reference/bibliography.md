@@ -188,6 +188,13 @@ Per the hierarchy, archived **comp.unix.amiga** ranks above general forum lore.
   install procedures, networking workarounds, contemporary user reports).
 - **English Amiga Board (EAB)** threads — 🟡 (the 3B2-codebase discussion, hardware lore).
 
+### Community software (third-party)
+
+- **amix-x11-aga** — <https://github.com/hmlio/amix-x11-aga> 🟡 (a colour X server for the native
+  AGA/ECS chipset)
+- **manx** — <https://github.com/slaapliedje/manx> 🟡 (a Lynx-style text browser with its own TLS for
+  68030 SVR4)
+
 ### Emulator issue trackers & documentation
 
 These ground the [getting-started / emulation](../getting-started/emulation-winuae.md) pages.
@@ -253,6 +260,7 @@ so a reader (human or agent) can resolve and reproduce them:
 - osnews.com (Feb 2026); <https://datagubbe.se/amix/>; <https://virtuallyfun.com/2013/01/13/amix/>;
   ode2commies.blogspot.com (2024).
 - comp.unix.amiga (Google Groups / narkive); English Amiga Board threads.
+- <https://github.com/hmlio/amix-x11-aga>; <https://github.com/slaapliedje/manx>.
 - WinUAE / FS-UAE documentation; BlitterStudio/amiberry issue #1376
   (<https://github.com/BlitterStudio/amiberry/issues/1376>).
 - The `llms.txt` convention — Jeremy Howard, Answer.AI, September 2024 (<https://llmstxt.org/>).

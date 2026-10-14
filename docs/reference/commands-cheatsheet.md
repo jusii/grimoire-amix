@@ -118,7 +118,8 @@ so verify against the client's own catalog, not a guessed path. Full format spec
 
 ## Kernel and driver builds
 
-Amix is a **monolithic SVR4 kernel with no loadable modules** ✅ — drivers are statically linked
+Stock Amix is a **monolithic SVR4 kernel with no loadable modules** ✅ ([one third-party
+exception](../how-it-works/kernel-architecture.md#loadable-modules)) — drivers are statically linked
 in, so adding or changing a driver means **relinking the kernel and rebooting**. The kernel
 source/objects live in **`/usr/sys`** ✅; the switch tables live in **`master.d/kernel.c`** ✅.
 
@@ -327,7 +328,7 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 - `asokero/va2000-amix` repo — `rm -f amiga/config/unix.o master.d/exp unix`, `cp relocunix /stand`,
   `make bootpart KERNEL=relocunix`, `mknod /dev/va2000 c 68 0`, pre-POSIX `/bin/sh` note.
 - `isoriano1968/hydra-amix` repo — `slink addaen /dev/hya0 hya0`, native `make` / `make force`, `mknod /dev/hya0 c 47 0`, STREAMS `cdevsw` slot 47.
-- The **amix-kerntools** notes @ `8a76775` — SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660, 2026-07-12 ✅.
+- SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660 (first-party record, 2026-07-12) ✅.
 - The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
 - The **amix-packagemanager** repo tooling (`tools/repo/publish.sh`, `gen-catalog.py`) — the HTTP package-repo `pkgs/`-segment URL layout, verified live 2026-07-22 ✅.
