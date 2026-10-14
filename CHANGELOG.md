@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-14 — quirk 74: the stock 68030 kernel without an FPU panics at the first signal (7b4ca6f, 579ac44)
+
+Boots past `no fpu detected`, then `sendsig`'s ungated FRESTORE (text 0x12A) faults in pid 1; seen on a real A1200 030
+card and in Amiberry (`fpu_model=0`). Triage rule and pointers from the hardware pages; FPU-less 030 support marked
+planned.
+
 ## 2026-10-14 — consistency audit against the amigaux 1.0 facts (daa69f2..59e03ee)
 
 127 fixes from the audit of every confidence-tagged claim: public citations for the newly published repos; stale and
