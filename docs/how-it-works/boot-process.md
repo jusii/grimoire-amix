@@ -88,7 +88,7 @@ So `BOOTLEN = BOOTSIZE * 2048 = 4096` blocks of 512 bytes = 2 MB ✅. This is th
 
 ## From kernel source to a bootable partition
 
-Amix is a **monolithic SVR4 kernel with no loadable modules** — drivers are statically linked in — so installing a new kernel (or a kernel with an added driver) means relinking `/unix` and rewriting the boot partition ✅. The flow, from the [Ditto driver paper](../reference/bibliography.md) and the modern driver repos:
+Stock Amix is a **monolithic SVR4 kernel with no loadable modules** ([one third-party exception](kernel-architecture.md#loadable-modules)) — drivers are statically linked in — so installing a new kernel (or a kernel with an added driver) means relinking `/unix` and rewriting the boot partition ✅. The flow, from the [Ditto driver paper](../reference/bibliography.md) and the modern driver repos:
 
 ```sh
 # 1. Build the kernel in the kernel source tree.
@@ -182,21 +182,44 @@ are easy to conflate:
    i.e. from the node AmigaOS chose, and `boot2` (`boot2.c`) loads the kernel sector by sector through
    the same request. Neither rescans, neither looks at priorities or units, and neither prefers a
    miniroot; the `bootinfo` block handed to the kernel has **no boot-device field** at all
-   (`bootinfo.h`). The 68040/68060 loader changes (`copyit.s`, `rel.c`) do not touch any of this. So
-   the root comes **solely from the kernel's compiled-in `rootdev`**
+   (`bootinfo.h`). The public port's 68040/68060 loader changes (`copyit.s`, `rel.c`) do not touch
+   any of this. So on a stock kernel — and on the project's kernels before the amigaux 1.0 (r6)
+   release, [below](#r6-boot-disk-root) — the root comes **solely from the kernel's compiled-in
+   `rootdev`**
    ([below](#where-the-root-device-comes-from-standconfig-rootdev)) — for example a kernel stamped
    `c6d0s1` (card 0, SCSI unit 6, slice 1; `rootdev` `0x00480016`).
 
-**Consequence ✅ (measured 2026-10-03, A4000T + Z3660, the card's own boot ROM):** with an installed
+**Consequence on those kernels ✅ (measured 2026-10-03, A4000T + Z3660, the card's own boot ROM):** with an installed
 disk at unit 0 (UNIX_Boot priority 2) and an installer disk at unit 6 (priority 1), both carrying
 the same `c6d0s1` kernel, AmigaOS booted the higher-priority unit-0 node — and the system that came
 up was the **installer's miniroot at unit 6**, because that is where the kernel's root points. The
 boot priority chose *whose copy of the kernel* loaded, not *which disk* Amix ran from.
 
-**Rules:** an installed disk must sit at the unit its kernel is stamped for. Booted alone from any
-other unit, its kernel looks for root at the stamped unit and finds nothing there, so the root mount
-fails (`ENXIO`) 🟡 (follows from the source; not separately measured). With two bootable Amix disks
-attached, decide by **unit**, not by priority — or attach one at a time.
+**Rules (stock and pre-r6 kernels):** an installed disk must sit at the unit its kernel is stamped
+for. Booted alone from any other unit, its kernel looks for root at the stamped unit and finds
+nothing there, so the root mount fails (`ENXIO`) 🟡 (follows from the source; not separately
+measured). With two bootable Amix disks attached, decide by **unit**, not by priority — or attach
+one at a time.
+
+### The 1.0 (r6) kernels root the disk they were booted from {#r6-boot-disk-root}
+
+In the amigaux 1.0 kit the boot loader tells the kernel which disk it was started from, and the
+kernel roots that disk, so an installed disk boots from any unit ✅ (the 1.0 release notes). A
+system whose root sits where the boot ROM cannot start it — a disk behind an A4092, whose ROM does
+not offer Amix partitions to Kickstart — boots from a small disk on the Z3660 that carries a **root
+record** naming the root disk. One console line at every boot says which root was used and why:
+
+```text
+RTH1: root c3d0s1 from the boot disk (...)
+RTH1: root c6d0s1 built in (no record)
+```
+
+Without a usable hint the kernel falls back to its built-in root (Z3660 unit 6). A valid hint that
+names an empty unit fails the mount by design, so the kernel never boots a disk you did not install
+to; `/sbin/bcheckrc` takes the root from the mounted disk, not from `/etc/vfstab`. On metal, a disk
+installed to unit 3 rooted `c3d0s1`, the same disk moved to unit 2 rooted `c2d0s1`, and a disk
+behind an A4092 rooted `c9d0s1` through its root record 🟡 (one A4000 + Z3660; first-party record,
+2026-10-11).
 
 ### Finding the boot node from a loader: `fssm_Device` counts its NUL ✅ {#fssm-device-nul}
 
@@ -240,7 +263,7 @@ Getting Amix to mount root on a [Commodore A4091 (53C710) SCSI controller](../dr
 
 ### Where the root device comes from: `/stand/CONFIG` → `rootdev`
 
-The root device is **compiled into the kernel**, not discovered at boot. It is declared in `amiga/config/unix.c` and fed from the system configuration (`/stand/CONFIG`) via `-DROOTDEV` ✅:
+The root device is **compiled into the kernel**, not discovered at boot (on stock kernels; the 1.0 kernels add a boot-disk hint — [above](#r6-boot-disk-root)). It is declared in `amiga/config/unix.c` and fed from the system configuration (`/stand/CONFIG`) via `-DROOTDEV` ✅:
 
 ```c
 /* amiga/config/unix.c */
@@ -310,7 +333,7 @@ The first message comes from the `s5` probe, the second from the `nfs` fallback,
 
 ## The install kernel on boot.adf
 
-During installation the kernel does **not** come from the hard disk's boot partition — it comes from the boot floppy (`amix_21_boot.adf`) in DF0. That floppy carries a special **NFS/RPC-capable install kernel** ✅: alongside the decompression/checksum strings, the bootstrap region contains a full **RPC/NFS client string table**, consistent with an installer that can pull the distribution over the network as well as from tape. The normal end-to-end install sequence (boot floppy → UFS miniroot on `root.adf` → tape at SCSI ID 4 → `make bootpart` → reboot) is described in [filesystems and disks](filesystems-and-disks.md) and the [install walkthrough](../getting-started/install-walkthrough.md).
+During installation the kernel does **not** come from the hard disk's boot partition — it comes from the boot floppy (`amix_21_boot.adf`) in DF0. That floppy carries a special **NFS/RPC-capable install kernel** ✅: alongside the decompression/checksum strings, the bootstrap region contains a full **RPC/NFS client string table**, consistent with an installer that can pull the distribution over the network as well as from tape. The normal end-to-end install sequence (boot floppy → s5 miniroot on `root.adf` → tape at SCSI ID 4 → `make bootpart` → reboot) is described in [filesystems and disks](filesystems-and-disks.md) and the [install walkthrough](../getting-started/install-walkthrough.md).
 
 ## What the real boot.adf actually contains
 
@@ -358,16 +381,17 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
   Z3660 driver binaries `z3660_scsi.rom` (data at ROM offset `$21AC`) and `z3660_scsi.device` for the
   bytes after the device name.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
-- amix-kerntools brief `boot2-d245-trap` (2026-07-16): single-variable boot2 splice, loader forensics (sha `5ab360b1…` vs `f287ff3a…`), bench + 5/5 metal validation 2026-07-15.
+- The **two boot2 lineages** (first-party record, 2026-07-15/16): single-variable boot2 splice, loader forensics (sha `5ab360b1…` vs `f287ff3a…`), bench + 5/5 metal validation 2026-07-15.
+- The **1.0 (r6) root selection** ✅ — [amix-installng](https://github.com/jusii/amix-installng) `docs/release-notes-amigaux-1.0.md` ("One kernel per driver family; any target disk at install", "Installing from CD, and onto a disk behind the A4092": the boot-disk hint, the `RTH1` console line, the built-in fallback, the root record, `/sbin/bcheckrc`); the metal roots `c3d0s1`, moved-disk `c2d0s1` and A4092 `c9d0s1` on one A4000 + Z3660 (first-party record, 2026-10-11) 🟡.
 - Research brief §3 (Boot process & disk layout) and §10 (boot.adf anatomy), `sources/research-brief.md`.
 - `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](../boot-disks/anatomy-boot-adf.md): `DOS\0` OFS bootblock, failed `xdftool list` (`Invalid Root Block @880`), kernel decompression/checksum strings, NFS/RPC string table, `hat_vtokp_prot` HAT panic string, no clean ELF.
 - `amix_21_root.adf` install scripts (via `tools/inspect-adf.sh`): `BOOTSIZE=2`, `BOOTLEN=BOOTSIZE*2048`, `BREAKPT=120`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`. The root-filesystem prompt is `[s5]` and empty input selects s5; `ANS="ufs"` appears only as a case branch reached when the user types `ufs` (corrected 2026-07-19 — previously recorded here as the default).
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (the `rdbunix` kernel image name; statically linked monolithic kernel; `make` in `/usr/sys`).
 - Modern driver repos for the `relocunix` / `make bootpart KERNEL=relocunix` flow: <https://github.com/asokero/va2000-amix>, <https://github.com/isoriano1968/hydra-amix>.
 - amigaunix.com (Superkickstart dual-boot via right mouse button, hardware requirements): <https://www.amigaunix.com/>.
-- The A4091-on-Amix project — `NOTES.md` §16, §18, §19 (root-on-A4091 / mountroot dispatch trap, reproduced locally ✅) and `src/`/`tools/`.
+- The A4091-on-Amix project, [amix-a4091](https://github.com/jusii/amix-a4091) — its `README.md` (root on the A4091; the phantom-A3000 that stole card 0, reproduced locally ✅) and `src/`/`tools/`.
 - `amiga/config/unix.c` (`rootdev = ROOTDEV`, `-DROOTDEV`) and `amiga/config/c6s1unix.c` (`C6D0S1 = makedevice(18,22)`, swap `c6d0s2`); `amiga/alien/sd.h` (`SDCARDS`, `sdunit`/`sdcard`/`sdpart` macros).
-- `src/kernel-patches/support.c` — the `autocon()` phantom-A3000 fix replaced by the chipset-gated WD33C93 probe; `src/kernel-patches/sd.c` — the `0x02020054,&a4091queue` registry row; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
+- amix-a4091 `src/kernel-patches/support.c.patch` — the `autocon()` phantom-A3000 heuristic replaced by the chipset-gated WD33C93 probe; `driver.conf` — the `0x02020054  a4091queue` row, from which the build harness generates the `sd.c` registry entry; `src/a4091-wr.c` — the 53C710 READ+WRITE driver.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
 - The **RAM-ceiling measurements** (first-party record, 2026-08-12/14) ✅ — root-filesystem selection is by probe, not by configuration: the Amiga port ships `rootfstype` **empty** (AT&T generic says `s5`), `vfs_mountroot` walks `vfssw[]`, `s5mountroot` returns `EINVAL` politely so the walk continues, and `ufs` sits at `vfssw[2]` in every kernel including the install kernels. Same source for the `cdfs` errno de-laundering that makes the old `errno 5` probe stale; the 🟡 no-media `errno 25` value is a single live probe (first-party record, 2026-08-14/15), carried unchanged. Cross-checked against the `vfs_mountroot` disassembly recorded on [building a kernel](../drivers/kernel-build.md).
-- The **Installer-NG** install work (first-party record, 2026-07-22/24; amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`) — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The **Installer-NG** install work (first-party record, 2026-07-22/24; [amix-installng](https://github.com/jusii/amix-installng)) — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).

@@ -6,7 +6,7 @@ status: draft
 
 # X11 & the Desktop
 
-Amix ships a stock **X Window System** as its GUI: by default **X11R4** 🟡, optionally upgraded to **X11R5** via the *Gateway! Vol.2* CD 🟡. The default window environment is **OpenLook** (`olwm`/`olwsm`); on a machine with only the built-in mono display you typically run the lighter **`tvtwm`** instead 🟡. Color X requires an **A2410** graphics board, driven through a **TIGA** server started with `olinit -- -tiga` 🟡. The historical X stack is notoriously slow and buggy ("slow as molasses" on the mono path 🟡), so the modern reproduction route is a **retargetable-graphics (RTG)** server (`Xrtg`) on top of a framebuffer driver such as the MNT [VA2000](../drivers/case-studies/va2000.md) ✅.
+Amix ships a stock **X Window System** as its GUI: by default **X11R4** 🟡, optionally upgraded to **X11R5** via the *Gateway! Vol.2* CD 🟡. The default window environment is **OpenLook** (`olwm`/`olwsm`); on a machine with only the built-in mono display you typically run the lighter **`tvtwm`** instead 🟡. With the historical stock servers, color X requires an **A2410** graphics board, driven through a **TIGA** server started with `olinit -- -tiga` 🟡; color now also comes from the RTG servers below and, on the native AGA/ECS chipset, from the third-party `Xaga` server 🟡 ([below](#color-on-the-native-chipset-xaga)). The historical X stack is notoriously slow and buggy ("slow as molasses" on the mono path 🟡), so the modern reproduction route is a **retargetable-graphics (RTG)** server (`Xrtg`) on top of a framebuffer driver such as the MNT [VA2000](../drivers/case-studies/va2000.md) ✅.
 
 This page covers the historical X11 environment, how to bring up color on the A2410, the OpenLook desktop and its font-path gotcha, the well-known X quirks, and the modern RTG alternative. For driver-level detail on building an X server, see [X11 / RTG drivers](../drivers/x11-rtg-drivers.md) and the [`xrtg-amix` case study](../drivers/case-studies/xrtg.md).
 
@@ -40,6 +40,19 @@ On a machine with no A2410 — i.e. only the Amiga's built-in framebuffer drivin
 # (xinit/startx will read your ~/.xinitrc; tvtwm is the typical choice.)
 tvtwm &
 ```
+
+## Color on the native chipset: `Xaga` {#color-on-the-native-chipset-xaga}
+
+A third-party X11R5 server back-end, `Xaga` ([`hmlio/amix-x11-aga`](https://github.com/hmlio/amix-x11-aga),
+first released 2026-10-13), gives color X on the native chipset of an Amix 2.1c system with no
+graphics card: **16 colors on the stock kernel**, **256 colors** (24-bit palette) with a patch to the
+kernel console driver, at 640×512 interlaced PAL 🟡. Its author reports it running on a real
+A4000/030, and on the A1200 (AGA) and A600 (ECS, 16 colors) in emulation only; it is not reproduced
+here 🟡. It draws with the stock `cfb` code into a chunky shadow buffer in fast RAM and converts the
+changed areas to bitplanes, so it is usable but not fast — about 0.3 s for a full-screen update at
+16 colors by the author's measurement 🟡. Building it needs the X11R5 server sources and the kernel
+relink kit from the Amix tape, and the author asks for 12 MB of fast RAM or more, tracing corrupted X
+requests on smaller configurations to Amix's local socket path 🟡.
 
 ## Color on the A2410 (TIGA)
 
@@ -103,7 +116,7 @@ xmodmap ~/.Xmodmap
 
 ## The modern alternative: RTG via `Xrtg` + a framebuffer driver
 
-Rather than fight the A2410 TIGA path or the mono server, the modern hobby route is **retargetable graphics**: a character framebuffer driver plus an X11R5 server (`Xrtg`) that renders to it ✅. This is the project's centerpiece example and is fully reproducible against Amix 2.1p2a on an A3000 / 68030 / Zorro II ✅.
+Rather than fight the A2410 TIGA path or the mono server, the modern hobby route is **retargetable graphics**: a character framebuffer driver plus an X11R5 server (`Xrtg`) that renders to it ✅. This is the project's centerpiece example; its author reports it reproducible against Amix 2.1p2a on an A3000 / 68030 / Zorro II 🟡 (author-reported, not reproduced here).
 
 The two-piece stack:
 
@@ -123,7 +136,7 @@ olwm &
 
 - Build details (X11R5 `imake` with a custom `config/amix.cf`, `BuildPex=NO`, SVR4 lib rules to avoid `ranlib` issues) live in the [xrtg case study](../drivers/case-studies/xrtg.md) ✅.
 - Getting the VA2000 driver into the kernel (the 6 patched kernel files, `mknod /dev/va2000 c 68 0`, `make install` → `relocunix`, `make bootpart KERNEL=relocunix`, reboot) is covered in the [VA2000 case study](../drivers/case-studies/va2000.md) and [kernel build](../drivers/kernel-build.md) ✅.
-- **Licensing:** the new code is MIT-licensed; the X11R5 portions retain X Consortium terms; both repos are **source-only** because they link against a licensed Amix SVR4 environment ✅.
+- **Licensing:** the new code is MIT-licensed; the X11R5 portions retain X Consortium terms ✅. Building `Xrtg` needs an installed Amix 2.1 system with its X11R5 source tree at `/usr/x11r5` (the `xrtg-amix` README's requirement), and the repo also ships a script that packages a built `Xrtg` as a binary tar ✅.
 
 ### The newer generation: X11R6.3 on the ZZ9000 (+ Mesa)
 
@@ -141,8 +154,11 @@ release and a newer MNT card:
    rendering through `Xzz9000` — no server-side GLX required; bootstrap stage (static
    `libGL`/`libGLU`/`libglut` + demos) ✅.
 
-Status ✅ (author-reported, A3000UX + ZZ9000): `Xzz9000` builds with GCC 2.7.2.3, links, and starts a
-`twm`/`xterm`/`xclock` session at 1920×800; it is explicitly development software. The historical
+Status 🟡 (author-reported, A3000UX + ZZ9000, not reproduced here): `Xzz9000` builds with GCC
+2.7.2.3, links, and starts a `twm`/`xterm`/`xclock` session at 1920×800; it is explicitly development
+software. Separately, the same `Xzz9000`, cross-built with `gcc-cross-amix`, brought the OpenLook
+desktop up on a Z3660's RTG output in a real A4000 on 2026-09-19 ✅
+([`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) `docs/DEMO-RTG.md`). The historical
 desktop notes on this page (OpenLook, Xol fonts, keymap quirks) apply to the *stock* servers — the
 R6.3 test session uses `twm` from its own tree ✅.
 
@@ -166,3 +182,6 @@ R6.3 test session uses `twm` from its own tree ✅.
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — VA2000 framebuffer driver source.
 - `sources/research-brief.md` §21 — the X11R6.3 / ZZ9000 / Mesa 3.1 stack: [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix), [`isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix), [`isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) (repo source/READMEs, 2026-07-03).
 - [amigaunix.com — X11](https://www.amigaunix.com/doku.php/x11) — community-reported R4/R5, TIGA, OpenLook, and keymap quirks (🟡).
+- [`hmlio/amix-x11-aga`](https://github.com/hmlio/amix-x11-aga) — `Xaga`: README (status, colors, requirements, known issues), `docs/design.md` and `docs/findings.md`; author-reported, not reproduced here (🟡).
+- The `asokero/xrtg-amix` README — the `/usr/x11r5` source-tree requirement, the licence section, and `make-release.sh` (binary tar packaging) ✅.
+- [`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) — README and `docs/DEMO-RTG.md`: the cross-built `Xzz9000` OpenLook desktop on a Z3660 in a real A4000, 2026-09-19 ✅.

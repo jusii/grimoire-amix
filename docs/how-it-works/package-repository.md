@@ -37,9 +37,9 @@ building packages in the first place, see [toolchain and packaging](../drivers/t
   address, and `apkg` still sends the *name* in `Host:` ✅.
 - **The client's compiled-in default** (no `repo=` in `/etc/apkg.conf`) is
   `http://pkg.amigaux.org` in the client source since 2026-09-14 ✅.
-- **Contents (2026-09-26):** **39 catalog entries — the 27 stock Amix 2.1 packages plus 12 of the
-  project's own** (the `apkg` client and its engine, `cdfs`, the first batch of six cross-built
-  tool packages, `amix-benchmark`, and two `test` fixtures) ✅.
+- **Contents (2026-10-14):** **41 catalog entries — the 27 stock Amix 2.1 packages plus 14 of the
+  project's own** (the `apkg` client and its engine, `cdfs`, nine cross-built add-on packages under
+  `pkgs/extra/` — eight tools and libraries plus `amix-benchmark` — and two `test` fixtures) ✅.
 
 ## Repository layout
 
@@ -53,6 +53,9 @@ Uniformly ✅ (repo source + reproduced locally against a real staging tree).
     ├── base/                  packages we build ourselves
     │   ├── APKG-0.1.pkg
     │   └── APKGENG-1.12.0.pkg
+    ├── extra/                 cross-built add-on packages (tools, libraries, amix-benchmark)
+    │   ├── gzip-1.3.12.pkg
+    │   └── zlib-1.2.13.pkg
     ├── stock/                 repackaged Amix 2.1 distribution packages
     │   ├── core-2.1.pkg
     │   └── net-2.1.pkg
@@ -68,9 +71,9 @@ Two rules make this work:
   client builds the correct URL, so only manual host-side checks fall into this trap. Verify against
   the client's own catalog, not a guessed path. (Also noted in the
   [command cheat sheet](../reference/commands-cheatsheet.md).)
-- **The subdirectories are pure metadata.** `base/`, `stock/`, `test/` carry no meaning to the
-  client; they exist because the `filename` field records a relative path, so the tree can be
-  reorganised by regenerating the catalog ✅.
+- **The subdirectories are pure metadata.** `base/`, `extra/`, `stock/`, `test/` carry no meaning
+  to the client; they exist because the `filename` field records a relative path, so the tree can
+  be reorganised by regenerating the catalog ✅.
 
 **Package basenames must be unique repository-wide** ✅ — the URL uses the full relative path but
 the client's on-box cache is **flat** and keys on the basename. `name-version.pkg` naming makes this
@@ -352,6 +355,10 @@ Two details make the gate trustworthy rather than decorative:
   the catalog-regenerate trap (2026-09-16 publish log); owner-run publishing (2026-09-16); the
   39-entry live catalog, 27 stock + 12 own, and the stock packages' exposure posture (2026-09-26).
 - The 2026-09-23 licensing outcome — [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) ✅.
+- The **live catalog** `http://pkg.amigaux.org/catalog`, read 2026-10-14 ✅: 41 rows — `stock/` (27),
+  `extra/` (9), `base/` (3: `APKG`, `APKGENG`, `cdfs`) and `test/` (2); the `pkgs/extra/` add-ons and
+  their publication dates (2026-09-15, 09-16, 09-26) per the
+  [`jusii/amix-packages`](https://github.com/jusii/amix-packages) README.
 - A **real staging tree** inspected locally (2026-07-26): 32 catalog rows over `stock/` (27),
   `base/` (3) and `test/` (2), catalog md5 `edeba578b73fc892f3c8c5ede603aca7` ✅.
 - The stock-metadata facts the authored dependency graph rests on (no `depend` files, no install

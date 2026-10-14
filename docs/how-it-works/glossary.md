@@ -46,9 +46,9 @@ See [Zorro AutoConfig](../drivers/zorro-autoconfig.md). Distinct from the boot-t
 ## Amix
 
 Commodore's port of **AT&T UNIX System V Release 4 (SVR4)** to the 68030 Amiga; kernel platform
-string `m68k-cbm-sysv4` ✅. Monolithic kernel, **no AmigaOS compatibility layer**, does not touch
-the Amiga custom chips — it treats the machine as a generic 68030 Unix workstation ✅. See the
-[overview](overview.md).
+string `m68k-cbm-sysv4` ✅. Monolithic kernel, **no AmigaOS compatibility layer** ✅. It drives the
+native chipset through its own kernel drivers — the bitplane console and `/dev/screen`, on which the
+stock mono X server runs — never through AmigaOS libraries ✅. See the [overview](overview.md).
 
 ## cdevsw / bdevsw
 
@@ -85,9 +85,9 @@ boot ("brel") format ✅. Part of the on-box kernel build: native `cc`/GCC → E
 **Hardware Address Translation** — the SVR4 MMU abstraction layer ✅. Amix uses the full 68030 MMU
 through HAT ✅; the install kernel even carries the panic string
 `hat_vtokp_prot: user addr in kernel space` ✅. The MMU requirement is why Amix needs MMU emulation
-in WinUAE and cannot run on MMU-less CPUs or the 68040 (whose MMU the kernel predates) ✅. See the
-[kernel architecture](kernel-architecture.md), [hardware](hardware.md), and the current
-[040/060 status](68040-68060-status.md).
+in WinUAE, and why the **stock** kernel cannot run on MMU-less CPUs or the 68040/68060 (whose MMU it
+predates) ✅; the 040/060 port kernels can ✅. See the [kernel architecture](kernel-architecture.md),
+[hardware](hardware.md), and the current [040/060 status](68040-68060-status.md).
 
 ## kernel.c
 
@@ -221,9 +221,10 @@ addresses are assigned by [AUTOCONFIG](#autoconfig) at reset ✅. See [hardware]
 
 ## Sources
 
-- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — sections 1, 2, 3, 4, 5, 6, 7, 9, 11 (the grounding source of every definition above)
+- [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — sections 1, 2, 3, 4, 5, 6, 7, 9, 11 (the grounding source of every definition above); the stock-only scope of the HAT entry's CPU limit per the [040/060 status page](68040-68060-status.md)
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model, `cdevsw`/`bdevsw`, majors/minors, `spl`/clist, `rdbunix` (the Ditto paper)
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — miniroot, UFS, `viper_kludge`, install/partition logic, `relocunix`/`make bootpart`
 - `amix_21_boot.adf` analysis via `tools/inspect-adf.sh` — compressed kernel, HAT panic string
+- The native-chipset display path (Amix entry): research brief §21 (the screen manager's `DisplayScreen()`/`NewBitmap` chip-RAM bitmap on the native display) and [`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) `docs/X-INSTALL-RTG.md` (the console login on the chipset screen; the stock `startx` on the native chipset); the stock `cdevsw[]` row 10 `screen` on the [major-number registry](../reference/major-number-registry.md)
 - Driver repos: [asokero/va2000-amix](https://github.com/asokero/va2000-amix), [asokero/xrtg-amix](https://github.com/asokero/xrtg-amix), [asokero/lszorro-amix](https://github.com/asokero/lszorro-amix), [isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix) — `autocon()`, RTG/`/dev/va2000`, DLPI/STREAMS, `elf2brel`, `m68k-cbm-sysv4`
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — community-reported (🟡) details: `s5`-vs-UFS default rationale, `amixpkg` flakiness, AmixBP

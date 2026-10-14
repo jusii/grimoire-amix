@@ -30,8 +30,8 @@ memory — and you are staring at a machine that produces nothing.
 - **The ceiling is a fixed 4 MiB kernel arena, not an arithmetic accident** — ≈64 MB on the stock
   68030 kernel, ≈128 MB on a 4 KB-page 68060 kernel, and it moves only if the arena moves. ✅
 - **On a kernel whose arena *was* moved, 88 MB boots durably and networks on real hardware**, 128 MB
-  banners and then hangs, and ≈151 MB is the end stop ✅ — but on a **stock** kernel nothing between
-  32 MB and 512 MB has ever booted.
+  banners and then hangs, and ≈151 MB is the end stop ✅ — but no boot of a **stock** kernel above
+  16 MB has its RAM layout recorded (an earlier 32 MB report is withdrawn as evidence 🔴).
 - **This is a kernel limit, not an emulator bug.** Any route that hands the guest memory reaches the
   same code — emulator RAM knobs, a Zorro III fastmem board, accelerator DDR. ✅
 
@@ -141,7 +141,7 @@ On real hardware, on a kernel whose arena had been moved (except where the row s
 
 | Total RAM | Result | Tag |
 |---|---|---|
-| **32 MB** | Boots. The largest value with positive evidence on a **stock** kernel | ✅ |
+| **32 MB** (*stock* kernel) | Reported to boot, but the RAM layout was not recorded — withdrawn as evidence (see [the short version](#the-short-version)) | 🔴 |
 | **88 MB** | **Boots durably and networks** — a working multiuser machine, not just a banner | ✅ |
 | **128 MB** (arena-moved 030 kernel) | Prints the **full** SVR4 banner (`134215680` bytes of memory), then **hangs post-banner** | ✅ observed / 🔴 cause open |
 | **128 MB** (4 KB-page **68060** kernel, real 68LC060, A4000D + Z3660, 2026-09) | **Boots, installs, runs multiuser** — `Total Unix memory 134213632` | ✅ |
@@ -208,7 +208,7 @@ Uniformly ✅ unless tagged.
 |---|---|---|
 | Chip RAM | 2 MB (4 MB on the A4000-style rigs) | Standard; not counted against the Fast RAM rule |
 | Fast / motherboard RAM | **16 MB** A3000 motherboard RAM for the stock kernel; up to **64 MB** for a 030 kernel that probes for the A3000 SCSI; **128 MB** on the 040/060 line | a bigger motherboard bank breaks the stock kernel's root mount ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)); less than 8 MB livelocks under package-install workloads; stay under the describable-RAM ceiling for your kernel |
-| A debug/DDR window (e.g. a stand-in for accelerator memory) | **32 MB** if you need one at all | The only oversized value with positive boot evidence *on a stock kernel* — the 88 MB result below needed the kernel arena moved |
+| A debug/DDR window (e.g. a stand-in for accelerator memory) | **32 MB** if you need one at all | In emulation a 32 MB window over 16 MB of motherboard RAM got kernels with the stock arena past `page_init()` (to `vfs_mountroot` and `/sbin/init`, not to a login), where 512 MB died in the wild write. The 88 MB result below needed the kernel arena moved 🟡 |
 | Zorro III fastmem board | avoid | It is AutoConfig RAM counted straight from the memory list, so it reaches the ceiling faster than a mapped window 🟡 |
 
 A window that is *not* an AutoConfig RAM board can still be counted: if it lands immediately above
@@ -297,15 +297,14 @@ offset**, and validated each step by booting a real A4000 rather than an emulato
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
 - `sources/research-brief.md` §2 (hardware envelope: 4–16 MB Fast RAM) and §4 (kernel HAT/MMU, RAM
   ceiling) — grounding for the 16 MB figure, now tagged 🟡 and retracted as a ceiling (2026-09-15).
-- The **amix-kerntools** root-cause investigation, 2026-07-26 (`docs/kernel-52550-hang.md`, commit
-  `7cdcdc9`): the live `/proc/<pid>/mem` read of a running guest, the `page_init()`/`rmalloc()`
+- The **`page_init()` root-cause investigation** (first-party record, 2026-07-26): the live
+  `/proc/<pid>/mem` read of a running guest, the `page_init()`/`rmalloc()`
   disassembly and live globals (`pages` = 0, `epages` = `0x00E75C34`, `maxpfn` = `0x50000`), the
   kernel-virtual-map free entry (2048 pages × 2048 B), the break-even arithmetic, the SCSI-only
-  discriminator kernel reproducing the fault byte-for-byte, and the six-run ablation table ✅.
-- The **amiberry** guest-RAM sizing note (`docs/z3660-amix-guest-ram.md`): the operational rule
-  (32 MB is the only oversized value with positive boot evidence; the same cap applies to every knob
-  that hands the guest memory, and a Zorro III fastmem board reaches the ceiling faster because it
-  is AutoConfig RAM) ✅.
+  discriminator kernel reproducing the fault byte-for-byte, and the six-run ablation table ✅. The
+  same runs give the emulator debug-window sizing (a 32 MB window over 16 MB of motherboard RAM
+  passes `page_init()`, 512 MB dies; a Zorro III fastmem board reaches the ceiling faster because it
+  is AutoConfig RAM) 🟡 as an operating rule.
 - The **amix-packagemanager** bench-RAM investigation, 2026-07-22 (Amiberry, fixed kernel `sum -r`
   42265): 16 MB-exactly proven clean (SCSI read / write-readback / double-read plus a byte-exact
   base-set tree digest) and the 8 MB memory-exhaustion livelock signature ✅.

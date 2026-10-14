@@ -83,9 +83,9 @@ magic words (`fpe_magic` = `"FPE!"` `0x46504521`, `f60_magic` = `"FP60"`, and si
 *computed* address and compare it against the value the ELF artifact actually holds (read from the
 artifact, never a hardcoded table). A mismatch means the base is wrong — **refuse loudly** and try
 the other candidate; probing `{0x08000000, 0x07000000}` and keeping the base whose magic reads back
-correct turns a silent megabyte-off read into a caught, named error. This is implemented
-in `amix-kerntools/tools/comaddr.py` (`--load-base` with the fail-closed gate; `--discover` picks the
-correct candidate) ✅. The magic words themselves are the [software-FPE lane](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)'s
+correct turns a silent megabyte-off read into a caught, named error. This is implemented in a
+host-side address tool (an explicit load base behind the fail-closed gate, or a discovery mode that
+picks the correct candidate) ✅. The magic words themselves are the [software-FPE lane](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)'s
 counter anchors; reported firsthand from real hardware, where a 68060→68040 card swap moved the base
 and the magic-word check caught it on the first read ✅.
 
@@ -113,11 +113,11 @@ own namelist there.
   (`FSCALE = 256`, correct decay ordering). The reader half is Amix's own addition (stock SVR4 `w`
   prints no load average); the count half is inherited from the SVR4 lineage (behaviour only, source
   not quoted).
-- First-party **68040/68060 port campaign** + `amix-kerntools` — the kernel-load-base finding ✅: a
+- First-party **68040/68060 port campaign** — the kernel-load-base finding ✅: a
   raw-slice-loaded kernel loads at the accelerator's fast-RAM base (68060 Mercury `0x08000000`,
   A3640/68040 `0x07000000`), so it moves on a card swap and a pinned base silently reads the wrong
   memory (the same silent-miss class as a stale COMMON address); the fail-closed magic-word gate
-  (`fpe_magic`/`f60_magic`/…, read from the ELF artifact) as the remedy, implemented and verified in
-  `amix-kerntools/tools/comaddr.py` @ `4cc29cc` (host-static 18-case selftest; `--load-base` /
-  `--discover`), corroborated firsthand on real hardware by a 68060→68040 card swap the check caught
-  on the first read.
+  (`fpe_magic`/`f60_magic`/…, read from the ELF artifact) as the remedy, implemented and verified in a
+  host-side address tool (first-party record, 2026-08-30; host-static 18-case selftest; explicit-base
+  and discovery modes), corroborated firsthand on real hardware by a 68060→68040 card swap the check
+  caught on the first read.

@@ -7,10 +7,11 @@ status: draft
 # What Amix Is
 
 **Amix is Commodore's port of AT&T UNIX System V Release 4 (SVR4) to the Motorola 68030 Amiga.** ✅
-The kernel platform string is `m68k-cbm-sysv4`. It is a *monolithic* SVR4 system that treats the
-Amiga as a generic 68030 Unix workstation: **no AmigaOS compatibility layer**, and it does **not** use
-the Amiga custom chips (Agnus / Denise / Paula). ✅ If you know SVR4 on any other 68k or 3B2 machine,
-you already know most of Amix.
+The kernel platform string is `m68k-cbm-sysv4`. It is a *monolithic* SVR4 system with **no AmigaOS
+compatibility layer** ✅: it drives the Amiga's native chipset through its own kernel drivers (the
+bitplane console, and the `/dev/screen` screen manager the stock mono X server draws on), never
+through AmigaOS libraries, and otherwise treats the machine as a generic 68030 Unix workstation ✅. If
+you know SVR4 on any other 68k or 3B2 machine, you already know most of Amix.
 
 This page is the one-screen orientation. For the deeper mechanics, follow the cross-links to
 [hardware](hardware.md), the [boot process](boot-process.md), the
@@ -27,7 +28,7 @@ native m68k tree, which is why several defaults (for example the System V `s5` f
 see [filesystems and disks](filesystems-and-disks.md)) look like 3B2 inheritances 🟡 (exact rationale
 unconfirmed). The port was led
 by **Michael Ditto**, "Unix Systems Software Architect" at Commodore from 1988 to 1991. ✅
-Contemporaries describe the effort as "quick and dirty." ✅
+Contemporaries describe the effort as "quick and dirty." 🟡 (community-reported)
 
 The opening line of [Ditto's own driver paper](../reference/bibliography.md) calls Amix
 *"a direct port of the AT&T Unix System V operating system … essentially identical to … System V
@@ -54,15 +55,22 @@ fell through.
 - ✅ **Not** AmigaOS-compatible. There is no Amiga binary compatibility, no AmigaDOS, no Workbench.
   Dual-boot between Amix and AmigaOS is handled at the ROM level (the "Superkickstart" bootstrap),
   not by any in-OS shim — see the [boot process](boot-process.md).
-- ✅ **Not** a user of the Amiga custom chipset. Graphics, sound, and timing go through generic Unix
-  paths, not Agnus/Denise/Paula. (There is no audio support at all. 🟡)
-- ✅ **Not** loadable-module based. Drivers are statically linked into the kernel; adding one means
-  editing `kernel.c` and relinking `/unix`. See the [driver model](../drivers/driver-model.md).
-- ✅ **Not** runnable on every Amiga. It needs a 68020/68030 **with a real MMU** and a hardware FPU,
-  supports **Zorro II only**, and the **stock** kernel does **not** run on the
+- ✅ **Not** a user of AmigaOS's chipset libraries. Amix reaches the native chipset through its own
+  Unix drivers: the console draws on the native bitplane display, and the `/dev/screen` screen
+  manager hands chip-RAM bitmaps to programs such as the stock mono X server ✅. The stock `kernel.c`
+  also carries an `audio` driver at [character major 46](../reference/major-number-registry.md) ✅.
+- ✅ **Not** loadable-module based (stock Amix;
+  [one third-party exception](kernel-architecture.md#loadable-modules)). Drivers are statically
+  linked into the kernel; adding one means editing `kernel.c` and relinking `/unix`. See the
+  [driver model](../drivers/driver-model.md).
+- ✅ **Not** runnable on every Amiga. The **stock** kernel needs a 68020/68030 **with a real MMU** and
+  a hardware FPU, its stock drivers are **Zorro II only**, and it does **not** run on the
   68040/68060 (so the A4000 cannot officially run stock Amix) — the public
-  [68040/68060 port](68040-68060-status.md) lifts that, metal-proven on a real 68060 (A4000T + Z3660,
-  2026-09-25) ✅. The hard limits are detailed on the
+  [68040/68060 port](68040-68060-status.md) lifts the CPU limit and runs the FPU-less 68LC060 with a
+  software FPU, metal-proven on a real 68LC060 (A4000T + Z3660, 2026-09-25) ✅; a driver that
+  page-maps its board, such as the A4091/A4092 SCSI driver, reaches Zorro III ✅ (see
+  [the Zorro III correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall)).
+  The hard limits are detailed on the
   [hardware](hardware.md) page and the [quirks](quirks.md) checklist; the 040/060 situation has
   [its own status page](68040-68060-status.md).
 
@@ -130,7 +138,10 @@ The releases, with confidence tags carried straight from the research brief:
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - Research brief §1 (identity, lineage, history; version matrix) — `sources/research-brief.md`.
 - Research brief §2 (the stock 68020/030 limit) and the [040/060 status page](68040-68060-status.md).
-- First-party A4000T metal record: Amix 2.1c reaches `login:` about 60 s after power-on on a **real 68LC060** (the FPU-less 68060) on a Z3660 in an A4000T, running 060-direct (the card's CPU boot mode, not its 68030 emulation) with 128 MB of card RAM — 2026-09-25 ✅ (the Z3660 fork's `docs/investigations/a4000t-bench-2026-09.md`, "Outcome").
+- The A4000T metal run: Amix 2.1c reaches `login:` about 60 s after power-on on a **real 68LC060** (the FPU-less 68060) on a Z3660 in an A4000T, running 060-direct (the card's CPU boot mode, not its 68030 emulation) with 128 MB of card RAM — first-party record, 2026-09-25 ✅.
+- The native-chipset display and audio facts: research brief §21 (the screen manager's `DisplayScreen()`/`NewBitmap` chip-RAM bitmap on the native display) ✅; [`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) `docs/X-INSTALL-RTG.md` (the console login on the chipset screen; the stock `startx` on the native chipset) ✅; the stock `cdevsw[]` rows 10 `screen` and 46 `audio` on the [major-number registry](../reference/major-number-registry.md) ✅.
+- The "quick and dirty" characterisation: research brief §1, untagged there and sourced to an EAB thread and datagubbe.se (community, 🟡).
+- The stock-only scope of the loadable-module, FPU and Zorro II limits: the kernel architecture page's "Loadable modules" section (linked above), the [040/060 status page](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon) (the 68LC060 software FPU) and [the Zorro III correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall).
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference
   (opening line on direct-port lineage) — see [bibliography](../reference/bibliography.md).
 - `amix_21_patch.adf` analysis via `tools/inspect-adf.sh` (the `Version 2.1` self-identification and

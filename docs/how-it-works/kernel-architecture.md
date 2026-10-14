@@ -6,7 +6,7 @@ status: draft
 
 # Kernel Architecture
 
-Amix runs a **monolithic AT&T System V Release 4 (SVR4) kernel** ✅. There are **no loadable modules**: every driver is statically linked into the kernel, and adding hardware means relinking the kernel image and rebooting ✅. The kernel ships not as full source but as a set of **compiled object libraries under `/usr/sys`**, which you relink into the running kernel (`/unix`) ✅. The one source file you always edit is **`kernel.c`** (the device switch and interrupt tables) ✅.
+Amix runs a **monolithic AT&T System V Release 4 (SVR4) kernel** ✅. Stock Amix has **no loadable modules** (one third-party exception, [below](#loadable-modules)): every driver is statically linked into the kernel, and adding hardware means relinking the kernel image and rebooting ✅. The kernel ships not as full source but as a set of **compiled object libraries under `/usr/sys`**, which you relink into the running kernel (`/unix`) ✅. The one source file you always edit is **`kernel.c`** (the device switch and interrupt tables) ✅.
 
 This page covers the kernel's shape: how it is built and relinked, the switch-table model at a high level, the 68030 MMU/HAT memory layer, the SVR4 networking stack (STREAMS/TLI/sockets), and the system-management surface (`sysadm`, `init`/`inittab`/run levels, virtual consoles). For the full device-driver programming model — `cdevsw`/`bdevsw` field layouts, entry-point naming, the worked `par.c` example — see [the device-driver model](../drivers/driver-model.md). For the exact relink-and-install commands, see [building and installing the kernel](../drivers/kernel-build.md).
 
@@ -14,11 +14,19 @@ This page covers the kernel's shape: how it is built and relinked, the switch-ta
 
 Everything that talks to hardware lives in one kernel binary ✅:
 
-- **No dynamically loadable kernel modules.** SVR4 elsewhere grew `modload`-style facilities, but on Amix drivers are compiled in. To gain (or remove) a driver you edit `kernel.c`, relink, and reboot ✅.
+- **No dynamically loadable kernel modules.** SVR4 elsewhere grew `modload`-style facilities, but on stock Amix drivers are compiled in. To gain (or remove) a driver you edit `kernel.c`, relink, and reboot ✅.
 - **Drivers are statically linked.** Each driver contributes object code (its `.o`, often with source) that gets linked into the kernel image ✅.
 - **Keep the old `/unix`.** Because a bad driver can make the kernel unbootable, the standard procedure is to keep the previous `/unix` (or a known-good boot partition) as a fallback before installing a new one ✅.
 
 This is the same picture the [Ditto driver paper](../reference/bibliography.md) describes for 1990, and the modern community driver repos confirm it still holds for 2.1 ✅.
+
+### Loadable modules: none in stock Amix {#loadable-modules}
+
+Stock Amix 2.1 and every kernel the 1.0 release ships are monolithic: nothing can be loaded into a
+running kernel, and every page on this site that adds a driver assumes that model ✅. A third-party
+kit has since built a loadable-module facility (a subset of the UnixWare module format) into its own
+kernels; it runs under emulation only, is GPL-2 licensed and is not part of any shipped Amix kernel 🟡
+(third-party report, 2026-10, not reproduced here).
 
 ## The kernel as object libraries in /usr/sys
 
@@ -58,7 +66,7 @@ That is deliberately the *shape* of the model here. The exact `struct cdevsw`/`s
 
 ## 68030 MMU and the HAT layer
 
-Amix uses the **full 68030 MMU** through SVR4's **HAT (Hardware Address Translation)** layer ✅ — the machine-dependent code that maps virtual addresses to physical pages and isolates user from kernel space. A real MMU is mandatory: a 68000, or an MMU-less 68EC020/68EC030, **cannot run Amix** ✅. A `68881`/`68882` FPU is also required (no soft-float) ✅.
+Amix uses the **full 68030 MMU** through SVR4's **HAT (Hardware Address Translation)** layer ✅ — the machine-dependent code that maps virtual addresses to physical pages and isolates user from kernel space. A real MMU is mandatory: a 68000, or an MMU-less 68EC020/68EC030, **cannot run Amix** ✅. The stock kernel also requires a `68881`/`68882` FPU (it has no soft-float) ✅; the 040/060 port kernels run the FPU-less 68LC060 with a software FPU — see [the FPE lane](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon) ✅.
 
 Evidence the HAT layer is live in the shipped kernel: the install bootstrap on `amix_21_boot.adf` contains the SVR4 HAT panic string `hat_vtokp_prot: user addr in kernel space` ✅ (from `amix_21_boot.adf` analysis via `tools/inspect-adf.sh`).
 
@@ -67,7 +75,7 @@ Two hard memory facts follow from this layer ✅:
 - **A limit on total *describable* RAM** — ≈64 MB on the stock 68030 kernel's fixed arena, ≈128 MB on the 4 KB-page 040/060 kernels — past which the kernel fails silently ✅; see [the RAM ceiling](ram-ceiling.md). A 16 MB symptom on the stock kernel is real, but it comes from loader placement, not a RAM ceiling; see [hardware](hardware.md) and [quirks §57](quirks.md#57-loader-placement-a3000-scsi).
 - **Zorro III lies outside the identity map.** The low 1 GB is identity-mapped, so a stock driver can dereference a Zorro II board's `autocon()` address directly but not a Zorro III one; a driver that maps the board with `sptalloc()` reaches Zorro III ✅ — the **stock** drivers are Zorro II only. (This bullet used to say the layer *cannot* address Zorro III space and that the limit could not be community-fixed; corrected, see [the Zorro III correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall).)
 
-The processor cutoff is set by this same MMU dependency: the kernel **predates the 68040 MMU**, so there is **no 68040/68060 support**, and an **A4000 cannot officially run Amix** ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md); for the current 040/060 situation see [Amix on 68040 and 68060](68040-68060-status.md).
+The processor cutoff is set by this same MMU dependency: the stock kernel **predates the 68040 MMU**, so stock Amix has **no 68040/68060 support**, and an **A4000 cannot officially run stock Amix** ✅. The public 68040/68060 port relinks the stock kernel for both CPUs, and the amigaux 1.0 release ships 68060 kernels for an A3000, A4000 or A4000T with a Z3660 ✅. For the full hardware envelope see [hardware and requirements](hardware.md); for why these limits bite in practice see [quirks](quirks.md); for the current 040/060 situation see [Amix on 68040 and 68060](68040-68060-status.md).
 
 ### The kmem allocator — what a driver can assume ✅
 
@@ -77,11 +85,11 @@ The layout of the kernel heap allocator was recovered by full disassembly of `km
 |---|---|---|
 | ≤ 256 B | small buddy pool (classes 16..256) | pools carved from 4096-aligned 8-page regions |
 | 257 .. 4096 B | big buddy pool (classes 512..4096) | same 4096-aligned 8-page regions |
-| > 4096 B | `sptalloc` whole pages (VA = pfn << 11) | **page-aligned, but physically SCATTERED** |
+| > 4096 B | `sptalloc` whole pages (VA = pfn << 11 on the stock 030 kernel; pfn << 12 on the 040/060 kernels) | **page-aligned, but physically SCATTERED** |
 
 - `kmem_alloc` returns **≥ 16-aligned** pointers. A "returned" pointer that is `0 mod 2048` but not `8 mod 16` relative to its wrapper cannot have come from the allocator — a handy alignment argument when a theory needs disproving. ✅
 - **`kmem_free` writes `[next][prev]` freelist links into a freed chunk's first 8 bytes**, so use-after-free / wild-free corruption characteristically shows **pointer-shaped values at a block's head**. ✅
-- **The DMA hazard (the important one):** a `> 4096`-byte allocation is virtually contiguous but **physically scattered** — `segkmem_alloc` pops arbitrary frames off `page_freelist` and maps them at consecutive virtual addresses with no physical adjacency. So `vtop()` on such a buffer is valid for **exactly one page** (`NBPP = 2048`), and any single DMA transfer that crosses a page boundary lands its tail in a **different, unrelated physical frame**. This is the mechanism behind the cdfs wild-write corruption; the driver-side rule (page-align every DMA target, guard `(va & (NBPP-1)) + nbyte > NBPP`) is on [the driver model → DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary). ✅
+- **The DMA hazard (the important one):** a `> 4096`-byte allocation is virtually contiguous but **physically scattered** — `segkmem_alloc` pops arbitrary frames off `page_freelist` and maps them at consecutive virtual addresses with no physical adjacency. So `vtop()` on such a buffer is valid for **exactly one page** (`NBPP = 2048` on the stock 030 kernel; 4096 on the 040/060 kernels), and any single DMA transfer that crosses a page boundary lands its tail in a **different, unrelated physical frame**. This is the mechanism behind the cdfs wild-write corruption; the driver-side rule (page-align every DMA target, guard `(va & (NBPP-1)) + nbyte > NBPP`) is on [the driver model → DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary). ✅
 
 ## SVR4 networking: STREAMS, TLI, sockets
 
@@ -121,4 +129,5 @@ One userland gotcha worth flagging at the kernel/system level: Amix's `/bin/sh` 
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — installer use of `amixpkg -i -m -d -r /mnt -y standard` and `shutdown -i6`.
 - Modern community driver repos confirming the 2.1 build/relink model and the `relocunix` image name: `github.com/asokero/va2000-amix`, `github.com/isoriano1968/hydra-amix`.
 - AT&T SVR4 *DDI/DKI Reference Manual* and *STREAMS Programmer's Guide* (the standard SVR4 substrate cited by the Ditto paper).
+- The 040/060 scope of the CPU, FPU and page-size facts: [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `include-modelb/sys/immu.h` (`NBPP` 4096, `PNUMSHFT` 12) ✅; the [040/060 status page](68040-68060-status.md) (the port, the 68LC060 software-FPU lane) ✅; the [amigaux.org downloads](https://amigaux.org/downloads/) page (the 1.0 68060 media for an A3000, A4000 or A4000T with a Z3660) ✅.
 - The kmem-allocator map (buddy pools / `sptalloc` whole-page scatter; `vtop()` valid for one page; freelist links in a freed chunk's first 8 bytes) — full disassembly of `kmem_alloc`/`kmem_free`/`kmem_allocbpool`/`sptalloc`/`segkmem_alloc`/`page_get` in the shipped kernel, and the DMA-scatter corruption reproduced on a real A4000 + Z3660, from the **amix-cdfs** port @ `31e8c3b` (`NBPP = 2048` per `sys/immu.h`). ✅ See [the driver model DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary).

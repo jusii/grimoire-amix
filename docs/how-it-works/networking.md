@@ -6,7 +6,7 @@ status: draft
 
 # Networking
 
-Amix networks the way a stock **AT&T System V Release 4** workstation does: a **STREAMS-based TCP/IP** stack with both **TLI** and **BSD sockets**, configured with static IPv4 addresses ✅. The native Ethernet card is the Commodore **A2065** (a LANCE/Am7990 board), which appears as the interface **`aen0`** ✅. There is **no DHCP** and **no PPP**; **DNS resolution is disabled out of the box** (the resolver falls back to `/etc/hosts`) and must be switched on by hand ✅/🟡. **NFS** works as both server and client ✅. **SLIP** exists but is buggy enough that you must reboot between dial-up sessions 🟡.
+Amix networks the way a stock **AT&T System V Release 4** workstation does: a **STREAMS-based TCP/IP** stack with both **TLI** and **BSD sockets**, configured with static IPv4 addresses ✅. The native Ethernet card is the Commodore **A2065** (a LANCE/Am7990 board), which appears as the interface **`aen0`** ✅. There is **no DHCP** ✅ and **no PPP** 🟡; **DNS resolution is disabled out of the box** (the resolver falls back to `/etc/hosts`) and must be switched on by hand ✅/🟡. **NFS** works as both server and client ✅. **SLIP** exists but is buggy enough that you must reboot between dial-up sessions 🟡.
 
 For driver-level mechanics of how a network card hangs off the kernel, see [the STREAMS driver guide](../drivers/writing-a-streams-driver.md) and [the Hydra case study](../drivers/case-studies/hydra.md). For the broader kernel picture see [the kernel architecture page](kernel-architecture.md).
 
@@ -18,7 +18,7 @@ For driver-level mechanics of how a network card hangs off the kernel, see [the 
 - Two programming interfaces are available on top of it: **TLI** (the SVR4-native Transport Layer Interface) and **BSD sockets** ✅.
 - A network interface driver is therefore a **STREAMS character driver** — a third kind of driver alongside plain block and character drivers, distinguished by carrying a `streamtab` rather than ordinary `read`/`write` entry points ✅. See [how STREAMS drivers differ](../drivers/writing-a-streams-driver.md).
 
-Because the stack is statically linked into a monolithic kernel with **no loadable modules** ✅, adding or swapping a network card driver means relinking `/unix` (see [Adding a driver](#adding-other-network-cards) below and [the kernel build page](../drivers/kernel-build.md)).
+Because the stack is statically linked into a monolithic kernel, and stock Amix has **no loadable modules** ([one third-party exception](kernel-architecture.md#loadable-modules)) ✅, adding or swapping a network card driver means relinking `/unix` (see [Adding a driver](#adding-other-network-cards) below and [the kernel build page](../drivers/kernel-build.md)).
 
 ## Interfaces and devices
 
@@ -358,25 +358,25 @@ for anything you will checksum.** Details: [quirks §64](quirks.md#64-ftpd-passi
 
 ## Serial networking: SLIP is buggy, no PPP
 
-- **PPP is not available** on Amix ✅ — there is no PPP stack to dial out with.
+- **PPP is not available** on Amix 🟡 — there is no PPP stack to dial out with.
 - **SLIP exists but is buggy** 🟡. The reported workaround is to **reboot between SLIP sessions**: a connection that has been torn down does not cleanly reset, so a second `dial → connect` in the same uptime tends to fail. Treat SLIP as a one-shot-per-boot facility. This is recorded in [the quirks checklist](quirks.md).
 
 If you need IP over serial in practice, the community guidance is effectively "use Ethernet (A2065 or Hydra) instead" 🟡.
 
 ## Adding other network cards
 
-Because the kernel is monolithic with no loadable modules ✅, a non-A2065 card needs a driver compiled into `/unix`. The modern, fully worked example is the **Hydra AmigaNet** driver — and as of **2026-06 it works on real hardware**: ARP resolves and ICMP `ping` reaches both the local gateway and external IPs, which the repo calls *"believed to be the first working AMIX network driver for the Hydra card"* 🟡 (first-party). See [the Hydra case study](../drivers/case-studies/hydra.md) for the bring-up story.
+Because the stock kernel is monolithic with no loadable modules ✅, a non-A2065 card needs a driver compiled into `/unix`. The modern, fully worked example is the **Hydra AmigaNet** driver — and as of **2026-06 it works on real hardware**: ARP resolves and ICMP `ping` reaches both the local gateway and external IPs, which the repo calls *"believed to be the first working AMIX network driver for the Hydra card"* 🟡 (first-party). See [the Hydra case study](../drivers/case-studies/hydra.md) for the bring-up story.
 
 - `hydra-amix` is a **STREAMS / DLPI** network driver for the Hydra card (an **NE2000 / DP8390** design), rev 1.2a, Zorro II, AutoConfig ID **2121/1 (`0x08490001`)** ✅.
 - It registers at **`cdevsw` slot 47** with the `hya` tag. **Amix is SVR4.0 — there is no `ifconfig … plumb`**; you link the interface in with `slink addaen /dev/hya0 hya0`, then `ifconfig hya0 <ip> netmask <m> up -trailers` ✅.
 - Its entry points (`hydraopen`, `hydrawput`, `hydraintr`, `setup_ne2000`) handle DLPI primitives (`DL_INFO_REQ`, `DL_BIND_REQ`, `DL_UNITDATA_REQ`) and the INT2 RX/TX interrupt; `hydraopen` runs a **three-method card detect** (`autocon()`/bootinfo with address validation, then direct Zorro II I/O-slot and memory probes — the bootinfo table can be corrupt on 2.1p2), and it deliberately mirrors the existing A2065 LANCE driver (`aen/`) ✅.
-- It is built **natively on the Amix box** (`make` in the driver dir, `make force` to relink the kernel) with the stock `cc`/GNU GCC 1.40.5 ✅ or the native **GCC 2.7.2.3** its repo names (the "packaged on amigaunix.com" attribution is unsourced 🔴; the only native 2.7.2.3 tree seen is on a collaborator's own machine) — no cross-compiler; it is **source-only** because building needs a licensed Amix tree ✅.
+- It is built **natively on the Amix box** (`make` in the driver dir, `make force` to relink the kernel) with the stock `cc`/GNU GCC 1.40.5 ✅ or the native **GCC 2.7.2.3** its repo names (the "packaged on amigaunix.com" attribution is unsourced 🔴; the only native 2.7.2.3 tree seen is on a collaborator's own machine) — no cross-compiler; its README offers driver source *"intended to be compiled against a licensed AMIX 2.1p2 installation"* and includes no kernel binaries ✅.
 
 Full detail — the build line, the DLPI flow, and the LANCE-mirroring design — is on [the Hydra case study](../drivers/case-studies/hydra.md). The general procedure for writing this class of driver is on [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md), and the relink/boot-partition steps are on [the kernel build page](../drivers/kernel-build.md).
 
 A second real-hardware-verified example is the **`z3660eth`** driver for the **Z3660 accelerator's onboard ethernet** (interface `zen0`) — the network analogue of the [A4091 SCSI work](../drivers/a4091-53c710-driver.md), giving Amix full bidirectional TCP/IP on a physical A4000 + Z3660 (2026-06) ✅. It is a contrasting design to hydra: instead of programming a NIC chip directly it speaks the Z3660 firmware's **frame mailbox** over MMIO, registers at **`cdevsw` slot 51** (tag `zen`; 48 until 2026-07-30), and **services RX from a polled `timeout()` callout — no `int2_tbl`/`init_tbl` edit**. The one real-hardware blocker was an **INT6 interrupt storm** (the firmware raised level-6 on every received frame, but Amix has no eth INT6 handler, so ARP broadcasts hard-locked the box); the fix was to disable the firmware interrupt and keep the polled drain. Bring-up is the same `slink` plumbing as hydra (`slink addaen /dev/zen0 zen0`, then `ifconfig zen0 … up -trailers`). See [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) for the mailbox protocol, the storm, and the build/deploy story.
 
-> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (the "pkg on amigaunix.com" attribution is unsourced 🔴 — the stock on-box compiler is GNU GCC 1.40.5 ✅). As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — so you can build driver objects on a modern host too ✅. Either way you need a licensed Amix install (its headers/libs aren't redistributable; the cross-toolchain consumes them as a sysroot). See [the toolchain page](../drivers/toolchain.md).
+> **Build note:** `hydra-amix` is built **natively on the Amix box** with GCC 2.7.2.3 (the "pkg on amigaunix.com" attribution is unsourced 🔴 — the stock on-box compiler is GNU GCC 1.40.5 ✅). As of 2026-06 a Linux-hosted **cross-toolchain** also exists — [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) (`m68k-cbm-sysv4-gcc`) — so you can build driver objects on a modern host too ✅. Either way you need an installed Amix system to supply the headers and libraries; the cross-toolchain takes them as a sysroot, and its README says *"Each user must provide their own AMIX sysroot from a licensed AMIX installation"* (the [amigaux 1.0](https://amigaux.org/downloads/) install media are publicly distributed). See [the toolchain page](../drivers/toolchain.md).
 
 ## Quick reference
 
@@ -393,7 +393,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 | **Fix slow boot after DNS** | literal IPs in boot `ifconfig`s: `lo0 127.0.0.1`, `aen0 <static-ip>` — else +180 s/boot | ✅ |
 | NFS export / mount | `share` / `shareall`; `mount -F nfs host:/path /mnt` | ✅ |
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
-| PPP | not available | ✅ |
+| PPP | not available | 🟡 |
 | STREAMS `mblk` starvation | box wedges (`ldterm: out of blocks`) while `freemem` is fine; tracks session churn — power-cycle, single-session long jobs | 🟡 |
 | **Service refuses connections** (one port only) | `inetd` anti-looping throttle: 40 conns/60 s per service, self-heals ≤ 600 s. Diagnose: port 21 open + port 23 refused ⇒ throttle | ✅ |
 | See the throttle (and every other `daemon.*`) | Comment the `exit` on line 8 of `/etc/init.d/syslogd` (**`cp` in place — 3 hard links**); logs land in `/var/log/notice` | ✅ |
@@ -403,7 +403,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md) — how a network interface attaches to the SVR4 stack.
 - [Hydra case study](../drivers/case-studies/hydra.md) — a complete modern STREAMS/DLPI network driver (`hya0`).
 - [Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) — a real-hardware STREAMS/DLPI driver (`zen0`) over the Z3660 firmware mailbox; the INT6 storm and polled RX.
-- [Kernel architecture](kernel-architecture.md) — monolithic SVR4, STREAMS, no loadable modules.
+- [Kernel architecture](kernel-architecture.md) — monolithic SVR4, STREAMS, no loadable modules in stock Amix.
 - [Filesystems and disks](filesystems-and-disks.md) — UFS/s5, needed for NFS server exports.
 - [Quirks](quirks.md) — DNS-off-by-default, the `route` metric, and the SLIP reboot bug in one list.
 - [Hardware](hardware.md) — the A2065 and other supported expansion.
@@ -415,17 +415,18 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - Research brief §11 "Networking, X11, userland" (STREAMS TCP/IP; `aen0`/A2065; static IP, no DHCP; DNS off by default + `libsockdns.so` swap, `in.named`, `/etc/resolv.conf`; `route add default <gw> 1`; NFS server+client; SLIP buggy; no PPP).
 - Research brief §2 "Hardware & requirements" (A2065 native; Hydra via `hydra-amix`; Ariadne I via Gateway 🟡).
 - Research brief §6 (`isoriano1968/hydra-amix` — STREAMS/DLPI, NE2000/DP8390, `cdevsw` slot 47, `hya0`, AutoConfig `0x08490001`, three-method autoconfig detect, native `make`/`make force` build with GCC 2.7.2.3 (its "from amigaunix.com" attribution is 🔴, unsourced, per the toolchain page), `slink` bring-up).
-- Research brief §4 "Kernel architecture" (monolithic SVR4; STREAMS, TLI + BSD sockets; no loadable modules).
+- Research brief §4 "Kernel architecture" (monolithic SVR4; STREAMS, TLI + BSD sockets; no loadable modules in stock Amix).
 - Research brief §3 / §10 (`amix_21_boot.adf` string analysis — embedded NFS/RPC client string table), via `tools/inspect-adf.sh`.
 - Research brief §12 "Quirks checklist" (DNS off by default; SLIP reboot bug).
 - Research brief §13 (cross-toolchain: `gcc-cross-amix` now provides a public `m68k-cbm-sysv4` recipe; native on-box build still simplest).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (cites the SVR4 *Streams Programmer's Guide* and *Network Programmer's Guide*).
-- [github.com/isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix)
+- [github.com/isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix) — its README's "License" section (driver source and build scripts only, no kernel binaries, "intended to be compiled against a licensed AMIX 2.1p2 installation").
+- [github.com/isoriano1968/gcc-cross-amix](https://github.com/isoriano1968/gcc-cross-amix) — its README (each user provides their own AMIX sysroot from a licensed AMIX installation); the [amigaux.org downloads](https://amigaux.org/downloads/) page (the publicly distributed 1.0 install media).
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) (community-reported resolver/DNS procedure).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry; DNS-enabled boot **210 s → 29 s** after replacing the boot-time `ifconfig` hostnames with literal IPs. Source files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system.
 - The amix-z3660net project — the native `z3660eth` STREAMS/DLPI driver (`zen0`, cdevsw 51 — 48 until 2026-07-30) for the Z3660's onboard ethernet, **validated on a real A4000 + Z3660, 2026-06-21** ✅ (`ifconfig zen0`, `netstat -in` zero-error, laptop↔box `ping`/`ftp`); the firmware-mailbox protocol, the INT6 storm, and the polled-RX design are on [the Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md).
-- The **amix-kerntools** bench forensics @ `8a76775` — STREAMS `mblk`-arena exhaustion wedges the box (`ldterm: (ldtermsrv) out of blocks`, `console_get_buffer: out of blocks`; TCP then console echo die) while `freemem` stays ~2100 pages, tracking telnet/FTP session count rather than filesystem load; suspected per-connection/per-packet leak on the network path, driver not yet isolated — real A4000 + Z3660, 2026-07-12, carried **🟡**.
-- The **amix-kerntools** inetd investigation @ `f7d741d` (`docs/inetd-telnet-throttle.md`), 2026-07-27 ✅ —
+- The STREAMS `mblk` forensics (first-party record, 2026-07-12) — `mblk`-arena exhaustion wedges the box (`ldterm: (ldtermsrv) out of blocks`, `console_get_buffer: out of blocks`; TCP then console echo die) while `freemem` stays ~2100 pages, tracking telnet/FTP session count rather than filesystem load; suspected per-connection/per-packet leak on the network path, driver not yet isolated — real A4000 + Z3660, carried **🟡**.
+- The `inetd` throttle investigation (first-party record, 2026-07-27) ✅ —
   the throttle's constants read out of the shipped `/usr/sbin/inetd` (md5 `ddfbd40aaaa02a1935a5ef6a37879337`):
   `TOOMANY` 40 / `CNT_INTVL` 60 s / `RETRYTIME` 600 s as compile-time immediates, the `daemon.err`
   `openlog()` identity, the anchored (not sliding) window, the global re-enable alarm, the absence of any
@@ -434,7 +435,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   telnet tripped → 21 open), and the `syslogd` enablement (`/etc/init.d/syslogd` line-8 `exit`, the
   3-hard-link `cp`-in-place hazard, `daemon.err` already selected by the stock `syslog.conf`, 293 B of
   growth in 23 min of abuse).
-- The **amix-cdfs** wedge soak @ `c3eba7e` (`docs/packet-c-wedge-soak.md`), 2026-07-26/27 ✅ —
+- The wedge soak run during the `cdfs` port (first-party record, 2026-07-26/27) ✅ —
   the rate measurements: the refusal reproduced with the filesystem loop **paused**; four bare-TCP trips (29.9/min → no trip in 200 invocations;
   ~550–575/min → trip at 40/61/77); three self-recoveries at 9m48s / 10m11s / 10m00s; FTP up throughout;
   and the box verified healthy *while refusing* (28 processes, zero `in.telnetd`, STREAMS `fail=0` in
