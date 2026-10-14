@@ -199,10 +199,10 @@ The boot floppy is one of three in the Amix 2.1 install set, and the three are d
 | Disk | On-disk structure | Detected by `inspect-adf.sh` as |
 |---|---|---|
 | **boot** (this page) | OFS bootblock + 68k bootstrap + compressed kernel; **no FS** | `boot` (first bytes `DOS\0`) |
-| **root** | zeroed boot area + a **UFS miniroot** (installer ELF binaries + scripts) | `root` (`lost+found` fingerprint) |
+| **root** | zeroed boot area + an **s5 miniroot** (installer ELF binaries + scripts) | `root` (`lost+found` fingerprint) |
 | **patch** | ~1 KB `/sbin/sh` header + an embedded cpio archive | `patch` (first bytes `#!`) |
 
-At install time the boot floppy's kernel comes up first, then you swap in the root floppy and its UFS miniroot takes over the installer. Continue with [the anatomy of the root floppy](anatomy-root-adf.md) and [the anatomy of the patch floppy](anatomy-patch-adf.md).
+At install time the boot floppy's kernel comes up first, then you swap in the root floppy and its s5 miniroot takes over the installer. Continue with [the anatomy of the root floppy](anatomy-root-adf.md) and [the anatomy of the patch floppy](anatomy-patch-adf.md).
 
 ## Where to get the image
 
@@ -218,7 +218,7 @@ Expected SHA-256: `0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65
 - [Reverse-Engineering the Boot Floppy](reverse-engineering-boot-adf.md) — the full decode + rebuild method behind this page.
 - [How Amix boots](../how-it-works/boot-process.md) — the runtime sequence this floppy kicks off.
 - [The boot-disk build pipeline](build-pipeline.md) — producing bootable media + the `make bootpart` path.
-- [Anatomy of the root floppy](anatomy-root-adf.md) — the UFS miniroot installer the boot kernel hands off to.
+- [Anatomy of the root floppy](anatomy-root-adf.md) — the s5 miniroot installer the boot kernel hands off to.
 - [Anatomy of the patch floppy](anatomy-patch-adf.md) — the self-extracting patch disk (kernel 2.1c).
 - [Adding drivers to a boot disk](adding-drivers-to-boot-disk.md) — getting a custom kernel onto bootable media.
 - [Kernel architecture](../how-it-works/kernel-architecture.md) — the monolithic SVR4 kernel + HAT/MMU layer referenced in the strings.

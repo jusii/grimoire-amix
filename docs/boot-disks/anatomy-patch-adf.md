@@ -143,8 +143,9 @@ A few things worth reading off that table:
   double-compressed) ✅. After the header's `uncompress -f /var/patch/*.Z`, the `.Z` suffixes are
   gone and `/var/patch/` holds `apply`, `lha`, `replace.list`, `preload`, `changes`,
   `modify.list`, `archive.lha`, and `delete.list`.
-- `archive.lha` is the heavyweight: **~835 KB** (offset `0xCC0CB` in the brief = the member's data
-  region) ✅ — it dominates the disk and carries the actual patched files.
+- `archive.lha` is the heavyweight: **835,787 bytes** (`0xCC0CB` in the brief, the member size) ✅ —
+  it dominates the disk and carries the actual patched files, as a single LHA member
+  `var/patch/archive.cpio` (2,321,920 bytes, 103 cpio members) ✅.
 - The stream ends with the canonical cpio `TRAILER!!!` sentinel ✅.
 
 ## How `apply` + `lha` + the lists work
@@ -233,7 +234,7 @@ dd if=amix_21_patch.adf bs=1k skip=1 2>/dev/null | cpio -itv
 ## See also
 
 - [Anatomy of the Boot Floppy](anatomy-boot-adf.md) — the bootblock + compressed-kernel disk (this one is *not* bootable).
-- [Anatomy of the Root Floppy](anatomy-root-adf.md) — the UFS miniroot installer.
+- [Anatomy of the Root Floppy](anatomy-root-adf.md) — the s5 miniroot installer.
 - [Adding drivers to a boot disk](adding-drivers-to-boot-disk.md) — uses this self-extraction pattern for custom disks.
 - [Boot-disk build pipeline](build-pipeline.md) — end-to-end tooling for assembling disks.
 - [Versions](../reference/versions.md) — where 2.1p2a / kernel 2.1c fits, and the `^2\.1.* 08004..$` fingerprint.
@@ -241,8 +242,8 @@ dd if=amix_21_patch.adf bs=1k skip=1 2>/dev/null | cpio -itv
 
 ## Sources
 
-- The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
-- `amix_21_patch.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and a `newc`-cpio header walk (offsets, modes, sizes reproduced locally) — SHA-256 `674f3ac6…0060fdfe` in `sources/CHECKSUMS.txt`.
+- The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the 103-member `archive.cpio` inside the patch disk's `archive.lha` carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
+- `amix_21_patch.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and a `newc`-cpio header walk (offsets, modes, sizes reproduced locally), plus `lha l` of `archive.lha` and `cpio -it` of the `archive.cpio` inside it (one LHA member, 103 cpio members) — SHA-256 `674f3ac6…0060fdfe` in `sources/CHECKSUMS.txt`.
 - Master research brief, [§10 "Boot / root / patch disk anatomy"](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) and §1 version matrix (`^2\.1.* 08004..$` gate, 2.1p2a / kernel 2.1c).
 - Verbatim 1 KB header script captured from the image (`dd … bs=1 count=1024 | strings`).
 - amigaunix.com patch-disk page and the [archive.org Amix collection](https://archive.org/details/commodore-amiga-operating-systems-amix) (image provenance; not redistributed here).

@@ -16,7 +16,14 @@ All three are tractable — the bootable-floppy format has been reverse-engineer
 | **(b) Custom bootable floppy** | install/recovery media that boots *your* kernel | ✅ boots in Amiberry (same kernel) · ✅ a **driver-modified** kernel boots + runs a **full install** (WinUAE) |
 | **(c) Self-extracting add-on disk** | *distributing* a driver to other users to install | ✅ host-verified · 🟡 not yet run on real Amix |
 
-A driver in Amix is **statically linked into a monolithic kernel — there are no loadable modules** ✅, so
+The [amigaux 1.0](https://amigaux.org/install/) install media are built by
+[Installer-NG](https://github.com/jusii/amix-installng): a classic boot floppy framing a driver
+kernel (surface b, tested in emulation only) for the 68030 machines, while a Z3660 (68060) installs
+from its own self-booting `.hdf` media, not a floppy ✅. This page covers hand-building custom-kernel
+media on stock 2.1.
+
+A driver in stock Amix is **statically linked into a monolithic kernel — there are no loadable modules** ✅
+([one third-party exception](../how-it-works/kernel-architecture.md#loadable-modules)), so
 every path below ultimately means "relink the kernel with your driver, then deliver that kernel." The
 relink is the same in all three; they differ only in packaging.
 
@@ -272,9 +279,12 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
 - **Installing a kernel into the boot partition** (the `make install` → `cd /stand; make bootpart`
   flow; the five-part `boot1 + makeiblk(boot2) + boot2 + makeiblk(unix) + unix` `dd` to
   BOOTPART = `/dev/dsk/c6d0s3`; the by-hand `c8d0s3` pipeline for a *different* disk; the
-  "never `make install` an unverified kernel" safety rule) — The A4091-on-Amix project,
-  `NOTES.md` §11 (build/install flow), §16 + §18 (boot-partition write bricks a disk; D245 `ld`
-  corruption), §19 (the by-hand `c8d0s3` install onto a separate disk) — reproduced locally ✅;
+  "never `make install` an unverified kernel" safety rule) — the
+  [amix-a4091 README](https://github.com/jusii/amix-a4091#build--run-emulation), build/install
+  steps 3–4 (clean-gate the build; the by-hand `c8d0s3` `dd` pipeline; never `make install` onto
+  the working disk; a corrupt boot-partition write bricks that disk); the stock `/usr/sys` and
+  `/stand` install flow on the [kernel-build page](../drivers/kernel-build.md#make-install-does-not-update-standunix-copy-it-yourself);
+  reproduced locally on Amix 2.1c (first-party record, 2026-06-04) ✅;
   [`tools/build-clean-kernel.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/build-clean-kernel.sh)
   is the clean-gate that proves a kernel safe to install.
 - Patch-disk self-extraction model — `amix_21_patch.adf` analysis; research brief §10;
@@ -284,3 +294,7 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
   [`github.com/isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
 - Install media (user-supplied): [amigaunix.com](https://www.amigaunix.com/doku.php/downloads) ·
   [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
+- amigaux 1.0 install media — the [amix-installng README](https://github.com/jusii/amix-installng)
+  (the classic boot floppy frames the K030-U-FD install kernel; a Z3660 installs from its own
+  self-booting `.hdf` media) and the [amigaux.org Downloads](https://amigaux.org/downloads/) page
+  (classic kit tested in emulation only).

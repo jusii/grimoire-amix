@@ -33,7 +33,7 @@ the underlying tooling.
 | `inspect-adf.sh` | ✅ done | Classify boot/root/patch; dump bootblock, embedded objects (ELF/cpio/tar), installer/bootstrap strings | No (read-only) | stdout |
 | `extract-kernel.sh` | ✅ done | Decompress the `compress`/LZW kernel out of a `boot.adf` → m68k ELF (trimmed via ELF header) | No (read-only) | `<out>.elf` |
 | `build-bootfloppy.sh` | ✅ boots in Amiberry | Build a **bootable** `boot.adf` = donor bootblock+bootstrap + `compress -b16` of your kernel + patched `IBLK`; self-tests via the descriptor | No (reads donor + kernel, writes new image) | `--out <image.adf>` |
-| `unpack-root.sh` | ✅ done (carve-based) | Carve embedded objects out of a UFS miniroot; dump installer script text | No (read-only) | `tools/_work/<image>/` |
+| `unpack-root.sh` | ✅ done (carve-based) | Carve embedded objects out of an s5 miniroot; dump installer script text | No (read-only) | `tools/_work/<image>/` |
 | `build-custom-bootdisk.sh` | ✅ host-verified · 🟡 not Amix-tested | Build a *self-extracting add-on* disk (1 KB `/sbin/sh` header + cpio payload), modeled on the real patch disk | No (reads a payload **dir**, writes a new image) | `--out <image.adf>` |
 | `gen-llms-full.sh` | ✅ done | Concatenate all `docs/` pages into `llms-full.txt` | n/a | `llms-full.txt` |
 
@@ -62,8 +62,8 @@ package names. If `binwalk` is missing, `inspect-adf.sh` falls back to grepping 
 ## `inspect-adf.sh` — classify and structurally inspect a disk image
 
 `inspect-adf.sh` is the entry point. It is **read-only** (it never modifies the image) and works on all
-three install-set disk types. It detects the type from the first 12 bytes plus a UFS fingerprint, then
-prints type-specific detail. ✅
+three install-set disk types. It detects the type from the first 12 bytes plus a `lost+found` string
+check, then prints type-specific detail. ✅
 
 ```sh
 tools/inspect-adf.sh sources/floppy/amix_21_boot.adf
@@ -75,11 +75,13 @@ tools/inspect-adf.sh sources/floppy/amix_21_boot.adf
 |---|---|---|
 | **boot** | First bytes `44 4f 53` = `DOS` → AmigaDOS bootblock | head hex `444f53*` |
 | **patch** | First bytes `23 21` = `#!` → shell-script header | head hex `2321*` |
-| **root** | No bootblock; `strings` contains `lost+found` (UFS fingerprint) | string scan |
+| **root** | No bootblock; `strings` contains `lost+found` (a string heuristic, not a filesystem check) | string scan |
 
-These map directly to the brief's findings: the boot disk is an OFS bootblock (`DOS\0`) + compressed
-kernel with **no AmigaDOS filesystem**, the root disk is a zeroed-boot-area UFS miniroot, and the patch
-disk starts with a `#!/sbin/sh` self-extracting header. ✅ See
+These map directly to the disk decodes: the boot disk is an OFS bootblock (`DOS\0`) + compressed
+kernel with **no AmigaDOS filesystem**, the root disk is a zeroed-boot-area **s5** miniroot, and the patch
+disk starts with a `#!/sbin/sh` self-extracting header. ✅ For a root disk the tool prints
+`UFS miniroot`: a known mislabel, since `lost+found` is not a UFS fingerprint and the root floppy's
+superblock is s5 ✅ ([root.adf anatomy](anatomy-root-adf.md#no-bootblock-and-the-body-is-s5-not-ufs)). See
 [boot.adf anatomy](anatomy-boot-adf.md), [root.adf anatomy](anatomy-root-adf.md), and
 [patch.adf anatomy](anatomy-patch-adf.md) for the full decode of each.
 
@@ -169,7 +171,7 @@ kernel. Your kernel must fit *compressed* in `880 KB − 0x2800`. ✅ **verified
 
 **Requires:** `dd`, `od`, `compress` (or `ncompress`), and `gzip`/`zcat` (for the self-test).
 
-## `unpack-root.sh` — carve the UFS miniroot
+## `unpack-root.sh` — carve the s5 miniroot {#unpack-rootsh-carve-the-ufs-miniroot}
 
 `unpack-root.sh` extracts the high-value content from a root/miniroot disk. It is read-only on input and
 writes everything under `tools/_work/<image-basename>/` (gitignored). ✅
@@ -181,8 +183,8 @@ tools/unpack-root.sh sources/floppy/amix_21_root.adf
 
 ### Dependency caveat — why this *carves* instead of mounting
 
-Amix's root disk body is an **SVR4, big-endian, m68k UFS filesystem**. Linux's in-tree `ufs` driver
-**generally cannot mount it** (wrong endianness / SVR4 variant). So this script does **not** try to mount
+Amix's root disk body is an **SVR4, big-endian, m68k `s5` filesystem** (not UFS — see
+[root.adf anatomy](anatomy-root-adf.md)). This script does **not** try to mount
 the image — it does a pragmatic carve instead: ✅
 
 1. Run `binwalk` to enumerate embedded objects (offsets saved to `binwalk.txt`).
@@ -193,8 +195,8 @@ the image — it does a pragmatic carve instead: ✅
    `fsck`, `ufs`, `viper_kludge`, `partition`.
 
 The **ELF installer binaries are left in place** — they are reported by offset (search `binwalk.txt` for
-`Motorola 68020`) rather than extracted, because they are not in a self-contained archive container. For a
-true UFS file tree, use a UFS-aware tool on a *copy* of the image (a *BSD host, or a commercial UFS reader).
+`Motorola 68020`) rather than extracted, because they are not in a self-contained archive container. For the
+full file tree, use an `s5`-aware filesystem reader on a *copy* of the image.
 ✅ This matches the brief's root.adf decode: the first m68k ELF sits at offset `0x6800`, more ELF binaries
 (cpio, fsck, dd, amixpkg, …) follow, interleaved with `/bin/sh` scripts, and a POSIX tar member appears at
 `0x17180`. ✅
@@ -242,12 +244,13 @@ This script builds an **add-on / driver-install** disk that runs *on* an already
 itself bootable. For the other two delivery surfaces:
 
 - A **bootable** `boot.adf` carrying a custom kernel: use `build-bootfloppy.sh` (above) — the floppy
-  format is now [reverse-engineered](reverse-engineering-boot-adf.md), so this is solved (host-verified;
-  🟡 emulator-test pending).
+  format is now [reverse-engineered](reverse-engineering-boot-adf.md), so this is solved (✅ boots in
+  Amiberry; a driver-modified kernel runs a full install under WinUAE).
 - Putting a kernel change onto an **installed** system: relink and write the on-disk boot partition with
   `make bootpart` (run on Amix; see [kernel build](../drivers/kernel-build.md)):
   ```sh
-  make install                         # produces /usr/sys/.../relocunix
+  cd /usr/sys
+  make                                 # -> relocunix
   cp relocunix /stand
   make bootpart KERNEL=relocunix       # writes the 2 MB boot partition (BOOTSIZE=2 MB)
   shutdown -i6                         # reboot
@@ -317,9 +320,14 @@ tools/gen-llms-full.sh
 - `tools/inspect-adf.sh`, `tools/unpack-root.sh`, `tools/build-custom-bootdisk.sh`,
   `tools/gen-llms-full.sh` — the scripts documented here (this repo).
 - `sources/research-brief.md` §0 (artifacts + checksums), §3 (boot.adf bootblock + compressed-kernel
-  strings), §10 (boot/root/patch anatomy: UFS miniroot, ELF at `0x6800`, tar at `0x17180`, patch
-  `dd … iseek=1 | cpio` mechanism), §9 (install / `make bootpart KERNEL=relocunix`).
+  strings), §10 (boot/root/patch anatomy: miniroot, ELF at `0x6800`, tar at `0x17180`, patch
+  `dd … iseek=1 | cpio` mechanism; the brief's "UFS" miniroot is superseded by the 2026-07-05 s5
+  superblock analysis on [root.adf anatomy](anatomy-root-adf.md)), §9 (install /
+  `make bootpart KERNEL=relocunix`).
 - `tools/requirements.md` — authoritative, install-by-platform prerequisite list.
+- `build-bootfloppy.sh` boot results (a rebuilt floppy boots in Amiberry to the root-disk prompt; a
+  driver-modified, `elf2brel`'d kernel runs a full install under WinUAE, 2026-07-05) — see
+  [adding drivers to a boot disk](adding-drivers-to-boot-disk.md) and its Sources.
 - ADF analyses reproduced via `tools/inspect-adf.sh` on `amix_21_{boot,root,patch}.adf`
   (user-supplied media; see `sources/CHECKSUMS.txt`).
 - Media pointer: [amigaunix.com](https://www.amigaunix.com/doku.php/home) / archive.org

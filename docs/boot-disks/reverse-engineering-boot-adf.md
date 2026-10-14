@@ -184,7 +184,7 @@ see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 
 ## See also
 - [Anatomy of the Boot Floppy](anatomy-boot-adf.md) — the byte-level breakdown this page is built on.
-- [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md) — the two delivery surfaces.
+- [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md) — the three delivery surfaces.
 - [The Boot-Disk Tooling Pipeline](build-pipeline.md) — all the `tools/` scripts.
 - [Building & installing a kernel](../drivers/kernel-build.md) — producing the kernel you compress.
 

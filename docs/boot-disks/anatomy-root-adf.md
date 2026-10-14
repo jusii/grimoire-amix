@@ -37,7 +37,7 @@ detected disk type : root
 
 That `Invalid Boot Block @0` is expected and *correct* — it confirms there is no AmigaDOS filesystem. The body is instead an SVR4 **`s5`** filesystem, with its superblock at byte `0x200` (magic `0xfd187e20`) ✅ — see the 2026-07-05 correction at the top of this page. The `UFS miniroot` line the tool prints is **wrong**: `inspect-adf.sh` classifies by keying off the `lost+found` string, and `lost+found` plus the `fsck`/`mkfs` string tables are present here because the floppy *carries the UFS tools as installer binaries*, not because it is a UFS volume ✅ (see [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) lines 59–63). It is a good worked example of why a string heuristic is not a filesystem identification.
 
-**Note — reading the tree.** Linux's in-tree `ufs` driver generally **cannot** mount Amix's big-endian SVR4/m68k UFS, so a full file-tree traversal needs a UFS-aware reader (a *BSD host, or UFS Explorer). The bundled [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) does a *pragmatic carve* instead: it reports every ELF/script offset, carves the POSIX `tar` member(s), and dumps the install-script text — which is what you usually want when studying the installer. ✅
+**Note — reading the tree.** The body is s5, so a full file-tree traversal needs an `s5`-aware filesystem reader, not a UFS one (see [the install script](#the-install-script-is-etcprofile) below). The bundled [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) does a *pragmatic carve* instead: it reports every ELF/script offset, carves the POSIX `tar` member(s), and dumps the install-script text — which is what you usually want when studying the installer. ✅
 
 ## What's inside: installer ELF binaries, scripts, and a tar member
 
@@ -142,7 +142,7 @@ Choose a file system type for this partition:
 What file system type is this partition? [s5]
 ```
 
-The **prompt shows `[s5]` as the bracketed default**, and community guidance — and the brief — recommends **UFS** in practice; the s5 default is plausibly a 3B2-lineage hold-over. 🟡 (rationale unconfirmed; note: the research brief records the script's `ANS` variable as defaulting to `"ufs"` in at least some code paths — the exact fallback may depend on partition role)
+The **prompt shows `[s5]` as the bracketed default**, and community guidance — and the brief — recommends **UFS** in practice; the s5 default is plausibly a 3B2-lineage hold-over. 🟡 (rationale unconfirmed). Both the per-partition and the root prompt default to `s5`; `ANS="ufs"` is set only when `ufs` is typed ✅ (see [filesystems & disks](../how-it-works/filesystems-and-disks.md#ufs-vs-s5-which-filesystem)).
 
 There is one exception the script can enforce for the **root** partition: ✅
 
@@ -268,7 +268,7 @@ Both require `binwalk`/`strings`; `inspect-adf.sh` additionally uses `xdftool` (
 
 ## Sources
 
-- `amix_21_root.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) — `binwalk` object table (30 m68k ELF objects, first at 0x6800; `tar` member at 0x17180; `/bin/sh` scripts at 0x35000/0x35400), ELF header bytes at 0x6800 (`ELFCLASS32`, `ELFDATA2MSB`, `ET_EXEC`, `EM_68K`), and `strings` dump of the install script (BOOTSIZE/BREAKPT/LGSWAP/SMSWAP, `BPART`/`UPART`/`SPART`, s5/ufs prompt, `ROOT_FSYS="s5" # Johann ROM`, RDB `-F` type tags `0x554e4900`/`0x554e4901`/`0x72657376`, `amixpkg` invocations, `/dev/rmt/4hn` tape pipelines).
+- `amix_21_root.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and [`tools/unpack-root.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/unpack-root.sh) — `binwalk` object table (30 m68k ELF objects, first at 0x6800; `tar` member at 0x17180; `/bin/sh` scripts at 0x35000/0x35400), ELF header bytes at 0x6800 (`ELFCLASS32`, `ELFDATA2MSB`, `ET_EXEC`, `EM_68K`), and `strings` dump of the install script (BOOTSIZE/BREAKPT/LGSWAP/SMSWAP, `BPART`/`UPART`/`SPART`, s5/ufs prompts (both `[s5]`; empty input → `ANS="s5"`, `ANS="ufs"` only on typed `ufs`), `ROOT_FSYS="s5" # Johann ROM`, RDB `-F` type tags `0x554e4900`/`0x554e4901`/`0x72657376`, `amixpkg` invocations, `/dev/rmt/4hn` tape pipelines).
 - `viper.README` and the `viper_kludge` runtime banner extracted from `amix_21_root.adf` (author Frank "Crash" Edwards; incompatibility with A3070/Caliper/Wangtek/Sankyo; RAM-only patch; pointer to `/usr/sys/amiga/alien/contrib`).
 - Master research brief, §9 (installation flow) and §10 (root.adf anatomy); §2 (SCSI ids — tape hard-coded at 4, disk 6 by convention; RAM ceiling); §13 gap #8 (RDB partition type IDs).
 - SHA-256 cross-check: `sources/CHECKSUMS.txt`.
