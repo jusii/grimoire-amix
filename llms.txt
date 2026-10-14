@@ -1,9 +1,11 @@
 # grimoire-amix
 
 > Developer- and LLM-oriented documentation for **Amiga Unix (Amix)** — Commodore's port of AT&T
-> System V Release 4 (SVR4) to 68030 Amigas (A3000UX / A2500UX). It explains how Amix works, how to
-> develop software and device drivers for it, and how to build custom boot/install disks with extra
-> hardware drivers. Independent of, and cross-linked to, amigaunix.com; we go deeper on development.
+> System V Release 4 (SVR4) to 68030 Amigas (A3000UX / A2500UX), extended by a community 68040/68060
+> port; the amigaux 1.0 release ships it for 68060 Amigas with a Z3660 and as a classic 68030 kit.
+> It explains how Amix works, how to develop software and device drivers for it, and how to build
+> custom boot/install disks with extra hardware drivers. Independent of, and cross-linked to,
+> amigaunix.com; we go deeper on development.
 
 The single source of truth (facts + citations + ✅/🟡/🔴 confidence tags) is
 [research-brief.md](sources/research-brief.md). Contributor rules are in [AGENTS.md](AGENTS.md).
@@ -31,7 +33,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 ## Getting started (emulation-first)
 - [Running Amix in WinUAE](docs/getting-started/emulation-winuae.md): the exact config (MMU on, JIT off, SCSI 6/4).
 - [Running Amix in FS-UAE](docs/getting-started/emulation-fs-uae.md): the verified FS-UAE config.
-- [Amix on Amiberry](docs/getting-started/emulation-amiberry.md): Amiberry 8.x fully runs AND installs Amix — its A3000 on-board SCSI emulates the disk (ID 6) and tape (ID 4); plus real A2065 networking.
+- [Amix on Amiberry](docs/getting-started/emulation-amiberry.md): Amiberry (8.3.0 or newer) fully runs AND installs Amix — its A3000 on-board SCSI emulates the disk (ID 6) and tape (ID 4); plus real A2065 networking.
 - [Putting Amix on your real LAN (Amiberry)](docs/getting-started/networking-on-the-lan.md): verified recipe — A2065 on a routed TAP + proxy-ARP; static IP, gateway, DNS, internet, reachable inbound, persistent at boot.
 - [Installing Amix (Walkthrough)](docs/getting-started/install-walkthrough.md): boot+root+tape → partition → kernel → patch.
 - [Running Amix on Real Hardware](docs/getting-started/real-hardware.md): A3000UX/A2500UX, modern SCSI.

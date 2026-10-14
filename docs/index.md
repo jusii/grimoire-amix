@@ -7,9 +7,11 @@ status: reviewed
 # grimoire-amix
 
 Documentation for **Amiga Unix (Amix)** — Commodore's port of AT&T System V Release 4 (SVR4) to
-68030 Amigas. Written for **both humans and LLM agents**: every page is plain Markdown with stable
-headings, exact commands, and inline source-confidence tags (✅ verified · 🟡 community-reported ·
-🔴 unverified/disputed).
+68030 Amigas. A community [68040/68060 port](how-it-works/68040-68060-status.md) extends it, and the
+[amigaux 1.0](https://amigaux.org/install/) release ships Amix 2.1 for 68060 Amigas with a Z3660
+accelerator, beside a classic 68030 kit ✅. Written for **both humans and LLM agents**: every page
+is plain Markdown with stable headings, exact commands, and inline source-confidence tags
+(✅ verified · 🟡 community-reported · 🔴 unverified/disputed).
 
 > ⚠️ **AI-assisted — verify before trusting.** This documentation was created with heavy use of LLM
 > tools; much of it is machine-authored and **not all of it has been proofread or tested on real
@@ -118,3 +120,4 @@ Case studies: [va2000](drivers/case-studies/va2000.md) ·
 ## Sources
 - [`../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) (grounding synthesis with citations)
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) (cross-linked community wiki)
+- [amigaux.org Install](https://amigaux.org/install/) (the amigaux 1.0 release: the Z3660 68060 routes and the classic 68030 kit)
