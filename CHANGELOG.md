@@ -2,6 +2,13 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-14 — consistency audit against the amigaux 1.0 facts (daa69f2..59e03ee)
+
+127 fixes from the audit of every confidence-tagged claim: public citations for the newly published repos; stale and
+wrong driver/platform facts (z3660 bounce, spl6/splx, autocon() signature, VPOSR order, X on AGA, the s5 root floppy);
+one canonical stock-only loadable-module caveat; quirks 72 (AF_UNIX under memory pressure) and 73 (Amiberry MOVES
+before 845af02); amix-x11-aga and manx in the bibliography; llms-full regenerated.
+
 ## 2026-10-11 — quirks 71; station notes local-only (0d766a2, b77b04a)
 
 boot-process, quirks 71: fssm_Device's BSTR length counts the NUL. The station notes file is untracked and ignored
