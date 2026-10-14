@@ -16,8 +16,10 @@ dedicated **"Add Tape Drive…"** button ✅.
 This **supersedes** the long-standing "Amix can't install on Amiberry" status: the feature request
 [BlitterStudio/amiberry #1376](https://github.com/BlitterStudio/amiberry/issues/1376) ("Add A3000 SCSI
 controller and tape support for Amiga UNIX") has been **implemented** in current Amiberry. Older 5.7.x
-/ 7.x builds genuinely lacked it (and reportedly crashed with an A3000 config); **use 8.x**. 🟡 (older
-versions)
+/ 7.x builds genuinely lacked it (and reportedly crashed with an A3000 config) 🟡 (older versions).
+**Use 8.3.0 or newer**: builds before 8.3.0 boot Amix but silently corrupt data under paging — the
+amigaux 1.0 classic kit's emulator requirement ✅. The 8.1.6 rows below are the first-hand record of
+what the 8.x line can do.
 
 ## What works (Amiberry 8.1.6)
 
@@ -214,18 +216,20 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
 - First-hand, 2026-06, Amiberry **8.1.6**: an installed Amix 2.1 boots to login from the `scsi6_a3000` hardfile; the GUI *Hard drives/CD* page shows `A3000 SCSI:6 → HDF` and `A3000 SCSI:4 → TAPE` mounted (RW) with an "Add Tape Drive…" button; a full from-tape install completes on Amiberry 8.1.6 (confirmed first-hand, 2026-06). Working config: `scsi_a3000=true`, `hardfile2=…,scsi6_a3000`, `uaehf1=tape0,…,scsi4_a3000`.
 - [BlitterStudio/amiberry #1376](https://github.com/BlitterStudio/amiberry/issues/1376) — "Add A3000 SCSI controller and tape support for amix" (the requested support is present in 8.x).
+- The amigaux 1.0 emulator requirement (Amiberry 8.3.0 or newer; older versions corrupt data under paging) — [`jusii/amix-installng`](https://github.com/jusii/amix-installng) `docs/public-classic-README.txt` and the [amigaux.org emulator install page](https://amigaux.org/install/emulator/); the 1.0 configs were accepted on stock Amiberry v8.3.0 (`docs/releases/1.0.md`, "Emulator acceptance (Amiberry)").
 - Research brief §2 (tape ID 4 hard-coded; disk ID 6 by convention) and §9 (`dd … /dev/rmt/4hn | cpio` install flow).
 - [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) project repository.
-- The A4091-on-Amix project — `NOTES.md` §9 (A4091-in-Amiberry config + the A3000(ECS)/A4000(AGA) Kickstart matrix) and §10 (the `amishot` IPC-socket screenshot tool), reproduced locally ✅. Config files `amix-a4091-boot.uae`, `amix-a4091-boot-aga.uae`, `amix-dbg.uae`; A4091 product id `0x02020054` verified in `src/a4091-blk.c`. Screenshot wrapper: [`tools/amishot.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amishot.sh).
+- The A4091-on-Amix project, [`jusii/amix-a4091`](https://github.com/jusii/amix-a4091) — its `README.md` (Amiberry-proven on A3000/ECS and A4000/AGA profiles; `amix-a4091-boot-aga.uae` with a Kickstart 3.0 A4000 ROM for root on the A4091, `amix-dbg.uae` for the A3000 + A4091 case) and the sample configs at its root (`amix-a4091-boot.uae`, `amix-a4091-boot-aga.uae`, `amix-dbg.uae`), reproduced locally ✅; A4091 product id `0x02020054` verified in `src/a4091-blk.c`. The A3000(ECS)/A4000(AGA) Kickstart matrix, including the KS 2.04 white screen on AGA: first-party record, 2026-06-05 ✅. Screenshot wrapper: [`tools/amishot.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/amishot.sh).
 - [A4091/a4091-software](https://github.com/A4091/a4091-software) — the A4091 autoboot ROM (`amiga-boot-a4091.rom`) and the `ncr53cxxx` SCRIPTS assembler.
-- The **Installer-NG** blank-disk→bootable-install work (amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`), 2026-07-22/24, on Amiberry and a real A4000+Z3660 (install-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
-- The **amiberry** project fork, `docs/amix-guest-cycle-exact.md` @ `aa077b0`, 2026-07-26 ✅ — the
+- The **Installer-NG** blank-disk→bootable-install work ([`jusii/amix-installng`](https://github.com/jusii/amix-installng), [`jusii/amix-packagemanager`](https://github.com/jusii/amix-packagemanager); first-party record, 2026-07-22/24), on Amiberry and a real A4000+Z3660 (install-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- A first-party source read of upstream
+  [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry), 2026-07-26 ✅ — the
   `default_prefs()` initialisation (`src/cfgfile.cpp`), the four non-equivalent config keys and why only
   `cycle_exact` clears all three flags, the host-dependent `default_disable_cycle_exact` path
-  (`src/osdep/amiberry.cpp` / `src/include/options.h`), the `fixup_prefs()` host-log tell and its
-  `cpu_compatible = true` side effect (`src/main.cpp`), and the 16-log discrimination (present in 6/6
-  omitting runs, absent in 10/10 pinning runs).
-- The **amix-kerntools** piscsi-rig ablation @ `33ab7c3` (`docs/piscsi-rig.md` §3, first landed
-  `c1cd679`), 2026-07-26 ✅ — 10 boots, same image and same kernel throughout, isolating
-  `cycle_exact` as the single variable (the hand-written config plus `cycle_exact=false` and
-  nothing else reaches multiuser).
+  (`src/osdep/amiberry.cpp` / `src/include/options.h`), and the `fixup_prefs()` host-log tell and its
+  `cpu_compatible = true` side effect (`src/main.cpp`); with the 16-log discrimination measured the
+  same day (present in 6/6 omitting runs, absent in 10/10 pinning runs; first-party record,
+  2026-07-26).
+- The **piscsi-rig cycle-exact ablation** (first-party record, 2026-07-26) ✅ — 10 boots, same
+  image and same kernel throughout, isolating `cycle_exact` as the single variable (the hand-written
+  config plus `cycle_exact=false` and nothing else reaches multiuser).

@@ -286,7 +286,7 @@ Useful for automation / agents driving Amix without a visible window:
 
 - [Networking (concepts)](../how-it-works/networking.md) — the SVR4 STREAMS stack, `aen0`, DNS-off-by-default, the `route` metric.
 - [Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) — the **real-hardware** native-ethernet path: a physical A4000 + Z3660 as a LAN host over `zen0` (a native STREAMS/DLPI driver), as opposed to this page's emulated-A2065-on-a-host-TAP recipe. Same SVR4 boot-time bring-up files apply.
-- [Amix on Amiberry (status)](emulation-amiberry.md) — what runs vs. what needs WinUAE/FS-UAE.
+- [Amix on Amiberry](emulation-amiberry.md) — install and run status, the A4091 and headless recipes.
 - [`tools/host-net/`](https://github.com/Jusii/grimoire-amix/tree/master/tools/host-net/) — the host scripts, systemd unit, and telnet/ftp helpers used here.
 - [Quirks](../how-it-works/quirks.md) — DNS-off, the `route` metric, the domain-append trap, and the **DNS-enable slow-boot** (literal-IP `ifconfig` fix).
 - [amigaunix.com — networking](https://www.amigaunix.com/doku.php/networking) — the community source that documents the `/etc/domain` "general weirdness".

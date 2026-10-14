@@ -77,7 +77,7 @@ This bites driver builders constantly: the install scripts shipped with communit
 
 ## Starting X
 
-Amix has **two completely different X paths** depending on your graphics hardware. Pick the one that matches your machine. For the full picture (window managers, OpenLook, keymap quirks, RTG alternatives) see [X11 and the desktop](../how-it-works/x11-and-desktop.md).
+Amix has **different X paths** depending on your graphics hardware. Pick the one that matches your machine. For the full picture (window managers, OpenLook, keymap quirks, RTG alternatives) see [X11 and the desktop](../how-it-works/x11-and-desktop.md).
 
 ### Mono X (built-in graphics)
 
@@ -88,6 +88,11 @@ The default X release is **X11R4** 🟡 (amigaunix.com, the most authoritative c
 ```sh
 xinit           # brings up X with tvtwm on the built-in mono display 🟡
 ```
+
+> **AGA machines (A4000, A1200).** The stock mono X11R4 server also runs on AGA, and the third-party
+> [`hmlio/amix-x11-aga`](https://github.com/hmlio/amix-x11-aga) `Xaga` back-end adds colour X on the
+> native AGA/ECS chipset (16 colours on the stock kernel, 256 with its console-driver patch) 🟡
+> (author-reported; not reproduced here).
 
 ### A2410 color X (TIGA)
 
@@ -102,7 +107,7 @@ The window manager in the color/OpenLook world is **`olwm` / `olwsm`** ✅, whic
 
 ### A third option: RTG cards
 
-A modern alternative to both is the **RTG path** — a community X11R5 server (`Xrtg`) running on a Zorro II framebuffer card such as the MNT VA2000. That's a development effort, not a stock-disk feature; see the [Xrtg case study](../drivers/case-studies/xrtg.md) and [VA2000 driver case study](../drivers/case-studies/va2000.md).
+A modern alternative to both is the **RTG path**. On a **Z3660**, the amigaux 1.0 card ships a ready-installed RTG X desktop ✅: the X11R6.3 `Xzz9000` server on the card's onboard graphics through the [`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) driver; the same server runs on an MNT **ZZ9000** — see the [x11r6.3-amix case study](../drivers/case-studies/x11r63-zz9000.md). The older community route is an X11R5 server (`Xrtg`) on a Zorro II framebuffer card such as the MNT VA2000; see the [Xrtg case study](../drivers/case-studies/xrtg.md) and [VA2000 driver case study](../drivers/case-studies/va2000.md).
 
 ### X keymap quirks
 
@@ -164,3 +169,5 @@ When you're ready to do real work, the next stops are the [commands cheat-sheet]
 - `asokero/va2000-amix` install-script gotcha (Amix `/bin/sh` has no `$(...)`, no `grep -q`) — https://github.com/asokero/va2000-amix (brief §6)
 - `amix_21_patch.adf` analysis (`#!/sbin/sh` header, `uname -v` `^2\.1.* 08004..$` match) via `tools/inspect-adf.sh` (brief §10)
 - amigaunix.com DokuWiki pages: x11, networking, tips-tricks, y2k-dst — https://www.amigaunix.com/doku.php/home
+- The amigaux 1.0 RTG desktop — [`jusii/amix-installng`](https://github.com/jusii/amix-installng) `docs/release-notes-amigaux-1.0.md` ("a ready-installed Amix desktop (RTG)") and `docs/releases/1.0.md` (`k1-desktop-rtg.hdf`); the [amigaux.org first-boot page](https://amigaux.org/docs/first-boot/) (`startx-rtg`, OPEN LOOK on the Z3660's RTG); [`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) `README.md` (the Z3660 target and the cross-built `Xzz9000`).
+- X on AGA — [`hmlio/amix-x11-aga`](https://github.com/hmlio/amix-x11-aga) `README.md` and `docs/design.md` (stock X11R4 mono runs on AGA; `Xaga` 16/256 colours) 🟡, third-party, not reproduced here.
