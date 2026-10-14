@@ -46,7 +46,7 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 | Requirement | Detail | Why it's fixed |
 |---|---|---|
 | **CPU** | 68020 **or** 68030 with a **real MMU** | Amix uses the 68030 MMU (HAT layer); a 68EC020/68EC030 (no MMU) **cannot** run Amix |
-| **FPU** | **68881 or 68882** mandatory | No soft-float; the kernel and userland assume hardware FP |
+| **FPU** | **68881 or 68882** mandatory | No soft-float; the kernel and userland assume hardware FP. Without one the stock kernel boots (`no fpu detected`), then panics at the first signal ([quirks §74](../how-it-works/quirks.md#74-no-fpu-signal-panic)) |
 | **No 68040/68060** (stock) | A4000 **cannot** officially run **stock** Amix | Stock kernel predates the 68040 MMU; the public [68040/68060 port](../how-it-works/68040-68060-status.md) boots Amix on a real 68060 (A4000T + Z3660, 2026-09-25) ✅ |
 | **Fast RAM** | **4 MB minimum**; on a stock kernel rooted on the A3000 SCSI, keep the motherboard bank at 16 MB | A bigger motherboard bank loads the stock kernel below `0x07000000` and loses the root disk ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)); kernels that probe for the controller run 64 MB, the 040/060 kernels 128 MB — above that, the describable-RAM limit ([RAM ceiling](../how-it-works/ram-ceiling.md)) |
 | **SCSI disk** | **ID 6** (convention) | Installer prompts for the disk target; ID 6 is the universal default, baked into device names once installed |
@@ -220,6 +220,7 @@ If your goal is to *develop* drivers or explore the system, emulation is the pra
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — the most authoritative community resource for end-user install/history/media
 
 ## Sources
+- The **no-FPU signal panic** ✅ — see the matching Sources entry on [the quirks page](../how-it-works/quirks.md#74-no-fpu-signal-panic) (a real A1200 with an FPU-less 68030 card and an Amiberry reproduction, first-party record, 2026-10-14; the stock `sendsig` → `fpu_setup` call in the public 68040/68060 port's gate census).
 - The Z3660 `kickstart 0` / `.d6` facts — see the matching Sources entry on [the quirks page](../how-it-works/quirks.md#68-z3660-d6-reset-vector) (FPGA and firmware sources, upstream `50e98e0`, a first-party A4000D run, 2026-10-03) ✅.
 - The **68LC060 and FPU-built AmigaOS software** ✅ — the Z3660 driver set's `z3660-drivers/exfat/makefile` (`-m68881`) and a first-party A4000T metal session on 2026-10-02 in which mounting the SD with that handler crashed the 68LC060 with a Line-F exception; Amix's own `no fpu detected` / `fpu emulation enabled` boot lines are on [the 040/060 page](../how-it-works/68040-68060-status.md).
 - The **2026-10-02 large-target bracket** ✅ — the installer's own author sequence on blank 600–1024 MB targets on a 68030 and a 68060 kernel, the stock `sddevsize()` default of 1 234 567 blocks found as the cause, the whole-disk raw-read hang bisected, and the fix (default `0x3FFFFF` + a `dd.c` offset check) re-run green at every size (first-party record, 2026-10-02).

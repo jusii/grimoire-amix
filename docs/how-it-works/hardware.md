@@ -51,7 +51,7 @@ These are not recommendations — they are enforced by the kernel and the instal
 
 - **CPU:** 68020 or 68030. ✅
 - **MMU:** a *real* MMU is required. ✅ The kernel uses a full HAT (Hardware Address Translation) layer over the 68030 MMU; there is no software-MMU fallback. A plain 68000, or the MMU-less **68EC020/68EC030** parts, **cannot run Amix**. ✅
-- **FPU:** a **68881 or 68882** floating-point unit is required. ✅ There is no soft-float build.
+- **FPU:** a **68881 or 68882** floating-point unit is required. ✅ There is no soft-float build. Without one the stock kernel still boots (it prints `no fpu detected`), then panics at the first signal delivery — a kernel-side wall, not only userland's SIGSYS ✅ ([quirks §74](quirks.md#74-no-fpu-signal-panic)).
 
 **The 68LC060 case.** A Z3660 can carry a **68LC060** — a
 68060 without the FPU ✅. That does not affect Amix: the 68040/68060 kernels emulate floating point
@@ -192,6 +192,7 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 
 ## Sources
 
+- The **no-FPU signal panic** ✅ — see the matching Sources entry on [the quirks page](quirks.md#74-no-fpu-signal-panic) (a real A1200 with an FPU-less 68030 card and an Amiberry reproduction, first-party record, 2026-10-14; the stock `sendsig` → `fpu_setup` call in the public 68040/68060 port's gate census).
 - The **68LC060 and FPU-built AmigaOS software** ✅ — the Z3660 driver set's `z3660-drivers/exfat/makefile` (`-m68881`) and a first-party test on a 68LC060 (2026-10-02) in which mounting the SD with that handler raised a Line-F exception; Amix's own `no fpu detected` / `fpu emulation enabled` boot lines are on [the 040/060 page](68040-68060-status.md).
 - The **A4000/030's stock CPU card** — Commodore's 68EC030 card, identified first-party 2026-10-01 ✅.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)).

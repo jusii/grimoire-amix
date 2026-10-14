@@ -86,6 +86,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 71 | **A boot node's `fssm_Device` BSTR length counts the terminating NUL** — `MakeDosNode()` adds 1 to the device name's length byte (not to `dn_Name`'s) on every Kickstart from 2.0 to 3.2.3. A loader that matches its boot node against an exec `ln_Name` must compare as a C string, as the strap does | ✅ | [Quirks §71](#71-fssm-device-nul), [Boot process](boot-process.md#fssm-device-nul) |
 | 72 | **A local `AF_UNIX` stream socket can deliver stale data under memory pressure** — on Amix 2.1c with about 8 MB of fast RAM and a non-blocking writer, a read can return whole 4 KB pages from earlier in the stream; X clients (Xlib writes non-blocking) die on misparsed requests. Third-party report, not reproduced here; none seen with 12 MB or more | 🟡 | [Quirks §72](#72-af-unix-memory-pressure), [X11 & desktop](x11-and-desktop.md) |
 | 73 | **Amiberry builds before upstream commit `845af02` corrupt Amix data in the 68030 MMU's "more compatible" mode** (`cpu_compatible=true`) — a misaligned `MOVES` was not split across a page boundary, and Amix copies between kernel and user space with `MOVES`. On an older build set `cpu_compatible=false`. Third-party report, not reproduced here | 🟡 | [Quirks §73](#73-amiberry-moves-page-boundary), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
+| 74 | **Without an FPU the stock 68030 kernel boots, then panics at the first signal** — the boot probe prints `no fpu detected` and carries on, but `sendsig` is the one caller of the FP-state routines that never checks `fpu_present`: its FRESTORE (kernel text `0x12A`) takes a Line-F fault in supervisor mode, in `init`, seconds after boot. Triage rule: *`no fpu detected`, then a kernel fault in pid 1 at load base + `0x12A`, vector `0xB`* = the card has no FPU — not the disk driver, Kickstart or RAM | ✅ | [Quirks §74](#74-no-fpu-signal-panic), [Hardware](hardware.md#cpu-mmu-fpu-all-three-mandatory) |
 
 The rest of this page expands each item.
 
@@ -475,6 +476,40 @@ bug* — ask "does it print a float?" before investigating anything else.
 `awk 'BEGIN{print 1+1}'` dying on an FPU-less part looks like proof of a second, non-FP defect. It
 is the opposite: awk holds every number as a C `double`, so it prints a float even for pure-integer
 expressions. An awk failure on integer arithmetic is the *same* FP defect, not a new one.
+
+### 74. Without an FPU the stock 68030 kernel boots, then panics at the first signal ✅ {#74-no-fpu-signal-panic}
+
+The stock kernel's boot probe copes with a missing 68881/68882: it prints `no fpu detected`, and
+the boot carries on through the driver banners and the copyright block. Seconds after `init` starts,
+the machine dies:
+
+```text
+TRAP proc = … (pid 1, init) psw = 2000 pc = <kernel load base>+0x12A
+PANIC: KERNEL FAULT psw=0x2000, pc=…12A, fmt=0x0, vector=0xB (Line-F Emulator)
+```
+
+Text offset `0x12A` is the stock `frestore` wrapper, a bare FRESTORE. With no coprocessor that is
+an F-line instruction, and here it runs in supervisor mode, so it is a kernel fault, not a user
+process's SIGSYS ([§31](#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call)).
+What reaches it is **signal delivery**: `sendsig` calls `fpu_setup`, and it is the one caller that
+does not check `fpu_present` first. Of the eleven calls into the kernel's FP-state routines
+(`fpu_save`, `fpu_restore`, `fpu_setup`), ten are gated, among them the boot probe `fpuinit` and
+`setregs` on exec. So the first signal is fatal, and one comes at once: `init`'s first child
+exits and `init` takes `SIGCLD`. The probe covers boot, not signals: "boots without an FPU" is
+true of the kernel and false of a running system. Seen on a real A1200 with an FPU-less 68030 card
+(Kickstart 3.1, kernel loaded at `0x08000000`, so `pc = 0x0800012A`) and reproduced in Amiberry
+(`cpu_model=68030`, `fpu_model=0`) at the same text offset.
+
+On the stock 68030 line the 68881/68882 requirement is therefore a kernel-side wall: such a system
+never runs long enough to show §31's userland failures. **Triage rule:** `no fpu detected` at boot,
+then a kernel fault in pid 1 at the load base + `0x12A`, vector `0xB` — the card has no FPU. It is
+not the disk driver, not Kickstart and not RAM.
+
+The 68040/68060 port's 68060 kernels are not affected: `src/fpuinit060.s` gates exactly that
+`sendsig` call (`fpu_setup_gated`), which is why the FPU-less 68LC060 lane boots and runs (it is
+where §31 was measured; see [the 040/060 page](68040-68060-status.md#the-fpu-less-68060-lane-software-floating-point-on-real-silicon)).
+**Planned, not yet implemented** 🟡: support for FPU-less 68030 cards — the `sendsig` gate first,
+then NetBSD's FPE, the software FPU the 68LC060 lane runs, on the 68030 line.
 
 ## 68060 CPU quirks
 
@@ -1155,6 +1190,7 @@ keep an on-box-authored root at or below 1 234 567 blocks.
 
 ## Sources
 
+- The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).
 - The **`fssm_Device` NUL count** (2026-10-07) ✅ — disassembly of `expansion.library` `MakeDosNode` and the `strap` in Kickstart 3.2.3 and 3.1 r40.68, and a check of 52 Kickstart images from 2.0 to 3.2.3 (first-party record, 2026-10-07); NDK `dos/filehandler.h` (quirk 71). Details on [boot process](boot-process.md#fssm-device-nul).
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
 - Research brief §12 (quirks checklist), with specifics pulled from §2 (hardware & limits), §9 (install flow + `viper_kludge`/Y2K), and §11 (networking, X11, userland).
