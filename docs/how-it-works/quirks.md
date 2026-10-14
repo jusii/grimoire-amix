@@ -498,7 +498,8 @@ does not check `fpu_present` first. Of the eleven calls into the kernel's FP-sta
 exits and `init` takes `SIGCLD`. The probe covers boot, not signals: "boots without an FPU" is
 true of the kernel and false of a running system. Seen on a real A1200 with an FPU-less 68030 card
 (Kickstart 3.1, kernel loaded at `0x08000000`, so `pc = 0x0800012A`) and reproduced in Amiberry
-(`cpu_model=68030`, `fpu_model=0`) at the same text offset.
+(`cpu_model=68030`, `fpu_model=0`) at the same text offset (`pc = 0x0020012A`, kernel loaded at
+`0x00200000`).
 
 On the stock 68030 line the 68881/68882 requirement is therefore a kernel-side wall: such a system
 never runs long enough to show §31's userland failures. **Triage rule:** `no fpu detected` at boot,
