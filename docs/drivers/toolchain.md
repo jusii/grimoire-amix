@@ -132,6 +132,16 @@ make test-random AMIX_ROOT=/path/to/usr-amix CPUFLAGS=-m68030
 
 The wrapper compiles via `-S` → an `.lcomm` assembly fix-up → `as -m68020`, working around quirks of the old GCC's output ✅. So you can now develop a driver (e.g. the [A4091](a4091-53c710-driver.md) or a new NIC) on a modern host and do only the final relink on Amix — though the native on-box build (above) remains the simplest path for a single driver. This was open gap #1 in §13 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), now closed.
 
+**68060 targets.** GCC 2.7.2.3 has no `-m68060`; compile code for a 68060 with `-m68040` ✅. At
+every optimisation level and `-m680x0` flag it emits the 64-bit `mulu.l`/`muls.l` form, which the
+68060 does not implement, for every divide or modulo by a constant ✅. The [`jusii/gcc-cross-amix`](https://github.com/jusii/gcc-cross-amix) fork's
+wrapper expands that form into 16×16 `mulu.w` sequences by default and installs
+`m68k-cbm-sysv4-scan060`, which reports any 68060-unimplemented instruction in objects, archives or
+executables (`AMIX_SCAN060=1` runs it on every compile) ✅; neither is in the upstream repo linked
+above yet. The 1.0 68060 kernels emulate the 64-bit multiply and divide forms, so on them the
+expansion saves slow emulation rather than a killed process 🟡
+([1.0 release notes](https://github.com/jusii/amix-installng/blob/master/docs/release-notes-amigaux-1.0.md)).
+
 ### The assembler-fixup family: .swbeg, fcmp — and the tdivs divide-with-remainder bug ✅
 
 The wrapper's `fix_asm` pass exists because GCC 2.7.2.3 emits **SGS-dialect** assembly that GNU
@@ -233,7 +243,7 @@ register operand form, not of the Motorola-immediate operand form):
 | `{&0:&32}` / `{&BOFF:&WID}` | assembles correctly, literals **and** symbols |
 
 `&` is the only universally-correct repair — bare numbers work for literals and fail for symbolic
-offsets/widths. As of `gcc-cross-amix` `d0a4045` the wrapper's `fix_asm` auto-repairs `#` → `&`
+offsets/widths. As of `gcc-cross-amix` `ef7c86e` the wrapper's `fix_asm` auto-repairs `#` → `&`
 **inside bit-field braces** for all eight bit-field mnemonics, gated on the *encoding* by
 `make test-bitfield` (offset/width read back out of the extension word). The repair is deliberately
 narrow: `#APP`/`#NO_APP` and every other `#` on the line are untouched, so **all other hand-written
@@ -244,7 +254,8 @@ rewrite to `&`, and verify the encoding, not the build's exit status ✅.
 ### The wrapper's `-c foo.s` with no `-o` silently destroys the source ✅
 
 A destructive trap in the cross **wrapper's** `.s` path (present in the shipped wrapper as of
-2026-07; a wrapper fix is queued in the `gcc-cross-amix` repo ✅):
+2026-07 ✅; fixed in the [`jusii/gcc-cross-amix`](https://github.com/jusii/gcc-cross-amix) fork by
+`1bfffbd`, 2026-09-15, gated by `make test-objdir`, and not yet in the `isoriano1968` upstream ✅):
 
 ```sh
 m68k-cbm-sysv4-gcc -c foo.s     # no -o — DO NOT: this destroys foo.s
@@ -260,8 +271,8 @@ spec drops that zero-length argument when it builds the `as` command line, so `a
 refusing-to-overwrite guard compares the input against the (empty) output name, so it never fires.
 
 Where you meet it: **`.s.o` Makefile rules in the old SVR4 idiom — `$(CC) $(CFLAGS) -c $<` with no
-`-o`** — under the wrapper such a rule eats its own source ✅. Until the fixed wrapper ships, the
-defence is one line:
+`-o`** — under the upstream wrapper or an older install such a rule eats its own source ✅. There
+the defence is one line, and an explicit `-o` remains good practice everywhere:
 
 ```make
 .s.o:
@@ -425,6 +436,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (install uses `amixpkg`/`cpio`/`dd` from tape).
 - amigaunix.com — *downloads* page (AmixBP, Michael Parson) and *more_software* / *tips-tricks*: <https://www.amigaunix.com/doku.php/home>
 - SVR4 packaging tools (`pkgproto`, `pkgmk`, `pkgtrans`, `pkgadd`) — standard AT&T System V Release 4 documentation.
-- amix-installng @ `7106f1b` and amix-packagemanager @ `4539ad2` (2026-07-22/24) — platform behaviours root-caused under Amiberry and on a real A4000 + Z3660 (s5/UFS state reads, on-metal digest checks) ✅ (🟡 where tagged).
+- The [amix-installng](https://github.com/jusii/amix-installng) and [amix-packagemanager](https://github.com/jusii/amix-packagemanager) work (first-party record, 2026-07-22/24) — platform behaviours root-caused under Amiberry and on a real A4000 + Z3660 (s5/UFS state reads, on-metal digest checks) ✅ (🟡 where tagged).
+- The [`jusii/gcc-cross-amix`](https://github.com/jusii/gcc-cross-amix) fork (`main`): `2ab2b22` (the wrapper's 64-bit multiply expansion and `m68k-cbm-sysv4-scan060`), `80b6d67` and the README's "68060 Integer Code" section (no `-m68060`; use `-m68040`); `1bfffbd` (the `-c` with no `-o` fix, `make test-objdir`) and `7036952` (its README scope), 2026-09-15 — none of these is yet in the `isoriano1968` upstream. `ef7c86e` (the bit-field `#` → `&` repair) is in both. The 68060 kernels' integer emulation: the amix-installng [1.0 release notes](https://github.com/jusii/amix-installng/blob/master/docs/release-notes-amigaux-1.0.md) (draft) 🟡.
 - First-party cross-toolchain findings (2026-07-27): SGS-dialect probes of the installed `m68k-cbm-sysv4` binutils-2.8.1 `as` (the `#`-as-comment failure reproduced; per-construct MIT-syntax compatibility probes) and the wrapper `-c foo.s` source-destruction defect (minimally reproduced three times; cause chain pinned by tracing the wrapper; empty-stdin control via `as -m68020 -o t.s </dev/null`).
 - The **amix-packages** porting campaign — `PORTING.md` and a corroborating ports-roadmap research pass (2026-08-28), all from direct Amix-sysroot inspection ✅: the byte-identical `libcurses.a`/`libtermcap.a`/`libtermlib.a` archive exporting both APIs and the "link `-lcurses`" policy (§3.4); no POSIX `regcomp`/`regexec`, only SVR4 `<regexp.h>` + libgen `regcmp`; `strcasecmp` present only in the networking libs and declared in no header (§3.1); `snprintf`/`vsnprintf`/`getpagesize` absent from `libc.so.1` (and `snprintf` undeclared in `stdio.h`) with the GCC 2.7.2.3 implicit-declaration miscompile (the reproduced `atof` case) and the wider absent-symbol list (§3.1); the SVR4 `/proc` 37-`PIOC*`-ioctl model vs. Linux text files, with the parallel-port-`PIOC*` disambiguation (§3.2); and the `fix_asm`-only-through-the-wrapper property — `-S` bypasses every fixup, including the silent `fcmp` operand-order reversal (§2.2). No proprietary SVR4 headers or source reproduced — symbol/header **presence and behaviour** observed live, paraphrased.

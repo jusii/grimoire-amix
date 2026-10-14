@@ -20,8 +20,8 @@ project and run on a physical A4000 + Z3660 in 2026-06. Unless noted, every clai
 Verified** (driver source we wrote, or a result reproduced live on the hardware); items resting on
 firmware-side assertion or community lore are tagged 🟡 inline and carried verbatim from the source
 brief per the repo's [confidence-tag policy](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md).
-The source is the **amix-z3660scsi** project at commit `8ea1605` — `src/z3660.c`,
-`src/kernel-patches/sd.c`, `driver.conf`, `NOTES.md`, `README.md` — plus firmware-side facts owned by
+The source is the **amix-z3660scsi** project at commit `2cc7605` — `src/z3660.c`,
+`src/kernel-patches/dd.c.patch`, `driver.conf`, `NOTES.md`, `README.md` — plus firmware-side facts owned by
 the [Z3660 firmware repo](z3660-ethernet-driver.md#what-the-z3660-and-z3660eth-are).
 
 > **One-line summary.** The Z3660's onboard "SCSI" is **not a SCSI chip** — it is the PiStorm
@@ -45,10 +45,10 @@ returns. That makes it **substantially lower-risk to port than the [A4091 53C710
 no SCRIPTS program, no live phase dispatch, no completion bookkeeping — just a mailbox and a bounce
 buffer ✅.
 
-> **Source.** The driver header `src/z3660.c:4-8` states this verbatim; the **empty `z3660intr()`
-> stub** (`z3660.c:379-381`) plus the **synchronous `timeout()` / `z3660done`** completion path
-> (`z3660.c:246-250,374`) corroborate "no IRQ", and the lower-risk rationale is in `NOTES.md`
-> (§"Why this is lower-risk") and `README.md:8-10` ✅.
+> **Source.** The header comment of `src/z3660.c` states this verbatim; the **empty `z3660intr()`
+> stub** plus the **synchronous, in-context completion** in `z3660queue()` corroborate "no IRQ", and
+> the lower-risk rationale is in `NOTES.md` (§"Why this is lower-risk than the A4091 driver we
+> already shipped") and `README.md` ✅.
 
 > **CD units come from the firmware's `isoN` key — and N must equal the SCSI target.** The firmware
 > presents an `isoN` image as a read-only 2048-byte-block CD-ROM (PDT `0x05`), but it records the CD
@@ -82,7 +82,8 @@ offset `PISCSI_OFFSET = 0x2000`, distinct from the ethernet mailbox at `+0x000`)
 |---|---|---|---|
 | `P_WRITE` | `0x00` | W | command register: a write **= unit number** triggers a WRITE (and completes it) |
 | `P_READ` | `0x04` | W | command register: a write **= unit number** triggers a READ (and completes it) |
-| `P_DRVTYPE` | `0x0C` | R | drive type; returns strictly **0 or 1** — also the presence probe (see below) |
+| `P_DRVNUM` | `0x08` | R | the selected unit — follows `P_DRVNUMX`; part of the presence signature (see below) |
+| `P_DRVTYPE` | `0x0C` | R | drive type; returns strictly **0 or 1** — the last step of the presence signature (see below) |
 | `P_BLOCKS` | `0x10` | R | block count (read-only; **writing it is a deliberate debug lever** — see 🟡 below) |
 | `P_READ_ADDR1` | `0x20` | W | **READ:** block number (LBA) |
 | `P_READ_ADDR2` | `0x24` | W | **READ:** byte length |
@@ -108,9 +109,8 @@ Zorro III bus cycle and finishes the whole transfer before the write returns —
 This is why the driver's interrupt handler is an empty stub and completion is just the next
 instruction.
 
-> **Correction — how the driver signals completion changed after `8ea1605`.** ✅ At the commit this
-> page pins, the driver still deferred the SVR4 completion callback to a **clock callout**
-> (`timeout(z3660done, cp)`). That later proved unsafe on real hardware: a caller is allowed to put
+> **Correction — how the driver signals completion changed in 2026-07.** ✅ The driver used to defer
+> the SVR4 completion callback to a **clock callout** (`timeout(z3660done, cp)`). That later proved unsafe on real hardware: a caller is allowed to put
 > its `struct sdcom` on its **own stack** (the cdfs in-kernel filesystem does exactly this), and by
 > the time the callout fired from a *different* context that stack frame was dead, so `cp->intr` was
 > read out of reclaimed memory and jumped through — kernel corruption + a wild-jump panic the moment
@@ -121,21 +121,34 @@ instruction.
 > bracketed at **spl6** (`908f40a`). This is the generalized **Amix HBA completion contract** — see
 > [the driver model](driver-model.md#the-amix-hbadma-driver-contract-real-hardware). ✅
 
-### The mandatory bounce buffer ✅
+### The firmware's staging window ✅ {#the-mandatory-bounce-buffer}
 
-All Amix RAM lives **below `0x08000000`** (`BOUNCE_THRESH`), so the transfer path **always bounces**
-through a firmware-visible buffer at `board_base + 0x80000` (`BOUNCE_OFFSET`):
+The 64 KB window at `board_base + 0x80000` (`BOUNCE_OFFSET`) is the **firmware's own staging area**
+seen through the board window, not a buffer the driver allocates ✅. On the Z3660, Amix RAM starts
+**at** `0x08000000` (the firmware's `AMIX_RAM_GUEST_BASE`, the value of the driver's `BOUNCE_THRESH`), so
+every Amix buffer is at or above the threshold and the firmware **DMAs straight into 68k RAM** at the
+address the driver writes to `*_ADDR3` ✅:
 
-- **WRITE** — the driver `bcopy`s the data into the bounce window *before* issuing `P_WRITE`.
-- **READ** — after `P_READ` returns, the driver checks `P_USED_DMA` (`0x9C`) and `bcopy`s the bounce
-  window back into the caller's buffer.
+- **WRITE** — the driver stages a copy in the window only for a buffer *below* `0x08000000`, which is
+  not Amix RAM; on the shipping configurations that branch is unreachable (`z3660_bounce_wr_n`
+  counts it) ✅.
+- **READ** — after `P_READ` returns, the driver reads `P_USED_DMA` (`0x9C`): nonzero means the
+  firmware staged the data in the window, and the driver `bcopy`s it out; zero means the data is
+  already in the caller's buffer ✅.
+
+> **Correction (2026-08-24).** This page used to say that all Amix RAM lies *below* `0x08000000`, so
+> the path always bounces. That held only for the first 2026-06 setup, with Amix RAM in motherboard
+> fast RAM at `0x07xxxxxx`. Since the kernel moved to Z3660 memory at `0x08000000` — the *base* of
+> Amix RAM — the driver stages nothing, and coherence arguments built on "the bounce keeps it
+> coherent" are void; on real 68040/68060 silicon the driver does real cache maintenance (the
+> project's `docs/BLIZZARD-F3.md`) ✅.
 
 Transfers are chunked to `MAXXFER = 65536` (≤ 64 KB per command) ✅.
 
 > **The direct-vs-bounce gate is a two-party contract — both sides must key on the same threshold.** ✅
-> The bounce protocol here (all RAM below `BOUNCE_THRESH = 0x08000000` ⇒ always copy through the
-> firmware window) is only half of the deal; the *firmware* has a matching gate deciding whether it
-> DMAs straight into the guest buffer or bounces. When the firmware's DDR map moved (AMIX RAM
+> The driver's side (hand the firmware a physical address, copy out only when `P_USED_DMA` says the
+> firmware staged the data) is only half of the deal; the *firmware* has a matching gate deciding
+> whether it DMAs straight into the guest buffer or bounces. When the firmware's DDR map moved (AMIX RAM
 > relocated to `0x08000000`) the firmware still gated direct DMA on an old `cpu_ram` flag
 > (force-disabled for AMIX) while both the Amix and AmigaOS drivers already expected the ARM to DMA
 > *directly* into any buffer at/above `BOUNCE_THRESH` and did **not** copy — so the two sides
@@ -157,13 +170,13 @@ device, not a SCSI target, so the SCSI command surface the Amix `sd` stack expec
 mailbox. Multi-byte SCSI fields are written **byte-wise big-endian**, which is also 68030
 alignment-safe ✅.
 
-> **Source.** `src/z3660.c`: `PISCSI_OFFSET` `0x2000`; `P_WRITE`/`P_READ` `0x00`/`0x04` (defs :68-69,
-> triggered by `WRLONG(P_WRITE,unit)`:220 / `WRLONG(P_READ,unit)`:225); `P_DRVNUMX` `0x90` (:75,
-> written :278); the **two** address triples — `P_READ_ADDR1/2/3` `0x20`/`0x24`/`0x28` (defs :72-74,
-> written :222-224) and `P_WRITE_ADDR1/2/3` `0x240`/`0x244`/`0x248` (defs :77-79, written :217-219);
-> `P_USED_DMA` `0x9C`; `BOUNCE_OFFSET` `0x80000` / `BOUNCE_THRESH` `0x08000000` (bcopy :215-228);
-> `MAXXFER` `65536` (:64,206-211); per-unit `P_BLOCKSIZE0` `0x200` / `P_BLOCKS0` `0x220` (:181,191);
-> synthesized CDBs (:286-335) ✅.
+> **Source.** `src/z3660.c`: `PISCSI_OFFSET` `0x2000`; `P_WRITE`/`P_READ` `0x00`/`0x04`, triggered
+> by `WRLONG( P_WRITE, unit)` / `WRLONG( P_READ, unit)` in `z3660_rw()`; `P_DRVNUMX` `0x90`; the
+> **two** address triples — `P_READ_ADDR1/2/3` `0x20`/`0x24`/`0x28` and `P_WRITE_ADDR1/2/3`
+> `0x240`/`0x244`/`0x248`, both written in `z3660_rw()`; `P_USED_DMA` `0x9C`; `BOUNCE_OFFSET`
+> `0x80000` / `BOUNCE_THRESH` `0x08000000` (the header's 2026-08-24 correction, and the staging
+> `bcopy`s in `z3660_rw()`); `MAXXFER` `65536`; per-unit `P_BLOCKSIZE0` `0x200` / `P_BLOCKS0` `0x220`
+> (`z3660_geom_fill()`); synthesized CDBs in `z3660queue()` ✅.
 
 > 🟡 **Firmware superset.** The upstream firmware names the chunk constant `PISCSI_MAX_BLOCK_SIZE`
 > and exposes a separate `READBYTES`/`WRITEBYTES` (`0x88`/`0x8C`) command family that the Amix driver
@@ -178,7 +191,7 @@ combo window ✅. The firmware exposes other products on the same manufacturer:
 | Product | What it is | Usable for Amix piscsi? |
 |---|---|---|
 | `0x01` (`0x144B0001`) | Z3 RTG + piscsi combo window — what the driver probes | ✅ yes |
-| `0x03` | Z2 RTG + SCSI combo (advertises a 64 KB window) | ❌ no — see below |
+| `0x03` | Z2 RTG + SCSI combo (advertises a 64 KB window) | 🟡 not as found in 2026-06 — see below |
 | `0x02` | Z3 fast RAM | n/a |
 
 With `autoconfig_rtg NO` the combo window is **hard-mapped at a fixed base `0x10000000`**
@@ -187,25 +200,28 @@ then appears in the kernel's `bootinfo.autocon[]` board list depends on the conf
 2026-06 bring-up it did not (see [detection](#detection-the-silent-hang-trap-and-multi-method-detect)),
 but on the first metal boot of the RTG driver (060 kernel, 2026-09) the hard-mapped combo **was** in
 the list, naming its real base `0x10000000`, because it advertises itself for SCSI boot 🟡. Drivers
-should therefore discriminate by the base an entry names, not by whether an entry exists. The driver **`sptalloc`-maps** both the register
-window and the bounce buffer into kernel VA (`z3660.c:139-142`) — the **same `sptalloc` primitive the
-[A4091 driver](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution) uses** ✅. The
-meaningful difference from the A4091 is therefore **not** how the board is reached (both page-map their
-windows) but the bus protocol on the far side of the mapping — a synchronous register mailbox here, a
-53C710 SCRIPTS engine there. (The fixed base does fall inside the
-[identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map) documented for the
-[A4091's addressing analysis](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution),
-so here the mapping is a clean convenience rather than being *forced* by the A4091's unmapped
-`0x40000000–0x7FFFFFFF` region — but the board is mapped either way.)
+should therefore discriminate by the base an entry names, not by whether an entry exists. At the
+shipped fixed base the board needs **no mapping call**: the whole span the driver touches lies below
+`VSECT1` (`0x40000000`), inside the [identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map),
+so `z3660map()` uses the register window and the staging window at their physical addresses
+(`z3660_direct_map = 1`) ✅. `sptalloc` — the primitive the
+[A4091 driver](a4091-53c710-driver.md#the-zorro-iii-obstacle-and-the-sptalloc-solution) needs for its
+board at `0x40000000` — is kept only for a Z3660 window at or above `VSECT1` (`autoconfig_rtg YES`) ✅.
+Mapping directly also keeps the driver out of the kernel's fixed `sptmap` arena (see
+[the ethernet driver's `sptmap` exhaustion](z3660-ethernet-driver.md#sptmap-exhaustion)), and both
+Z3660 drivers' direct-map flags read *set* in a live kernel on real hardware ✅. The meaningful
+difference from the A4091 is the address, and the bus protocol on the far side — a synchronous
+register mailbox here, a 53C710 SCRIPTS engine there.
 
-> **The Z2 variant is unusable for Amix piscsi.** Its base is `0xE90000`; add the mandatory bounce
-> offset `0x80000` and you land at `0xF10000`, which the firmware/emulator decodes as **extended-ROM
-> space** (extended Kickstart at `0xF00000`). Because all Amix RAM is below `0x08000000` the firmware
-> *always* bounces, so on the Z2 window the bounce buffer points at ROM space and the path **can never
-> move data** ✅.
+> **The Z2 variant was unusable for Amix piscsi in 2026-06** 🟡. Its base is `0xE90000`; add the
+> staging offset `0x80000` and you land at `0xF10000`, which the firmware/emulator decodes as
+> **extended-ROM space** (extended Kickstart at `0xF00000`) ✅, so no transfer the firmware stages
+> can move data. On the 2026-06 configuration Amix RAM sat below `0x08000000` and every transfer was
+> staged; with Amix RAM now at `0x08000000` the firmware DMAs directly, and the Z2 variant has not
+> been re-tested.
 
-> **Source.** Driver constants confirmed in `src/z3660.c` (`Z3660_PROD` `0x144B0001`:58,
-> `Z3660_FIXED` `0x10000000`:59, `BOUNCE_OFFSET`/`BOUNCE_THRESH`) ✅. The firmware-side taxonomy
+> **Source.** Driver constants confirmed in `src/z3660.c` (`Z3660_PROD` `0x144B0001`,
+> `Z3660_FIXED` `0x10000000`, `BOUNCE_OFFSET`/`BOUNCE_THRESH`) ✅. The firmware-side taxonomy
 > (products `0x03`/`0x02`, base `0xE90000`, the `cpu_emulator.cpp` ext-ROM decode, the serial
 > `[Core1] Autoconfig RTG to 0x1000` print) is from `NOTES.md` §"Real-hardware findings (2026-06-12)",
 > verified against the deployed firmware repo (branch `amix-main`; the earlier `amix-boot` branch was
@@ -224,14 +240,19 @@ This was the original silent hang ✅.
 
 **Fix — register the card by more than one method** ✅, in order:
 
-1. `autocon()` — the normal path (works when the table is right).
-2. An **AGA-gated probe of the fixed base `0x10000000`**, accepted only if `P_DRVTYPE` reads a valid
-   `0`/`1` (so an absent board can't false-positive). The AGA gate is the same Alice check the
+1. `autocon()` — the board's own ConfigDev, always tried first. AutoConfig has already proved a
+   Z3660 is there, so if the mailbox does not yet answer the signature below, the board still
+   attaches and only the unit sweep is deferred; every later command re-tries the signature before
+   it trusts any geometry.
+2. Only when `autocon()` finds nothing, an **AGA-gated probe of the fixed base `0x10000000`**,
+   accepted only if the mailbox answers a [signature](#p_drvtype-as-a-safe-presence-probe) the open
+   bus cannot fake (since 2026-09-27; before that a `P_DRVTYPE` of `0`/`1` was enough, which an
+   all-zero open bus passes). The AGA gate is the same Alice check the
    [A4091 driver](a4091-53c710-driver.md) uses — since 2026-09-28 the VPOSR id's **low nibble ≥ 2**;
    the earlier `VPOSR >= 0x22` form misread an NTSC ECS Agnus (`0x30`) as AGA
    ([quirk §61](../how-it-works/quirks.md#61-vposr-low-nibble)) ✅.
-3. A **`driver.conf` `probe=` fallback hook** (`probe=z3660present`) the build's `sd.c` template calls
-   when the autocon table misses the board.
+3. A **`driver.conf` `probe=` fallback hook** (`probe=z3660present`) that the `sd.c` additions
+   generated by amix-kerntools call when the autocon table misses the board.
 
 This multi-method detect is **what carried the real-hardware boot past the silent banner** ✅.
 
@@ -240,28 +261,48 @@ This multi-method detect is **what carried the real-hardware boot past the silen
 > guess, [quirks §41](../how-it-works/quirks.md#41-scsi-by-ram-size)), and it sorts as **card 0**
 > (`c0`). On an A4000 that address is empty; on an **A4000T** it is the **onboard NCR 53C710** — real
 > hardware, the wrong driver ✅ (read from the shipped kernel's `autocon()` and the stock sources,
-> 2026-09-24). It is **safe at boot** — the stock `sd` initialises a card lazily, on its first I/O —
-> but the **first open of any `c0` device** runs the A3000 WD33C93 initialisation against the 53C710's
-> registers 🟡 (read from the source). Under the Z3660 an unanswered CPU read in local I/O space never
-> terminates ([quirks §66](../how-it-works/quirks.md#66-local-io-read-hangs)), so if the uninitialised
-> 53C710 does not answer, a `c0` open is expected to freeze the machine on a hung bus cycle 🟡. A kernel meant for an A4000T needs
+> 2026-09-24). The stock `sd` initialises a card lazily, on its first I/O, so the **first I/O to any
+> `c0` device** runs the A3000 WD33C93 initialisation against the 53C710's registers 🟡 (read from
+> the source). Under the Z3660 an unanswered CPU read in local I/O space never terminates
+> ([quirks §66](../how-it-works/quirks.md#66-local-io-read-hangs)), and an uninitialised 53C710 does
+> not answer: on an A4000T with a Z3660, a kernel without the chipset gate **stalled during boot** on
+> 2 of 2 cold boots 🟡 (measured 2026-09-28, one machine). A kernel meant for an A4000T needs
 > the chipset-gated `autocon()` fix from the [A4091 project](a4091-53c710-driver.md) (the Alice-ID
-> gate that stops the phantom); until then, never open a `c0` device there.
+> gate that stops the phantom); a kernel without it should not be booted there.
 
-> **Source.** `src/z3660.c` `z3660map` (autocon → AGA gate on the VPOSR id's low nibble, `>=0x22` before 2026-09-28 → fixed-base `DRVTYPE`
-> probe, :131-155) and the exported `z3660present()` (:163-171), wired via `driver.conf:5`
-> `probe=z3660present`; causal chain in `NOTES.md`:173-179; the boot-past-silence in `NOTES.md`:204 ✅.
+> **Source.** `src/z3660.c` `z3660map()` (autocon's ConfigDev first → AGA gate on the VPOSR id's low
+> nibble, `>=0x22` before 2026-09-28 → fixed-base signature `z3660_sig()`) and the exported
+> `z3660present()`, wired via `driver.conf` `probe=z3660present`; the causal chain and the boot past
+> the silent banner in `NOTES.md` §"Real-hardware findings (2026-06-12 overnight session)"; the
+> signature in `NOTES.md` §"2026-09-27: … detection a non-Z3660 AGA machine cannot fool" ✅.
 
-> **Where the `probe=` hook is consumed.** The `probe=` *dispatch* lives in the **amix-kerntools**
-> `sd.c` **template**, not in this repo's committed `src/kernel-patches/sd.c` (which only adds the
-> `scsicard[]` row). See [kerntools' build contract](a4091-53c710-driver.md#the-card-registry-in-sdc).
+> **Where the `probe=` hook is consumed.** The project ships no `sd.c`: the **amix-kerntools**
+> `amix-build` tool generates the `sd.c` additions from `driver.conf` — the `scsicard[]` row and, for
+> a `probe=` field, the call to `z3660present()` in `sd.c`'s `init()` (`gen_sd_patch`). The project's
+> one kernel patch is `src/kernel-patches/dd.c.patch`. See
+> [kerntools' build contract](a4091-53c710-driver.md#the-card-registry-in-sdc).
 
-### `P_DRVTYPE` as a safe presence probe ✅
+### The presence signature ✅ {#p_drvtype-as-a-safe-presence-probe}
 
-`P_DRVTYPE` (`0x0C`) returns **strictly 0 or 1**, which makes it a safe presence test for a board
-AutoConfig never enumerated: the driver reads it and **rejects any `t > 1` as open bus** (an absent
-board reads back garbage outside `{0,1}`). The driver is also defensive about geometry — a reported
-**block size of `0` is coerced to `512`** ✅. (`z3660map` :148-153, `z3660_blocksize` :182.)
+`P_DRVTYPE` (`0x0C`) returns strictly 0 or 1, but a `P_DRVTYPE`-only test is **not** a safe presence
+probe: an open bus that reads all-zero passes it ✅. For a board AutoConfig never enumerated (the
+fixed base), the driver therefore requires a five-step signature (`z3660_sig()`):
+
+| Step | Register | Written | Must read |
+|---|---|---|---|
+| 1 | `P_READ_ADDR2` (`0x24`) | K1 `0xA55A3CC3` | K1 |
+| 2 | `P_WRITE_ADDR2` (`0x244`) | K2 `0x3CC3A55A` | K2 |
+| 3 | `P_DRVNUMX` (`0x90`) → `P_DRVNUM` (`0x08`) | a unit | the same unit |
+| 4 | `P_DRVNUMX` → `P_DRVNUM` | a second, different unit | that unit |
+| 5 | `P_DRVTYPE` (`0x0C`) | — | `0` or `1` |
+
+All-zero, all-ones and an address echo fail steps 1–2; `0x24` is read after `0x244` was written, so
+a bus that holds the last driven value fails step 1; `P_DRVNUM` is never written, so plain memory
+fails steps 3–4. Every command rewrites both length cells and the unit select, so the probe leaves
+nothing behind ✅. Verified in the project's host harness (155 checks, 0 failures; the old
+`P_DRVTYPE`-only test fails 7 of the same cells) ✅; the non-Z3660 AGA machine has not yet been run on
+a bench 🟡. The driver is also defensive about geometry: a unit whose block size is not a power of two
+in 512–4096 is skipped (see [the divide hazard](#firmware-side-debug-lever-and-hazard)) ✅.
 
 ## Kernel integration
 
@@ -279,8 +320,8 @@ The machine-readable form is `driver.conf`, consumed by **amix-kerntools** to ge
 0x144B0001  z3660queue  "Z3660 SCSI"  z3660.c  probe=z3660present
 ```
 
-The `probe=z3660present` field is the fallback detect hook described above — the one piece that lives
-in the kerntools template rather than this repo. With the card registered, the piscsi disk is reached
+The `probe=z3660present` field is the fallback detect hook described above; kerntools' `amix-build`
+generates its call into `sd.c`. With the card registered, the piscsi disk is reached
 through the normal SCSI `/dev` names; on the real box the **root disk is `/dev/rdsk/c6d0s1`** (SCSI
 target 6, the disk-ID-6 convention, card 0). See [the device list](../reference/device-list.md#card-index-when-both-an-a3000-scsi-and-an-a4091-are-present)
 for how the card index and `cN` are computed.
@@ -295,7 +336,7 @@ box to a stable **multiuser** process tree, with `fsck` running on the piscsi ro
 **correct from the first real-hardware boot**.
 
 > **Source.** Live boots 2026-06-12/13 on a real A4000 + Z3660 — `NOTES.md` §"2026-06-13 ~08:00:
-> RESOLVED" (:269-296) and §"Overnight 2026-06-12/13" (:204-208) ✅. Spot
+> RESOLVED" and §"Overnight session 2026-06-12/13" ✅. Spot
 > checks confirmed the **page-in first-longs** of `/sbin/init` and `libc.so.1` matched file content,
 > alongside the aggregate "every transfer byte-correct".
 
@@ -316,8 +357,8 @@ were byte-perfect and isolate the fault to the emulator rather than the driver. 
 where the "CPU" is itself software, "the machine hung" does not imply "your driver hung." (This is
 recorded as a gotcha on [the quirks checklist](../how-it-works/quirks.md).)
 
-> **Source & ownership.** `NOTES.md` §"banner-hang root cause is the EMU core, not SCSI" (:199-228)
-> and §"RESOLVED" (:269-296) ✅. The **mechanism and fix are firmware-owned** — the Z3660 firmware
+> **Source & ownership.** `NOTES.md` §"banner-hang root cause is the EMU core, not SCSI" and
+> §"RESOLVED" ✅. The **mechanism and fix are firmware-owned** — the Z3660 firmware
 > repo (branch `amix-main`), commits `3069e22` (ifetch-fault resume, the SIGILL) and `0b42cb8`
 > (mid-instruction frame state, the SIGSEGV). *(These are the live successors of the earlier
 > `amix-boot`-branch commits once cited here as `c8b9398` / `e3f9440`, which no longer exist after that
@@ -329,20 +370,27 @@ recorded as a gotcha on [the quirks checklist](../how-it-works/quirks.md).)
 
 ## 🟡 Firmware-side debug lever and hazard
 
-Two firmware-side behaviours are useful to driver authors on this board. Both are **🟡** — asserted
-from real-hardware sessions in `NOTES.md` §"Free 68k→serial debug channel" (:180-189), with **no
-firmware file+symbol citation and no recorded standalone reproduction**; the firmware that emits them
-lives in the Z3660 firmware repo. (The register offsets themselves — `P_BLOCKS` `0x10`, per-unit
-`P_BLOCKS0` `0x220` — *are* confirmed in `src/z3660.c` ✅.)
+Two firmware-side behaviours matter to driver authors on this board. The breadcrumb is **🟡** —
+asserted from real-hardware sessions in `NOTES.md` ("Free 68k→serial debug channel", under
+§"Real-hardware findings (2026-06-12 overnight session)"), with **no firmware file+symbol citation
+and no recorded standalone reproduction**. The divide hazard is read in the stock firmware source ✅;
+its effect on metal is source-derived and unmeasured 🟡. (The register offsets themselves —
+`P_BLOCKS` `0x10`, per-unit `P_BLOCKS0` `0x220` — *are* confirmed in `src/z3660.c` ✅.)
 
 - **A free 68k→serial breadcrumb.** Writing the **read-only** `P_BLOCKS` register makes the Zynq ARM
   unconditionally print `WARN: Write to read only register …(addr: value)` on its serial console — a
   zero-cost way to emit a tagged value from 68k code to the host serial log during bring-up. (It is a
   *technique*, not an implemented driver macro.) 🟡
-- **A divide-by-zero hazard.** **Never read `P_BLOCKS0 + unit*4` of an *unmapped* drive** — the ARM
-  divides by that unit's `block_size` (which is `0` for an absent drive), causing a **Zynq
-  divide-by-zero**. This is *why* the driver gates on `P_DRVTYPE ∈ {0,1}` before touching per-unit
-  registers. 🟡
+- **A divide-by-zero hazard.** **Never read `P_BLOCKS0 + unit*4` of an *unmapped* unit.** In the
+  stock firmware (`scsi.c`, `handle_piscsi_read()`, `PISCSI_CMD_BLOCKS0..7`) that read returns
+  `devs[n].fs / devs[n].block_size` **unguarded**, and `block_size` is `0` for every unit with no
+  drive mapped ✅ (read in source). The 64-bit divide goes through the ARM EABI helper; per libgcc it
+  returns `0` for a never-mapped unit and all-ones (`0xFFFFFFFF`) for a unit that was mapped and then
+  shut down 🟡 (source-derived, not measured on metal). The firmware fork's 1.0 source guards the
+  divide (`piscsi_unit_blocks()`); stock does not. So the driver reads `P_BLOCKSIZE0 + unit*4` first —
+  a plain load in every firmware — and skips a unit whose block size is not a power of two in
+  512–4096, or whose block count is 0: `P_BLOCKS0` is never read for it, and every data command to it
+  is refused before the doorbell ✅ (since 2026-09-26).
 
 ## Exercising this driver without the board ✅
 
@@ -360,9 +408,11 @@ digest tool built with the box's own `cc` ✅.
 |---|---|
 | piscsi block driver reads/writes; Amix boots **multiuser with root on the piscsi disk** | ✅ real-hardware (A4000 + Z3660, 2026-06-12/13) |
 | Every boot transfer byte-perfect; correct from the first real-hardware boot | ✅ real-hardware |
-| Multi-method detect (autocon → AGA-gated fixed-base probe → `probe=` hook) clears the silent hang | ✅ real-hardware |
-| Z2 RTG+SCSI combo (`product 0x03`) variant | ❌ unusable (bounce window decodes to ROM space) ✅ |
-| Firmware serial-breadcrumb lever + unmapped-drive divide-by-zero hazard | 🟡 asserted (no firmware citation / standalone repro) |
+| Multi-method detect (autocon's ConfigDev first → AGA-gated fixed-base probe → `probe=` hook) clears the silent hang | ✅ real-hardware (2026-06, with the old `P_DRVTYPE` probe) |
+| The fixed-base mailbox signature (since 2026-09-27) | ✅ host harness; non-Z3660 AGA bench run 🟡 pending |
+| Z2 RTG+SCSI combo (`product 0x03`) variant | 🟡 unusable as found in 2026-06 (staging window decodes to ROM space); not re-tested with Amix RAM at `0x08000000` |
+| Firmware serial-breadcrumb lever | 🟡 asserted (no firmware citation / standalone repro) |
+| Unmapped-unit divide in stock firmware, and the driver's block-size-first guard | ✅ read in the stock firmware and driver sources; the divide's on-metal effect 🟡 unmeasured |
 | The pre-fix "hang" | ✅ proven to be a firmware-emulator bug, **not** the driver |
 | Disk **and** CD units over the mailbox, exercised without the physical board | ✅ on a **downstream** Amiberry fork's Z3660 emulation (2026-07-26): ~261 MB / 40 digest comparisons / 0 mismatches on disk; 6/6 CD files digest-identical on two cold boots. Not upstream Amiberry |
 
@@ -396,26 +446,37 @@ digest tool built with the box's own `cc` ✅.
 - The machine gate's low-nibble correction — `amix-z3660scsi` CHANGELOG 2026-09-28 (`z3660map()`
   decides AGA by the VPOSR id's low nibble; found in the `amix-gayle-ide` review) ✅; the `isoN`
   slot/target rule — the **Z3660 firmware fork's** `docs/AMIX.md`, "`isoN <file>` — CD-ROM images" ✅.
-- **Driver source we wrote** (primary, ✅): the **amix-z3660scsi** project at commit `8ea1605` —
-  `src/z3660.c` (the piscsi mailbox driver: `PISCSI_OFFSET 0x2000`, `P_WRITE`/`P_READ`, `P_DRVNUMX`,
-  the separate READ/WRITE address triples `P_READ_ADDR1/2/3` `0x20`/`0x24`/`0x28` and
-  `P_WRITE_ADDR1/2/3` `0x240`/`0x244`/`0x248`, `P_USED_DMA`, `BOUNCE_OFFSET`/`BOUNCE_THRESH`,
-  `MAXXFER 65536`, per-unit `P_BLOCKSIZE0`/`P_BLOCKS0`, the `sptalloc`-mapped register window + bounce
-  buffer (`:139-142`), synthesized `INQUIRY`/`READ_CAPACITY`/`TEST_UNIT_READY`/`MODE_SENSE`,
-  `z3660map` multi-method detect, `z3660present`, the empty `z3660intr` stub, synchronous
-  `timeout()`/`z3660done` completion), `src/kernel-patches/sd.c` (the `scsicard[]` row), `driver.conf`
-  (the `0x144B0001 z3660queue "Z3660 SCSI" z3660.c probe=z3660present` SCSI stanza), `NOTES.md`,
-  `README.md`.
+- **Driver source we wrote** (primary, ✅): the **amix-z3660scsi** project
+  (<https://github.com/jusii/amix-z3660scsi>) at commit `2cc7605` — `src/z3660.c` (the piscsi mailbox
+  driver: `PISCSI_OFFSET 0x2000`, `P_WRITE`/`P_READ`, `P_DRVNUMX`/`P_DRVNUM`, the separate READ/WRITE
+  address triples `P_READ_ADDR1/2/3` `0x20`/`0x24`/`0x28` and `P_WRITE_ADDR1/2/3`
+  `0x240`/`0x244`/`0x248`, `P_USED_DMA`, `BOUNCE_OFFSET`/`BOUNCE_THRESH` and the header's 2026-08-24
+  correction, `MAXXFER 65536`, per-unit `P_BLOCKSIZE0`/`P_BLOCKS0` with the block-size-first guard
+  `z3660_geom_fill()`/`z3660_bs_ok()`, the `z3660map()` direct-map arm below `VSECT1`
+  (`z3660_direct_map`; `sptalloc` only at `0x40000000`+), synthesized
+  `INQUIRY`/`READ_CAPACITY`/`TEST_UNIT_READY`/`MODE_SENSE`, `z3660map()` multi-method detect and the
+  `z3660_sig()` signature, `z3660present()`, the empty `z3660intr()` stub),
+  `src/kernel-patches/dd.c.patch`, `driver.conf` (the
+  `0x144B0001 z3660queue "Z3660 SCSI" z3660.c probe=z3660present` SCSI stanza, from which
+  amix-kerntools' `amix-build` generates the `sd.c` row and probe call), `NOTES.md` (§"2026-08-14:
+  the board is mapped DIRECTLY below VSECT1", §"2026-09-26: stock-firmware hardening", §"2026-09-27:
+  … detection a non-Z3660 AGA machine cannot fool"), `CHANGELOG.md`, `README.md`, `docs/BLIZZARD-F3.md`.
+- **The stock-firmware divide** ✅ (read in source) — upstream Z3660 firmware
+  (<https://github.com/shanshe/Z3660>, `main`), `z3660-firmware/Z-TURN/vitis_ide/Z3660/src/scsi/scsi.c`
+  `handle_piscsi_read()`, `PISCSI_CMD_BLOCKS0..7`: `devs[n].fs / devs[n].block_size` with no guard;
+  the fork's guard `piscsi_unit_blocks()` in the same file on the
+  [Z3660-amix](https://github.com/jusii/Z3660-amix) `release-1.0` branch. The helper's results (0 /
+  all-ones) are from libgcc's `__aeabi_uldivmod`, not measured 🟡.
 - **Real-hardware results reproduced live** (2026-06-12/13, A4000 + Z3660, ✅): Amix booting multiuser
   with root on `/dev/rdsk/c6d0s1`, ~100+ byte-perfect reads/writes per boot, `fsck` on the piscsi root,
   page-in spot checks of `/sbin/init` and `libc.so.1` (`NOTES.md` real-hardware sections).
 - **Firmware-side facts** (F4 product taxonomy + fixed-base/ext-ROM decode, the 🟡 serial-breadcrumb
-  lever and divide-by-zero hazard, the emulator format-`$B` fixes): the **Z3660 firmware repo**, branch
+  lever, the emulator format-`$B` fixes): the **Z3660 firmware repo**, branch
   `amix-main` — the boot-time demand-paging frame fixes `3069e22` (SIGILL) and `0b42cb8` (SIGSEGV), the
   live successors of the dead `amix-boot` hashes `c8b9398` / `e3f9440`, plus the later
   multi-fault-continuation pair `7ff5774` / `acdfe15`. **Owned by the Z3660 firmware repo, cited not
   reproduced**; see [Emulation Fidelity](../how-it-works/emulation-fidelity.md) for the full mechanism.
-- **Later-commit corrections** (post-`8ea1605`): the firmware **direct-vs-bounce gate** two-party
+- **Later corrections**: the firmware **direct-vs-bounce gate** two-party
   contract — Z3660 firmware repo (branch `amix-main`) `d1da9f8` (gate on `cpu_ram || amix_mode` after
   the AMIX-RAM move to `0x08000000`), owned by that repo, cited not reproduced ✅; the **completion
   lifetime** rework — **amix-z3660scsi** @ `2a463b8`, `a5af58a` (synchronous in-context iterative
@@ -434,5 +495,6 @@ digest tool built with the box's own `cc` ✅.
   upstream BlitterStudio/amiberry carries no Z3660 sources): disk and CD reads digest-identical to host
   copies. Card ordering (A3000 `0xdd0000` = card 0, Z3660 `0x40000000` = card 1) is the AutoConfig
   address sort. Rooting through the mailbox remains untested.
-- The **A4000T `$DD0000` reading** (amix-kerntools; first-party record, 2026-09-24): the shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c` — the load-address phantom at `0xDD0000` sorting as card 0, the lazy first-I/O initialisation, the no-timeout busy-wait; on an A4000T that window is the onboard NCR 53C710. The hang itself is predicted from source, not reproduced on the metal 🟡.
-- The **RTG driver's first metal boot** (amix-z3660rtg commit `7e5c0e8`, 2026-09): with `autoconfig_rtg NO` the hard-mapped combo entered the board list at its real base `0x10000000` because it advertises itself for SCSI boot 🟡.
+- The **A4000T `$DD0000` reading** (amix-kerntools; first-party record, 2026-09-24): the shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c` — the load-address phantom at `0xDD0000` sorting as card 0, the lazy first-I/O initialisation, the no-timeout busy-wait; on an A4000T that window is the onboard NCR 53C710. The stall was then measured 🟡 (one machine): amix-a4091 `docs/A4000T-ONBOARD-710.md` §2 (<https://github.com/jusii/amix-a4091>) — on an A4000T with a Z3660, a kernel without the chipset gate stalled during boot on 2 of 2 cold boots (2026-09-28), and reads of the uninitialised 710 window hang under the Z3660 (2026-10-02).
+- The **RTG driver's first metal boot** (amix-z3660rtg `DESIGN.md`, "Metal correction",
+  2026-09-18; <https://github.com/jusii/amix-z3660rtg>): with `autoconfig_rtg NO` the hard-mapped combo entered the board list at its real base `0x10000000` because it advertises itself for SCSI boot 🟡.

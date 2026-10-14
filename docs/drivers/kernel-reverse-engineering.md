@@ -184,8 +184,8 @@ symbol value. Two load-bearing conditions:
    than `/stand`), there is no namelist to hand `adb`, and pointing it at `/stand/unix` fails
    *silently* with plausible values — the same trap class this section warns about. The recovery is
    to **replay the loader's COMMON allocation host-side against the running artifact** (first-party
-   `amix-kerntools/tools/comaddr.py`), then read the computed address; validated on real hardware by
-   an independent clock-tick cross-check ✅.
+   record, 2026-08-30), then read the computed address; validated on real hardware by an independent
+   clock-tick cross-check ✅.
 
 `crash(1M)` is not an alternative — it fails on this kernel with `process slot out of bounds` ✅. And
 where `adb` is unavailable, the instruction-stream bootstrap already described above (read the
@@ -286,4 +286,4 @@ When the console is dead but a savestate still works ([Step 3](#step-3-read-a-ru
 - Section-relative `nm` offset model for the linked kernel image `/usr/sys/relocunix` (bss offset = `text_size + data_size + nmval`, data offset = `text_size + nmval`; sizes from `size`), validated against the `scsicard[]` `0xc0de0001`/`0xc0de0002` product codes and the `block` global's `UNIX_Root` `PART` record in the A3K1 dump — firsthand ✅.
 - Same `objdump -dr` reloc-annotated method extended to the in-kernel SCSI path — `sdopen` and `getrdb` (RDB parser) traced by name out of their `exp` objects — firsthand ✅.
 - cdfs's `cdfs_diag` throwaway-global diagnostic (magic `0x0DF50001` written last; scan the `A3K1` chunk for the 4-aligned hit) — firsthand from the amix-cdfs port ✅.
-- Live `adb` on `/dev/kmem` (read with `adb - /dev/kmem`, write with `adb -w`; symbol addresses are file-relative so runtime VA = `nm` value + kernel load base, `0x08000000` on the real A4000 + Z3660, verified `z3660_enter` `nm` `0xD694` → live `0x0800D694`; poke a `static` by reading its operand address out of the live instruction stream) — the **amix-kerntools** bench forensics @ `8a76775`, real hardware 2026-07-12 ✅.
+- Live `adb` on `/dev/kmem` (read with `adb - /dev/kmem`, write with `adb -w`; symbol addresses are file-relative so runtime VA = `nm` value + kernel load base, `0x08000000` on the real A4000 + Z3660, verified `z3660_enter` `nm` `0xD694` → live `0x0800D694`; poke a `static` by reading its operand address out of the live instruction stream) — first-party record, 2026-07-12, on real hardware ✅.

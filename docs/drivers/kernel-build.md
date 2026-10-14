@@ -6,10 +6,12 @@ status: draft
 
 # Building & Installing a Kernel
 
-Amix has a **monolithic SVR4 kernel with no loadable modules** ✅ — every driver is statically
-linked in. To add a driver (or change anything kernel-level), you drop an object file into the
-`/usr/sys` tree, register it in the kernel switch tables, **relink** the kernel with `make`, copy
-the result to `/stand`, and **write it into the boot partition** with `make bootpart`. Then reboot.
+Amix has a **monolithic SVR4 kernel**, and stock Amix has **no loadable modules** ✅ ([one
+third-party exception](../how-it-works/kernel-architecture.md#loadable-modules)) — every driver is
+statically linked in. To add a driver (or change anything kernel-level), you drop an object file
+into the `/usr/sys` tree, register it in the kernel switch tables, **relink** the kernel with
+`make`, copy the result to `/stand`, and **write it into the boot partition** with `make bootpart`.
+Then reboot.
 
 The short version, on a live 2.1 system, is:
 
@@ -426,8 +428,10 @@ Two more SVR4-box gotchas that bite build scripts ✅:
 
 ## The A3000 onboard-SCSI DMA bounce patch — nearly every kernel needs it ✅
 
-**If your kernel boots by reading its root disk through the A3000 onboard SCSI, it needs the
-`a3091.c` chip-mem DMA bounce patch — whatever else is in it.** ✅ This is not an A4091 requirement
+**If your kernel boots by reading its root disk through the A3000 onboard SCSI, build it with the
+`a3091.c` chip-mem DMA bounce patch — whatever else is in it.** ✅ The failure it cures has been
+measured on the emulated A3000; on a real A3000 the patch is a safe over-approximation 🟡 (see the
+reach refutation below). This is not an A4091 requirement
 and not a cdfs requirement: `a3091.c` is the **A3000
 onboard** SCSI driver (super-DMAC + WD33C93 at `0xDD0000`), it is in the stock `amiga/alien` Makefile,
 and it links into **every** kernel. It lives under `amix-a4091/src/kernel-patches/` only because that
@@ -441,20 +445,21 @@ any buffer ≥ `0x1000000` (16 MB) through `AllocMem(cp->tc, MEMF_CHIP)` (copy-o
 copy-back after a read, freed in `stopdma`). The patch ports that same chip-mem bounce into
 `a3091.c` ✅.
 
-**Who is exposed** ✅:
+**Who is exposed** (the build policy — carry the patch in every kernel — is ✅):
 
 | Machine | Roots through | Needs the patch? |
 |---|---|---|
-| A3000 (real or emulated) rooting on `c6d0s1`, card 0 | A3000 onboard SCSI | **Yes** — regardless of which add-on HBA the kernel carries |
-| A3000 + A4091 (A4091 sorts to card 1) | A3000 onboard SCSI | **Yes** |
+| Emulated A3000 rooting on `c6d0s1`, card 0 | A3000 onboard SCSI | **Yes** ✅ (measured) — regardless of which add-on HBA the kernel carries |
+| Real A3000 rooting on `c6d0s1`, card 0 | A3000 onboard SCSI | Shipped as a safe over-approximation 🟡 — no failure without it has been seen on real hardware |
+| A3000 + A4091 (A4091 sorts to card 1) | A3000 onboard SCSI | As the two rows above |
 | A4000 + Z3660 rooting on the piscsi mailbox | the Z3660 | No — `a3091` is linked but never carries the root read |
 
-So a kernel built without the patch can boot fine on a Z3660-rooted A4000 and still fail on any
-machine that roots through the A3000 onboard SCSI ✅.
+So a kernel built without the patch can boot fine on a Z3660-rooted A4000 and still fail on an
+emulated A3000 that roots through its onboard SCSI ✅.
 
 > **Build-harness note.** A patch keyed to a *driver repo* is only applied when that repo is part of
-> the build. This one is boot-critical for every kernel that roots through the A3000
-> onboard SCSI, whichever driver repos it carries. If your harness
+> the build. This one belongs in every kernel that roots through the A3000 onboard SCSI (it is
+> boot-critical on the emulated A3000), whichever driver repos it carries. If your harness
 > selects patches by repo, mark this one **unconditional** and fail closed when its file is
 > missing ✅.
 
@@ -765,9 +770,9 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
   evidence = source + Amiberry-savestate differential (amix-a4091 CD-ROM-effort handoff, 2026-07-10),
   including the savestate pair showing a valid `UNIX_Root` `RDSK`/`PART` in the booting kernel vs
   all-zeros in the panicking one with `queue[0].f` populated in both.
-- **Scope correction (2026-07-26/27) ✅** — the **amix-kerntools** root cause
-  (`docs/a3091-bounce-boot-patch.md` @ `05d0d78`, fix `f459afa`). The bounce is required by **every**
-  kernel that roots through the A3000 onboard SCSI, not by a4091 or cdfs kernels specifically:
+- **Scope correction (2026-07-26/27) ✅** — the root-cause write-up and its fix (first-party record,
+  2026-07-26/27). The bounce is carried by **every** kernel that roots through the A3000 onboard SCSI
+  (measured necessary on the emulated A3000), not by a4091 or cdfs kernels specifically:
   `a3091.c` is the A3000 onboard driver, is in the stock `amiga/alien` Makefile and links into every
   kernel. The panic is **not size-triggered** — a patched kernel with a **652-byte larger** loaded
   image boots, and both booting cdfs kernels place `sdpart.c`'s static RDB buffer at a *higher*
@@ -786,12 +791,11 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
   CD-ROM effort, 2026-07-10).
 - The stock `/usr/sys/Makefile` `install` rule (`install : all` → `cp … /stand/NEWrelocunix`,
   `mv /stand/unix /stand/OLDunix`, `ln NEWrelocunix unix`, `make` in `/stand`), read from a stock
-  2.1c tree ✅; the `sum -r /stand/unix` versus `relocunix` check from the **amix-kerntools** notes
-  @ `8a76775` (real A4000 + Z3660, 2026-07-12) ✅. The same notes also confirm SVR4
+  2.1c tree ✅; the `sum -r /stand/unix` versus `relocunix` check on a real A4000 + Z3660
+  (first-party record, 2026-07-12) ✅. The same record also confirms SVR4
   `grep` has no `\|` alternation (already noted above under build-script gotchas).
-- The **amix-kerntools** cdevsw free-row gate + 2026-07-31 half-patch audit fix packets
-  (`2b23808`, `1c6a57e`, `a81d7c9`, `f0c517c`, `f90756b`, `f025444`, `dac78a0`) and the
-  **amix-z3660net** patch-script hardening (`603c719`), 2026-07-30/31 ✅ — the `ed`
+- The cdevsw free-row gate and the half-patch audit fixes (first-party record, 2026-07-30/31) and
+  the **amix-z3660net** patch-script hardening (`603c719`) ✅ — the `ed`
   miss-then-write half-patch and the bare-tag wrong-row overwrite measured host-side with GNU
   `ed` over the real stock `kernel.c` layout; the wrapping-search wrong-table landing and the
   discarded-exit-status mode measured on the `filesys.c` arm; the renumber-skew shape found live

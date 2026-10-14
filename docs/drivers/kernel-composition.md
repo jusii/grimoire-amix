@@ -6,10 +6,12 @@ status: draft
 
 # Composing multi-driver kernels
 
-Amix has **no loadable kernel modules** — every driver is statically linked into the one monolithic
-kernel image ✅ (see [Kernel architecture](../how-it-works/kernel-architecture.md)). So as the modern
-driver family grows (A4091, Z3660 SCSI/ethernet, cdfs, the community framebuffer and net drivers),
-the obvious question is: **why not link them all into one universal kernel that boots everything?**
+Stock Amix has **no loadable kernel modules** — every driver is statically linked into the one
+monolithic kernel image ✅ (see [Kernel architecture](../how-it-works/kernel-architecture.md), which
+also notes [one third-party exception](../how-it-works/kernel-architecture.md#loadable-modules)).
+So as the modern driver family grows (A4091, Z3660 SCSI/ethernet, cdfs, the community framebuffer
+and net drivers), the obvious question is: **why not link them all into one universal kernel that
+boots everything?**
 
 Short answer: **you can — but only up to a point, and the point is storage.** Network, framebuffer
 and filesystem drivers stack essentially without limit (each is just a `cdevsw[]`/`vfssw[]` slot with
@@ -67,10 +69,11 @@ This is not a theoretical hazard — it is exactly how both "phantom card" incid
 Both phantoms surfaced as emulator open-bus artifacts (real hardware reads differ ✅) — **with one
 real-hardware exception**: on an **A4000T** the phantom-A3000's `0xDD0000` is the machine's **onboard
 NCR 53C710**, so stock `autocon()` hands the A3000 WD33C93 driver a real, different chip as card 0
-(`c0`). It is safe at boot because the card is initialised lazily, but the first open of a `c0`
-device busy-waits forever in that initialisation 🟡 (from the shipped kernel's `autocon()` and the
-stock sources, 2026-09-24; not reproduced on the metal). A4000T kernels must carry the chipset-gated
-fix; see [the Z3660 SCSI detection note](z3660-scsi-driver.md#detection-the-silent-hang-trap-and-multi-method-detect).
+(`c0`). On an A4000T with a Z3660, a kernel without the chipset-gated probe **hangs during boot**:
+the stock `a3091` pokes `$DD0041`/`$DD0043` inside the uninitialised 710 window, nothing terminates
+that local-I/O bus cycle (the Z3660 has no cycle timeout of its own), and the CPU waits on it forever
+🟡 (measured on one A4000T + Z3660, 2 of 2 cold boots, 2026-09-28). A4000T kernels must carry the
+chipset-gated fix; see [the Z3660 SCSI detection note](z3660-scsi-driver.md#detection-the-silent-hang-trap-and-multi-method-detect).
 The structural lesson stands: **every storage driver added to a shared kernel multiplies the ways card 0 can be
 stolen from the root controller.**
 
@@ -210,11 +213,11 @@ Neither is committed work; the family-kernel convention above deliberately avoid
 
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
 - The **super-DMAC reach refutation** (2026-10-02) ✅ — the `64119` row of the kernel table on [building a kernel](kernel-build.md) (stock `a3091`, RDB buffer above `0x07000000`, boots) and Amiberry's `src/a2091.cpp` (the A3000 super-DMAC initialised with the 24-bit DMA mask off; `dma24bit` applies only to the add-on cards), read in the Amiberry source. The stale-cache explanation is a hypothesis 🔴.
-- `amiga/alien/sd.h` macros (`SDCARDS`, `sdunit`/`sdcard`/`sdpart`), reproduced locally on Amix 2.1c ✅; the generated `sd.c` selector (`scsicard[]`, `init()`/`insert()` address-sorted registration, the `sd: too many controllers` overflow branch) as templated in the amix-kerntools build harness (`templates/sd.c.in`).
+- `amiga/alien/sd.h` macros (`SDCARDS`, `sdunit`/`sdcard`/`sdpart`), reproduced locally on Amix 2.1c ✅; the generated `sd.c` selector (`scsicard[]`, `init()`/`insert()` address-sorted registration, the `sd: too many controllers` overflow branch) as templated in the kernel build harness (first-party record, 2026-06-10).
 - The A4091-on-Amix project — `NOTES.md` (phantom-A3000 root cause + chipset-gated probe fix; the anti-alias WD33C93 readback; the universal A3000/A4000 kernel) and `README.md`.
-- The amix-kerntools project — `docs/miniroot-kernels.md` (install-kernel mixes, the A4091-only bench install kernel and the phantom-Z3660 card-shift note, floppy headroom), `docs/kernel-packages.md` (the KERNBENCH/KERNZ3660 whole-kernel package contract), `README.md` (the D245 clean-gate, emulation-only).
+- The amix-kerntools project — [`README.md`](https://github.com/jusii/amix-kerntools/blob/master/README.md) (the D245 clean-gate, emulation-only); the install-kernel mixes, the A4091-only bench install kernel and the phantom-Z3660 card-shift note (first-party record, 2026-08-27) and the KERNBENCH/KERNZ3660 whole-kernel package contract (first-party record, 2026-08-19).
 - The amix-installng project — `payload/updbootpart` + `docs/installer.md` (the gated backup → pkgadd → reframe → cold-boot kernel-upgrade flow, proven on A3000+A4091).
 - [Building & installing a kernel](kernel-build.md) sources — the cdfs size-delta / super-DMAC mountroot panic (its reach explanation refuted 2026-10-02) ✅ and the relink-kit workflow.
 - [Device & card reference](../reference/device-list.md) sources — stock and community major assignments, the cross-tree major-48 collision ✅.
-- Floppy budget: [Adding drivers to a custom boot disk](../boot-disks/adding-drivers-to-boot-disk.md) (compressed-kernel budget 🟡) and amix-kerntools `docs/miniroot-kernels.md` (current fd0unix headroom ✅).
-- The **A4000T `$DD0000` reading** (2026-09-24): the shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c` — the load-address phantom at `0xDD0000` sorting as card 0, the lazy first-I/O initialisation, the no-timeout busy-wait; on an A4000T that window is the onboard NCR 53C710. The hang itself is predicted from source, not reproduced on the metal 🟡.
+- Floppy budget: [Adding drivers to a custom boot disk](../boot-disks/adding-drivers-to-boot-disk.md) (compressed-kernel budget 🟡) and the `fd0unix` headroom measurement (first-party record, 2026-08-16) ✅.
+- The **A4000T `$DD0000` reading** (first-party record, 2026-09-24): the shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c` — the load-address phantom at `0xDD0000` sorting as card 0; on an A4000T that window is the onboard NCR 53C710. The boot hang of a kernel without the chipset-gated probe on an A4000T + Z3660 (2 of 2 cold boots; first-party record, 2026-09-28) and the unterminated local-I/O cycle behind it (the Z3660 CPLD waits for `DSACK`/`AVEC`/`BERR` with no timeout): amix-a4091 [`docs/A4000T-ONBOARD-710.md`](https://github.com/jusii/amix-a4091/blob/master/docs/A4000T-ONBOARD-710.md) §2 🟡.

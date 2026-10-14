@@ -19,8 +19,8 @@ physical **Amiga 4000 + Z3660** during 2026-06. Unless noted, every claim here i
 (driver source we wrote, firmware source we read, or a result reproduced live on the hardware);
 inferences and unconfirmed items are tagged 🟡 inline, carried verbatim from the source brief per the
 repo's [confidence-tag policy](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md). The
-source is the **amix-z3660net** project — `src/z3660eth.{c,h}`, `driver.conf`, `userland/S99zen` — the
-sibling **amix-z3660** SCSI project's `ETHERNET-SCOPING.md`, and the Z3660 firmware source.
+source is the **amix-z3660net** project — `src/z3660eth.{c,h}`, `driver.conf`, `userland/S99zen`,
+its `docs/ETHERNET-SCOPING.md` — and the Z3660 firmware source.
 
 > **One-line summary.** Amix now has full TCP/IP over a native SVR4 STREAMS/DLPI driver (`zen0`) for
 > the Z3660's onboard ethernet — **not NIC emulation**. The only real-hardware blocker turned out to
@@ -35,7 +35,7 @@ Xilinx `XEmacPs` driver. Ethernet, audio and USB all hang off a **piscsi**-style
 interface in the card's RTG register page ✅.
 
 `z3660eth` is a **native Commodore Amiga Unix (Amix, SVR4.0, m68k 68030) STREAMS/DLPI ethernet
-driver** for that onboard GEM ✅. It is the network counterpart of the `amix-z3660` SCSI driver
+driver** for that onboard GEM ✅. It is the network counterpart of the `amix-z3660scsi` SCSI driver
 (`z3660.c`) for the same combo board.
 
 **It is not NIC emulation.** The firmware already moves whole ethernet frames between the 68k guest
@@ -76,7 +76,9 @@ driver headers (`z3660_regs.h`) and the firmware register enum/dispatcher (`rtg/
 | `ZZ_INT_STATUS` | `0x1A8` | R | pending bits: ETH = `1`, AUDIO = `2`, USB = `4` |
 
 On the firmware side (`rtg/rtg.c`) these dispatch to `REG_ZZ_CONFIG` (~line 1150), `REG_ZZ_ETH_TX` →
-`ethernet_send_frame()` (~1609), and `REG_ZZ_ETH_RX` → `ethernet_receive_frame()` (~1613) ✅.
+`ethernet_send_frame()` (~1609), and `REG_ZZ_ETH_RX` → `ethernet_receive_frame()` (~1613) ✅ — line
+numbers here and below are from the firmware fork's `amix-main` branch (the 1.0 source,
+`release-1.0`, is in [Sources](#sources)).
 
 ### Frame windows
 
@@ -84,8 +86,9 @@ The frame buffers are real DDR reached through the Zorro III window, at fixed bo
 (from the firmware `memorymap.h`) ✅. Note the board base is `0x10000000`, so these windows land
 **inside the [identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map)** (< `0x40000000`) and
 are directly reachable — this is *not* the [A4091's above-the-identity-map](a4091-53c710-driver.md)
-case; `sptalloc` here was simply a clean way to map the full 128 KB region (and, on a large-memory
-machine, the wrong trade — see [the >80 MB `sptmap` exhaustion](#sptmap-exhaustion) below):
+case; the driver first used `sptalloc` simply as a clean way to map the full 128 KB region, which on
+a large-memory machine was the wrong trade, and now uses the windows directly — see
+[the >80 MB `sptmap` exhaustion](#sptmap-exhaustion) below:
 
 - **RX backlog ring** — `0x07ED0000`, 32 slots × 2048 bytes = 64 KB.
 - **TX staging frame** — `0x07EE0000`, one frame.
@@ -120,14 +123,14 @@ machine, the wrong trade — see [the >80 MB `sptmap` exhaustion](#sptmap-exhaus
 
 ## Driver architecture
 
-`src/z3660eth.c` is a ~1034-line STREAMS/DLPI skeleton adapted from the stock Amix `aen` (LANCE) and
-`hydra` drivers, with the chip layer replaced by the Z3660 mailbox ✅.
+`src/z3660eth.c` is a STREAMS/DLPI skeleton of about 1,650 lines adapted from the stock Amix `aen`
+(LANCE) and `hydra` drivers, with the chip layer replaced by the Z3660 mailbox ✅.
 
 ### Function map (all in `src/z3660eth.c`)
 
 | Function | Role |
 |---|---|
-| `z3660eth_map()` | `sptalloc` + map the register page and the 64-slot frame region; fills `board_base`/`regs`/`frame`/`txwin`/`paddress`. Returns `ENXIO` when no Z3660 GEM is present |
+| `z3660eth_map()` | direct-map the register page and the 64-slot frame region below `VSECT1` (the shipped base `0x10000000`, through the identity map; `sptalloc` only for a board at `0x40000000`+); fills `board_base`/`regs`/`frame`/`txwin`/`paddress`. Returns `ENXIO` when no Z3660 GEM is present |
 | `z3660eth_autoconfig()` | discovery: `autocon(0x144B0001)`, else (AGA only) the fixed combo base `0x10000000`, verified via the firmware MAC register |
 | `z3660eth_initialize()` | writes `ZZ_CONFIG`, primes `last_serial`, starts the RX poll callout |
 | `z3660ethopen` / `z3660ethclose` | lazy-open: autoconfig on first `open` (like `aen`) |
@@ -150,11 +153,14 @@ machine, the wrong trade — see [the >80 MB `sptmap` exhaustion](#sptmap-exhaus
   returns `ENXIO`* — there is no boot-time probe that can panic. It is a deliberately different choice
   from hydra's "probe at boot (`init_tbl`/`hydrainit`), full-init on open" split — see
   [Writing a STREAMS driver](writing-a-streams-driver.md#init-split-probe-at-boot-full-init-on-open).
-- **No `spl6()` / `splx()`.** ✅ Those primitives **do not exist in Amix SVR4.0** — they are a
-  BSD/hydra idiom. The stock `aen` driver and `z3660.c` do **zero** explicit interrupt masking, so in
-  `z3660eth.h` they are no-ops: `#define splz3660eth() 0` and `#define splx(s) ((void)(s))`.
-  Referencing the nonexistent symbols had left them **undefined in the kernel link**, which the
-  `nm -u` clean-gate (below) rejects — a real build-breaker we hit and fixed.
+- **`spl6()` / `splx()` are real, from `<sys/inline.h>`.** ✅ They are the stock primitives,
+  `static inline` in `sys/inline.h`; on this kernel `spl5`/`spl6`/`spl7` all map to `_spl4`
+  (SR `0x2400`, IPL 4), which blocks the level-2 CIA-A clock and with it every callout, including the
+  RX poll. The first kernel link left them **undefined** because the driver did not include
+  `sys/inline.h` — the `nm -u` clean-gate (below) rejects that. An earlier header then no-opped them
+  on the wrong premise that Amix has none; `z3660eth.h` now defines `splz3660eth()` as `spl6()` and
+  masks three short sections (the `tx_busy` claim in xmit, open's slot publication, the status
+  snapshot), never across the ~1 ms TX trigger.
 - **DLPI Style-1**, up to `Z3660ETH_MAXDEV = 5` SAP streams per board, `Z3660ETH_MAXBOARDS = 1`,
   MTU 1500 ✅.
 
@@ -171,8 +177,9 @@ plus the subtree ✅:
    `nostr` with `&z3660ethinfo`.
 3. **`amiga/driver/Makefile`:** add `z3660eth/exp` to `OBJ` and a `z3660eth/exp:` build rule.
 
-The machine-readable form is `driver.conf`, consumed by the `build-net-kernel.sh` tool in the
-**amix-kerntools** project ✅:
+The machine-readable form is `driver.conf`, consumed by the **amix-kerntools** `amix-build` tool,
+which parses the `net <subdir> <src> <streamtab> <major> <iface>` stanza and stages the driver; the
+on-box half is `tools/onbox-build.sh` and the gate `tools/build-clean-net-kernel.sh` ✅:
 
 ```text
 net  z3660eth  z3660eth.c  z3660ethinfo  51  zen  "Z3660 Ethernet"
@@ -206,7 +213,7 @@ firmware raises **Amiga INT6 (EXTER)** on *every* received frame — `rtg/rtg.c`
 traffic storms INT6 and instantly hard-locks the machine** ✅. (Exactly the INT6 risk the scoping doc
 had flagged in Phase 0.)
 
-**Fix** (commit `b06cf45`): the driver writes **`ZZ_CONFIG_DISABLE` (0)** instead of
+**Fix** (commit `028c8d2`): the driver writes **`ZZ_CONFIG_DISABLE` (0)** instead of
 `ZZ_CONFIG_ENABLE` (1), so the firmware never raises INT6. RX is unaffected — the firmware still fills
 the backlog ring regardless of the interrupt-enable flag (`ethernet.c` only gates a *debug print* on
 it), so the **bounded poll/drain callout keeps working**. **No firmware change was needed** ✅.
@@ -217,20 +224,20 @@ it), so the **bounded poll/drain callout keeps working**. **No firmware change w
 
 ## Other bugs that mattered
 
-- **`spl6`/`splx` + `rico.h`-isms (Phase-1 build-breakers, commit `84c9a4f`).** ✅ Besides the
-  nonexistent `spl6`/`splx` symbols (above), a STREAMS driver must spell out `unsigned char/long/short`
-  — **not** `uchar`/`ulong`/`ushort`, which are `rico.h`-only (included by the SCSI driver, not this
+- **`spl6`/`splx` + `rico.h`-isms (Phase-1 build-breakers, commit `9d12f3b`).** ✅ Besides the
+  undefined `spl6`/`splx` (the missing `sys/inline.h` include, above), a STREAMS driver must spell
+  out `unsigned char/long/short` — **not** `uchar`/`ulong`/`ushort`, which are `rico.h`-only (included by the SCSI driver, not this
   one). Both showed up only at kernel-link time, as undefined symbols.
-- **The 030 data-cache flush — turned out *not* to be needed.** ✅ The eth DDR windows are cacheable
-  (they sit inside the identity map), so a stale-cache TX/RX coherency hazard was the scoping's stated *top* risk. The driver
-  has an **optional** line-granular flush (`Z3660ETH_CACHE_FLUSH`, `cpushl %dc` over the TX/RX
-  windows), **default OFF**. On real hardware it was **not required** — TX and RX are byte-correct with
-  the flush off, confirming the 030 data cache is effectively transparent to these windows here. Left
-  OFF.
-
-  > 🟡 Caveat for a future maintainer: the flush helper uses GNU-style `asm volatile("cpushl …")`. The
-  > Amix licensed K&R `cc` may not accept GNU inline-asm syntax; if the flush is ever needed it may
-  > have to move to a separate `.s` file. Untested, because it was never needed.
+- **Cache maintenance — not needed on the 030 line, a run-time gate on 040/060.** ✅ On the 030
+  line the eth DDR windows are cacheable (they sit inside the identity map), so a stale-cache TX/RX
+  coherency hazard was the scoping's stated *top* risk. On real hardware it did not bite — TX and RX
+  are byte-correct with no cache maintenance; that is the 030-line observation only. The original
+  compile-time flush (`Z3660ETH_CACHE_FLUSH`) was never built into any kernel and has been removed.
+  Maintenance is now always compiled and gated at run time by `z3660eth_cache`: `0` = off (the
+  shipping default), `40` / `60` = 68040 / 68060 data-cache line push and invalidate (`cpushl` /
+  `cinvl` as raw `.word` encodings), poked through `/dev/kmem`. On the 040/060 kernel `DTT0`
+  cache-inhibits the whole low 1 GB, so the direct-mapped windows need none, and an attach-time check
+  reports that verdict as `z3660eth_ci_ok`.
 - **Auto-bring-up race (the boot script, not the driver).** 🟡 On a *fast clean boot* the bring-up
   `slink addaen` can race ahead of the inet base STREAMS plumbing and fail to open `zen0` (observed
   once: the box reached `login:` but `zen0` never came up; cause inferred from the working manual
@@ -239,9 +246,10 @@ it), so the **bounded poll/drain callout keeps working**. **No firmware change w
 
 ## The ">80 MB board not found" — `sptmap` exhaustion, not a map clash ✅ {#sptmap-exhaustion}
 
-On a machine with **more than 80 MB** of RAM the driver stopped finding its board, and the obvious
-suspect was the firmware memory map: a clash between the board's Zorro III banks and the enlarged
-guest memory. That was falsified directly — the board's banks read **byte-identical at every window**,
+On a kernel that can describe **more than 80 MB** of RAM — one whose kernel arena had been moved; a
+stock 68030 kernel describes only ≈64 MB ([the RAM ceiling](../how-it-works/ram-ceiling.md)) — the
+driver stopped finding its board, and the obvious suspect was the firmware memory map: a clash between
+the board's Zorro III banks and the enlarged guest memory. That was falsified directly — the board's banks read **byte-identical at every window**,
 and the host DDR behind them was **empty** ✅.
 
 The cause is on the kernel side, and it is the same arena [the RAM ceiling](../how-it-works/ram-ceiling.md)
@@ -410,8 +418,9 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   wired into `int2_tbl[]`) needs a level-6 hook the firmware's INT6 model doesn't safely give Amix; it
   is gated on a board-mod. The polled callout is correct and measured to work; interrupt RX would
   mainly help latency/CPU.
-- ✅ **Cache flush left OFF**; revisit only if a future board/firmware revision changes the
-  cacheability of the eth windows.
+- ✅ **Cache maintenance off by default** (`z3660eth_cache = 0`; the 040/060 line can turn it on at
+  run time); revisit only if a future board, firmware or kernel changes the cacheability of the eth
+  windows.
 
 ## See also
 
@@ -436,24 +445,33 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 
 ## Sources
 
-- **Driver source we wrote** (primary, ✅): the **amix-z3660net** project (git, branch `master`) —
-  `src/z3660eth.c` (~1034 lines), `src/z3660eth.h` (register map, frame-window layout, the `spl`
-  no-ops), `src/z3660ethuser.h`, `src/Makefile`, `driver.conf` (the `net z3660eth … 51 zen` stanza; 48 until the 2026-07-30 renumber),
+- **Driver source we wrote** (primary, ✅): the **amix-z3660net** project
+  (<https://github.com/jusii/amix-z3660net>, branch `master`) — `src/z3660eth.c` (about 1,650 lines;
+  the MAPPING STRATEGY note and `z3660eth_direct_map`), `src/z3660eth.h` (register map, frame-window
+  layout, `splz3660eth()` = `spl6()` via `sys/inline.h`), `src/z3660ethuser.h`, `src/Makefile`, `driver.conf` (the `net z3660eth … 51 zen` stanza; 48 until the 2026-07-30 renumber),
   `userland/S99zen` (boot auto-bring-up), `userland/{bringup.sh,network-config.zen,zen.c}`,
-  `README.md`, `BUILD.md`; commits `f04d283` (initial STREAMS/DLPI driver), `2d26315` (on-box
-  integration scripts), `84c9a4f` (fix `spl6`/`splx` + `rico.h`-isms — Phase-1 gate), `b06cf45`
-  (**do not enable firmware INT6** — the storm fix), `029ee9b` (validated on real HW; hardened
-  `S99zen` + README real-HW status).
-- **Firmware source we read** (primary, ✅): the Z3660 firmware
-  `Z-TURN/vitis_ide/Z3660/src/` — `rtg/rtg.c` (`REG_ZZ_CONFIG` / `REG_ZZ_ETH_TX` / `REG_ZZ_ETH_RX`
-  dispatch, the INT6 raise), `ethernet.c`, `memorymap.h`, `rtg/zzregs.h`.
-- **Design / scoping** (primary, ✅): the **amix-z3660** SCSI project's `ETHERNET-SCOPING.md` (the
-  protocol contract, cache-coherency analysis, the INT6 risk, the phased plan).
+  `README.md`, `BUILD.md`, `CHANGELOG.md` (2026-08-24: the run-time `z3660eth_cache` gate replacing
+  `Z3660ETH_CACHE_FLUSH`; 2026-09-27: interrupt masking made real); commits `f4f64f7` (initial
+  STREAMS/DLPI driver), `a164bb9` (on-box integration scripts), `9d12f3b` (Phase-1 gate: the
+  `rico.h`-isms, and `spl6`/`splx` no-opped — corrected 2026-09-27), `028c8d2` (**do not enable
+  firmware INT6** — the storm fix), `88425eb` (validated on real HW; hardened `S99zen` + README
+  real-HW status).
+- **Firmware source we read** (primary, ✅): the Z3660 firmware fork
+  (<https://github.com/jusii/Z3660-amix>) `z3660-firmware/Z-TURN/vitis_ide/Z3660/src/` — `rtg/rtg.c`
+  (`REG_ZZ_CONFIG` / `REG_ZZ_ETH_TX` / `REG_ZZ_ETH_RX` dispatch, the INT6 raise), `ethernet.c`,
+  `memorymap.h`, `rtg/zzregs.h`. The body's line numbers are on the `amix-main` branch; on
+  `release-1.0` (the 1.0 source) `rtg.c` has `REG_ZZ_CONFIG` at 1111, the INT6 enable at 1127, the
+  ETH raise at 329 and the `REG_ZZ_ETH_TX` / `REG_ZZ_ETH_RX` dispatch at 1570 / 1574.
+- **Design / scoping** (primary, ✅): amix-z3660net `docs/ETHERNET-SCOPING.md` and
+  `docs/ETHERNET-SCOPING-evidence.md` (the protocol contract, cache-coherency analysis, the INT6
+  risk, the phased plan).
 - **Real-hardware results reproduced live** (2026-06-21, A4000 + Z3660, ✅): `ifconfig zen0`,
   `netstat -in`, laptop↔box `ping` / `ftp`, and firmware serial `[ETHCFG]` / `[ETHTX]` debug
   breadcrumbs (a temporary `rtg.c` build, since reverted).
-- **Kernel build tooling** (✅): the **amix-kerntools** project — `tools/build-clean-net-kernel.sh`
-  (the `nm -u` clean-gate), `tools/build-net-kernel.sh` (consumes `driver.conf`).
+- **Kernel build tooling** (✅): the **amix-kerntools** project
+  (<https://github.com/jusii/amix-kerntools>) — `amix-build` (parses the `driver.conf` `net` stanza
+  and assembles the bundle), `tools/onbox-build.sh` (the on-box half), `tools/build-clean-net-kernel.sh`
+  (the `nm -u` clean-gate).
 - **The RAM-ceiling investigation** (first-party record, 2026-08-12/14): the ">80 MB board not found" root cause —
   `sptmap` exhaustion against the fixed 4 MiB kernel arena, with the firmware-map-clash hypothesis
   falsified (banks byte-identical at every window, host DDR empty) — and the `base < VSECT1`

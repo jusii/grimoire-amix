@@ -50,7 +50,7 @@ For a fuller table of stock and community device numbers, see the [device list](
 
 The kernel side is **table-driven**. The configuration file [`master.d/kernel.c`](kernel-build.md) — shipped *in source* even though most of the kernel is object-only ✅ — declares arrays of driver entry points. The major number is literally the **index** into the matching array.
 
-A driver is added by editing these tables and relinking the kernel; there are **no loadable modules** in Amix — every driver is statically linked into `/unix` ✅. The full build cycle lives in [Building and installing a kernel](kernel-build.md).
+A driver is added by editing these tables and relinking the kernel; stock Amix has **no loadable modules** ([one third-party exception](../how-it-works/kernel-architecture.md#loadable-modules)) — every driver is statically linked into `/unix` ✅. The full build cycle lives in [Building and installing a kernel](kernel-build.md).
 
 ### The switch structs (from conf.h)
 

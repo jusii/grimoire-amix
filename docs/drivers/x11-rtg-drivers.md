@@ -43,9 +43,16 @@ a linear framebuffer window can be supported by writing (a) a small kernel frame
 matching RTG back-end inside the X server. On Amix today that pairing is the [`va2000`](case-studies/va2000.md)
 driver plus the `Xrtg` server ✅.
 
-Because a stock driver can only dereference what falls inside the kernel's identity-mapped low 1 GB (Zorro III space at `0x40000000`+ is outside it — see the [identity-map correction](zorro-autoconfig.md#the-identity-map); a driver can still reach it with `sptalloc`, as the A4091 driver does), **RTG cards must be Zorro II / linear-mode
-only** ✅ — the same constraint that applies to all Amix graphics expansion (see
-[Hardware](../how-it-works/hardware.md)).
+What an RTG card must offer is a **linear framebuffer window the kernel can reach** ✅: a window
+inside the kernel's identity-mapped low 1 GB (below `0x40000000`) is dereferenced directly, and one
+above it needs a page mapping (`sptalloc`, as the A4091 driver does) — see the
+[identity-map correction](zorro-autoconfig.md#the-identity-map) and
+[Hardware](../how-it-works/hardware.md). Zorro II is the simple case (the VA2000 and ZZ9000 here), not
+a requirement: the Z3660 accelerator's onboard RTG is a Zorro III-class example — the firmware places
+its window at the fixed base `0x10000000`, in the RTG/ethernet/SCSI combo window that AutoConfig would
+otherwise list as the Zorro III board `0x144B0001`, outside Zorro II space but inside the identity map,
+and the [amix-z3660rtg](https://github.com/jusii/amix-z3660rtg) driver uses it by plain dereference
+with no `sptalloc` ✅.
 
 ## The layered stack
 
@@ -115,7 +122,9 @@ mknod /dev/va2000 c 68 0
 ```
 
 The driver is a single-file char driver (`cc va2000.c`) that is statically linked into a rebuilt kernel
-(`relocunix`) — Amix has **no loadable modules**, so this requires a kernel relink and reboot. See the
+(`relocunix`) — stock Amix has **no loadable modules**
+([one third-party exception](../how-it-works/kernel-architecture.md#loadable-modules)), so this requires
+a kernel relink and reboot. See the
 [VA2000 case study](case-studies/va2000.md) and [Kernel build & install](kernel-build.md) for the full
 procedure ✅. `Xrtg` then `mmap()`s `/dev/va2000` to reach both the framebuffer and the card's blitter/control
 registers ✅.
@@ -211,7 +220,11 @@ The architectural lesson carries over unchanged: **kernel char framebuffer drive
 a card-specific backend under the server's `rtg/` directory**. The R6.3 tree makes the seam explicit —
 its `rtg/` layer is written so that *"each card provides its own header … and installs its drawing
 functions into the ScreenRec directly"* ✅ — which is exactly where a backend for another RTG-capable
-board (for example a future **Z3660 RTG** pairing) would plug in. Full detail:
+board plugs in. The **Z3660 RTG** pairing is one: [amix-z3660rtg](https://github.com/jusii/amix-z3660rtg),
+a fork of `zz9000-amix` that keeps the ZZ9000-compatible registers and `/dev/zz9000` (char 49) and puts
+the Z3660 identity and windows behind one switch, `-DZZ9K_TARGET_Z3660`; with the cross-built X11R6.3
+`Xzz9000` it brings the OpenLook desktop up on the Z3660's HDMI output on a real A4000 (first run
+2026-09-19; 🟡 one machine). Full detail:
 [x11r6.3-amix case study](case-studies/x11r63-zz9000.md) and the
 [zz9000-amix case study](case-studies/zz9000.md).
 
@@ -232,4 +245,5 @@ board (for example a future **Z3660 RTG** pairing) would plug in. Full detail:
 - [`asokero/xrtg-amix`](https://github.com/asokero/xrtg-amix) — README and source tree (`ddx/amix/`, `ddx/amix/rtg/`, `ddx/amix/rtg/va2000/`, `config/amix.cf`); X11R5 / `imake` build; `BuildPex=NO`; `OpenScreen()` / `SIOCACTIVATE` input; TrueColor RGB565; MIT (new code) + X Consortium (X11R5) licensing.
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) — README and source; `/dev/va2000` char major 68 minor 0; RTG screen type patched into `amiga/console/{scrdev.c,c0.c,screen.c}`; `relocunix` relink + `make bootpart`.
 - Research brief §21 — the second-generation stack: [`isoriano1968/x11r6.3-amix`](https://github.com/isoriano1968/x11r6.3-amix) (`Xzz9000`, card-generic `hw/amix/rtg/` layer) + [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) (`/dev/zz9000` char 49) + [`isoriano1968/mesa-amix`](https://github.com/isoriano1968/mesa-amix) (Mesa 3.1).
+- [`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) — README and `DESIGN.md` (§3.1: the onboard RTG window at `0x10000000`, inside the identity map, plain dereference with no `sptalloc`; the `-DZZ9K_TARGET_Z3660` switch; product code `0x144B0001`) and `docs/DEMO-RTG.md` (the metal record, first run 2026-09-19).
 - amigaunix.com — historical X11 context cross-referenced in [X11 & the Desktop](../how-it-works/x11-and-desktop.md) (🟡 community-reported).
