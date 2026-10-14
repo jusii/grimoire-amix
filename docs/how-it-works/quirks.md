@@ -66,7 +66,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 50 | Withdrawn 2026-10-04 — see [§50](#50-sticky-mask) | — | — |
 | 51 | **Memory detection that reads back immediately is fooled by capacitive echo** — an unpopulated bus holds the value it was just driven with and *passes*. Treat any "Detected NNN MB" as unverified until a whole-block address check confirms it | ✅ | [Quirks §51](#51-capacitive-echo) |
 | 52 | Withdrawn 2026-10-04 — see [§52](#52-boot-path-evidence) | — | — |
-| 53 | **68060: the unimplemented 64-bit integer instructions trap to a vector the stock SVR4 trap table never populated** — the 64-bit `MULU.L`/`MULS.L`/`DIVU.L`/`DIVS.L` forms are left to software by the CPU, the stock trap-dispatch table has no entry for them, and the process is killed with no diagnostic at all (a bare `Killed`, rc 137 — no SIGILL, no SIGFPE, no core). Integer ops, so it is not an FPU matter; constrain a 68060 toolchain to the **32-bit** `MULU.L`/`DIVU.L`/`DIVUL.L` forms | ✅ | [Quirks §53](#53-unimplemented-integer-vector), [040/060 status](68040-68060-status.md) |
+| 53 | **68060: the unimplemented 64-bit integer instructions trap to a vector the stock SVR4 trap table never populated** — the 64-bit `MULU.L`/`MULS.L`/`DIVU.L`/`DIVS.L` forms are left to software by the CPU, the stock trap-dispatch table has no entry for them, and where nothing serves that vector the process is killed with no diagnostic at all (a bare `Killed`, rc 137 — no SIGILL, no SIGFPE, no core). 68060 kernels before amigaux 1.0 emulated at most some 64-bit multiply forms; the 1.0 kernels emulate the 64-bit multiply and divide forms, `MOVEP` and `CMP2`/`CHK2`, so only `CAS2` and a misaligned `CAS` still die. Integer ops, so it is not an FPU matter; a 68060 toolchain should still emit the **32-bit** `MULU.L`/`DIVU.L`/`DIVUL.L` forms (emulation is slow, and older kernels kill) | ✅ | [Quirks §53](#53-unimplemented-integer-vector), [040/060 status](68040-68060-status.md) |
 | 54 | **On the Z3660, `amix_mode YES` under `bootmode CPU` silently disables SCSI boot** — the firmware forces `cpu_ram = 0`, and the boot device then disappears with one line of serial as the only warning. A real-CPU Amix preset must set `amix_mode NO` | ✅ | [Quirks §54](#54-amix-mode-scsi-boot) |
 | 55 | **A Kickstart proven under emulation is not proven on silicon, and the *file* matters more than the generation** — a ROM that boots under emulation may still fail on the real CPU. Identify a ROM by CRC-32, never by filename or slot | ✅ | [Quirks §55](#55-kickstart-file-not-generation) |
 | 56 | **A firmware CRC manifest does not tell you which image ran** — the loader picks at boot time and only its own serial line records the choice; and the boot menu is a single-keystroke consumer where six keys copy firmware images over each other | ✅ | [Quirks §56](#56-which-image-ran) |
@@ -79,11 +79,13 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 64 | **Stock `in.ftpd` silently truncates PASSIVE downloads and still replies `226`** — a byte-exact prefix, no `SIZE` command to catch it. Use active (`PORT`) mode and length-gate every `GET` against `ls -l` | ✅ | [Quirks §64](#64-ftpd-passive-truncation) |
 | 65 | **Stock `autocon()` can never match a manufacturer id ≥ `0x8000`** — it compares against a *signed* `id >> 16`; the board is handed over in `bootinfo.autocon[]` but no driver ever attaches (the A4092's `0xC0DE` was the first such id). Fix: an unsigned shift (`asr.l` → `lsr.l`) | ✅ | [Quirks §65](#65-autocon-signed-manufacturer), [Zorro autoconfig](../drivers/zorro-autoconfig.md) |
 | 66 | **Under the Z3660, a CPU read of an undecoded local-I/O address (`$D80000`–`$DFFFFF`) hangs forever** — the motherboard raises no timeout bus error there and the card's CPLD has no cycle timeout, so not even a fault handler runs. Never probe `$DD00xx` speculatively | ✅ | [Quirks §66](#66-local-io-read-hangs) |
-| 67 | **On the Z3660 the real 68060 cannot boot from the motherboard ROM sockets (`kickstart 0`)** — the firmware clears the MAPROM bit after the FPGA has already latched it, so the CPU fetches an empty DDR region (black screen). Always MAPROM from a Kickstart file (a firmware fix is proven on the project's fork, not yet released) | ✅ | [Quirks §67](#67-z3660-kickstart-0) |
+| 67 | **On the Z3660 the real 68060 cannot boot from the motherboard ROM sockets (`kickstart 0`)** — the firmware clears the MAPROM bit after the FPGA has already latched it, so the CPU fetches an empty DDR region (black screen). On stock firmware (upstream 1.03 beta 21 included), always MAPROM from a Kickstart file; the project's fork firmware 1.0 (`C96EAD03`) carries the fix | ✅ | [Quirks §67](#67-z3660-kickstart-0) |
 | 68 | **Real-060 MAPROM boots take the reset vector from the socket ROM** — a stock Kickstart in the sockets (`00F800D2`) needs nothing; DiagROM (`$F800D6`) needs the mapped image `.d6`-patched (`0xD6`: `00414D49` → `6000007A`, checksum at `0x7FFE8`) | ✅ | [Quirks §68](#68-z3660-d6-reset-vector) |
 | 69 | **A 68040/68060 kernel writes anything over 4 KiB to disk as 2 KiB requests, and flushes a UFS inode block twice per `sync`** (~70 ms apart) — only a fault on a block's last write persists; the disk layer's error path never misplaces data; mask dinode time fields when comparing inode copies | ✅ | [Quirks §69](#69-040-060-disk-write-stream) |
-| 70 | **68040/68060: the stock 1992 `installf` crashes (`User BUS ERROR at 4AFC0002`)**, leaving a core in `/` and a half-registered package entry; APKG's `installf` does the same job cleanly. Route runtime package operations through the APKG tools on 040/060 | ✅ | [Quirks §70](#70-stock-installf-060), [Package management](package-management.md) |
+| 70 | **68060 kernel, emulator run: the stock 1992 `installf` crashes (`User BUS ERROR at 4AFC0002`)**, leaving a core in `/` and a half-registered package entry; APKG's `installf` did the same job cleanly in the same run. Route runtime package operations through the APKG tools on a 68060, with the engine amigaux 1.0 ships (APKGENG 1.12.3): the July 2026 1.12.0 build's own `installf -f` is killed by 64-bit divides on a 68060 kernel before 1.0 | 🟡 | [Quirks §70](#70-stock-installf-060), [Package management](package-management.md) |
 | 71 | **A boot node's `fssm_Device` BSTR length counts the terminating NUL** — `MakeDosNode()` adds 1 to the device name's length byte (not to `dn_Name`'s) on every Kickstart from 2.0 to 3.2.3. A loader that matches its boot node against an exec `ln_Name` must compare as a C string, as the strap does | ✅ | [Quirks §71](#71-fssm-device-nul), [Boot process](boot-process.md#fssm-device-nul) |
+| 72 | **A local `AF_UNIX` stream socket can deliver stale data under memory pressure** — on Amix 2.1c with about 8 MB of fast RAM and a non-blocking writer, a read can return whole 4 KB pages from earlier in the stream; X clients (Xlib writes non-blocking) die on misparsed requests. Third-party report, not reproduced here; none seen with 12 MB or more | 🟡 | [Quirks §72](#72-af-unix-memory-pressure), [X11 & desktop](x11-and-desktop.md) |
+| 73 | **Amiberry builds before upstream commit `845af02` corrupt Amix data in the 68030 MMU's "more compatible" mode** (`cpu_compatible=true`) — a misaligned `MOVES` was not split across a page boundary, and Amix copies between kernel and user space with `MOVES`. On an older build set `cpu_compatible=false`. Third-party report, not reproduced here | 🟡 | [Quirks §73](#73-amiberry-moves-page-boundary), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
 
 The rest of this page expands each item.
 
@@ -210,14 +212,17 @@ firmware's serial console floods with descending `write SCSI add 0x001FFFFD…` 
 executing garbage and sweeping the piscsi register window (about 85 000 such lines in three minutes on
 the A4000D, versus none with the fixed firmware; first-party record, 2026-10-03) ✅.
 
-**Rule:** a real-060 Z3660 boots via MAPROM from a Kickstart **file**, always — dump your ROM chips
+**Rule:** on stock firmware a real-060 Z3660 boots via MAPROM from a Kickstart **file**, always — dump your ROM chips
 to a file if that is all you have. The fix is small — take the Kickstart/MAPROM decision before the
 final FPGA reset pulse, so the FPGA latches the real state — and it works ✅: built on the project's
 firmware fork and proven on one A4000D with Kickstart 3.2.3 in the sockets (2026-10-03), `kickstart 0`
 then boots the socket Kickstart and SCSI-boots Amix on the real 68060, and `kickstart 1` boots
 unchanged. A second box confirmed it on 2026-10-03: on an A4000T the fixed firmware booted
-**DiagROM 2.0 from the motherboard sockets** on the real 68060 ✅ (first-party record, 2026-10-03). It is not in any released firmware yet (an upstream candidate), so until one carries it the
-rule above stands. The emulated-CPU modes are not affected by this ordering.
+**DiagROM 2.0 from the motherboard sockets** on the real 68060 ✅ (first-party record, 2026-10-03). The fix ships in
+the project's fork firmware 1.0 (`Z3660.bin`, CRC-32 `C96EAD03`; source on branch `release-1.0` of
+[jusii/Z3660-amix](https://github.com/jusii/Z3660-amix)) ✅. Stock firmware, upstream 1.03 beta 21
+included, still black-screens, so on stock firmware the rule above stands. The emulated-CPU modes are
+not affected by this ordering.
 
 
 ### 68. Real-060 MAPROM boots take the reset vector from the socket ROM — the `.d6` patch ✅ {#68-z3660-d6-reset-vector}
@@ -251,7 +256,7 @@ The folklore says the kernel hard-codes a 16 MB Fast RAM ceiling and that more "
 
 ### 3. Zorro III — stock drivers are Zorro II only ✅
 
-**Stock** Amix is **Zorro II only** ✅: its stock drivers simply dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)), and that kernel source was never shipped so the *stock* card set can't be patched in place. This is **not** absolute for a *purpose-written* driver, though: one that maps the board explicitly — the kernel's `sptalloc()` primitive, or (when the board's window happens to fall inside the identity map) a direct mapping — **can** reach a Zorro III board. The [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 emulation) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do exactly this. For ordinary expansion, still assume a card must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
+**Stock** Amix is **Zorro II only** ✅: its stock drivers simply dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)), and that kernel source was never shipped so the *stock* card set can't be patched in place. This is **not** absolute for a *purpose-written* driver, though: one that maps the board explicitly — the kernel's `sptalloc()` primitive, or (when the board's window happens to fall inside the identity map) a direct mapping — **can** reach a Zorro III board. The [A4091 SCSI driver](../drivers/a4091-53c710-driver.md) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do exactly this. The A4091 driver's 68040/68060 arm reaches a Zorro III board on real hardware (root on an A4092 in an A4000D with a Z3660 ✅); the A4091 board itself and the 68030 line are proven in emulation only 🟡. For ordinary expansion, still assume a card must present a Zorro II window; see [Zorro autoconfig](../drivers/zorro-autoconfig.md) for how boards are discovered via the AUTOCONFIG / `autocon()` path, and [hardware](hardware.md) for the supported-board list.
 
 ### 4. No 68040/68060 in stock Amix — the A4000 is out for a stock kernel ✅ (the 040/060 port changes this: see [040/060 status](68040-68060-status.md))
 
@@ -330,8 +335,10 @@ as a proxy for "this is an A3000-class machine" (the A3000's classic 16 MB mothe
   A3000 WD33C93 initialisation against the 53C710's registers 🟡 (read from the source). Under the
   Z3660 an unanswered CPU read in local I/O space never terminates ([§66](#66-local-io-read-hangs)),
   so if the uninitialised 53C710 does not answer, a `c0` open is expected to freeze the whole machine
-  on a hung bus cycle, not just stall one process 🟡 (predicted; not run). An A4000T kernel needs the chipset gate below; until then, never open a `c0` device
-  there. Details on [the Z3660 SCSI driver page](../drivers/z3660-scsi-driver.md).
+  on a hung bus cycle, not just stall one process 🟡 (predicted; not run). The amigaux 1.0 68060 kernels
+  carry the chipset gate below, so they register no phantom and the Z3660 is card 0 ✅. On an 040/060
+  kernel built without it (the public port's mainline does not address the guess), never open a `c0`
+  device on an A4000T. Details on [the Z3660 SCSI driver page](../drivers/z3660-scsi-driver.md).
 
 Real A3000s with more than 16 MB of motherboard RAM are inside the affected envelope ✅ — this is not an
 emulator-only curiosity.
@@ -426,6 +433,22 @@ disagrees. And because this `ftpd` implements no `SIZE` command, a client cannot
 up front. **Workarounds:** use **active (`PORT`) mode**, and length-gate every `GET` against the size
 `LIST`/`ls -l` reports, retrying on a mismatch ✅.
 
+### 72. A local `AF_UNIX` stream socket can deliver stale data under memory pressure 🟡 {#72-af-unix-memory-pressure}
+
+Reported by the [amix-x11-aga](https://github.com/hmlio/amix-x11-aga) project, a colour X server for
+the native chipset, and not reproduced here 🟡. On Amix 2.1c, a read from a local `AF_UNIX` stream
+socket can return data from whole 4 KB pages earlier in the stream when the system is short of memory
+(about 8 MB of fast RAM) and the writer is non-blocking: 8 failures in 9 runs with a non-blocking
+writer, 0 in 4 with a blocking one. The reporter saw it in emulation, also with the unmodified kernel
+and no third-party driver, and on a real A4000 with the kernel limited to 8 MB; never with 12 MB or
+more. X is where it bites: Xlib writes non-blocking and ships as binaries, so a large request (a
+172 KB `PutImage`) is misparsed, the client dies with `BadIDChoice` or `BadLength`, and the server
+cannot work around it.
+
+**Rule:** give a box that runs X 12 MB or more of fast RAM. The reporter's reproducer,
+`test/sockstress.c`, streams 32-bit counters through a local socket with Xlib's write pattern and
+exits 2 at the first mismatch.
+
 ### 14. An unhandled board interrupt storms the kernel ✅
 
 A gotcha for **driver authors**, learned bringing up the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) on real hardware: if a board (or its firmware) raises a CPU interrupt level for which **Amix installs no handler**, the unacknowledged source fires continuously and **hard-locks the machine** ✅. The Z3660 firmware raises Amiga **INT6 (EXTER)** on *every* received ethernet frame, but Amix has no level-6 ethernet handler — so the moment the interface came up, normal LAN **ARP broadcast traffic stormed INT6 and instantly froze the box** (caps-lock LED dead). The whole kernel had booted to `login:` fine; only bringing the interface up triggered it.
@@ -480,9 +503,10 @@ The 68060 does not implement every integer instruction form in silicon. The **64
 quotient/remainder register pair — are trapped out to software through the CPU's
 **unimplemented-integer-instruction** exception (vector 61), for an emulation layer to serve ✅. The
 stock SVR4 trap-dispatch table on this platform stops at **vector 55**, so that vector has no
-handler: the trap falls through to the kernel's default unhandled-vector path and the process is
-**SIGKILLed with no diagnostic at all** ✅ — a bare `Killed` and exit status 137, no SIGILL, no
-SIGFPE, no named fault, no core, and nothing in any log. Two consequences:
+handler: on a 68060 kernel that adds none, the trap falls through to the kernel's default
+unhandled-vector path and the process is **SIGKILLed with no diagnostic at all** ✅ — a bare `Killed`
+and exit status 137, no SIGILL, no SIGFPE, no named fault, no core, and nothing in any log. Two
+consequences:
 
 - **It is not an FPU problem, and nothing in the failure says so either way.** The affected
   instructions are *integer* ops the core leaves to software, so the kill fires identically on a
@@ -491,18 +515,24 @@ SIGFPE, no named fault, no core, and nothing in any log. Two consequences:
   — that one is F-line and FPU-shaped, this one is not.
 - **The 32-bit forms are safe.** `MULU.L`/`DIVU.L`/`DIVUL.L` in their 32-bit spellings are
   hardware-implemented and execute normally ✅. `CMP2`/`CHK2`/`CAS2`/`MOVEP` belong to the same
-  unimplemented-integer class architecturally and should be expected to behave the same way 🟡 (class
-  membership per the CPU's own definition of the set, not each form separately exercised).
+  unimplemented-integer class architecturally and should be expected to behave the same way where
+  nothing emulates them 🟡 (class membership per the CPU's own definition of the set, not each form
+  separately exercised).
+
+**What the amigaux 1.0 kernels change ✅.** The 1.0 68060 kernels carry Motorola's 68060 Integer
+Support Package on that vector: the 64-bit multiply and divide forms, `MOVEP` and `CMP2`/`CHK2` are
+emulated and run, and only `CAS2` and a misaligned `CAS` still kill the program. Earlier 68060
+kernels emulated at most some 64-bit multiply forms, so a 64-bit divide was still killed there.
 
 Practical rule for anyone *emitting* 68060 code — a compiler, an assembler macro, a hand-patch:
-constrain the toolchain to the 32-bit integer forms until the kernel gains both the vector handler
-and the emulation behind it ✅. Because the trap is silent, the diagnostic signature is a freshly
-rebuilt binary that runs a while and then dies `Killed` with rc 137 where the previous build did not
-— check the instruction encodings before suspecting the program. This is distinct from the GNU `as`
+keep to the 32-bit integer forms anyway, because the emulated 64-bit forms are slow and an older
+68060 kernel kills the program; never emit `CAS2` or a misaligned `CAS` ✅. Because the trap is
+silent, the diagnostic signature is a freshly rebuilt binary that runs a while and then dies
+`Killed` with rc 137 where the previous build did not — check the instruction encodings before suspecting the program. This is distinct from the GNU `as`
 2.8.1 size-bit defect on [the toolchain page](../drivers/toolchain.md), which produces a 64-bit
 divide form by accident on a *68030*: same instruction family, different cause, different platform.
 
-### 70. 68040/68060: the stock 1992 `installf` crashes — use APKG's package tools ✅ {#70-stock-installf-060}
+### 70. 68060 (emulator run): the stock 1992 `installf` crashes — use APKG's package tools 🟡 {#70-stock-installf-060}
 
 On a 68060 kernel the **stock** `/usr/sbin/installf`, run as `installf -f core` to finalise a
 package entry, dies with `User BUS ERROR at 4AFC0002` ✅. It leaves a core file in `/` and a
@@ -512,8 +542,12 @@ system the project's package engine's `installf` (`/usr/apkg/bin/installf`) fina
 cleanly: exit 0, with the checksum the kernel really has ✅. Observed in an emulator run of the 68060
 kernel (2026-10-03); not yet on metal 🟡.
 
-**Rule:** on a 68040/68060 system, route every runtime package operation through the APKG tools
-(`/usr/apkg/bin/…`); treat the stock `pkgadd`, `pkgrm`, `installf` and `removef` as suspect there.
+**Rule:** on a 68060 system (no 68040 was tested), route every runtime package operation through the
+APKG tools (`/usr/apkg/bin/…`); treat the stock `pkgadd`, `pkgrm`, `installf` and `removef` as suspect
+there. Use the engine amigaux 1.0 ships, APKGENG 1.12.3, built without 64-bit divides ✅: the July
+2026 1.12.0 build published on the package repository has its own `installf -f` and `pkgchk` killed
+by them on a 68060 kernel before 1.0, which does not emulate the divides
+([§53](#53-unimplemented-integer-vector)) ✅.
 Why the stock binary faults is not established 🔴 — the same kind of 1992-binary-meets-new-CPU
 problem as [§53](#53-unimplemented-integer-vector) is a plausible family, not a diagnosis. Run such
 tools from a scratch directory such as `/tmp`, so a crash cannot leave a core file in `/`. See
@@ -958,6 +992,20 @@ back either.
 with an appended `; …`: `(nohup sh job.sh > /job.out 2>&1 &); echo DONE_$?` ✅. A `&` that is not
 last on the line, such as `cmd & echo launched-$!`, is not affected.
 
+### 73. Amiberry before upstream `845af02`: `MOVES` across a page boundary corrupts Amix data 🟡 {#73-amiberry-moves-page-boundary}
+
+Reported by the [amix-x11-aga](https://github.com/hmlio/amix-x11-aga) project, and not reproduced
+here 🟡. In Amiberry builds before upstream commit
+[`845af02`](https://github.com/BlitterStudio/amiberry/commit/845af02) (2026-10-06, a merge of WinUAE
+updates), the 68030 MMU's "more compatible" mode — `cpu_compatible=true`, which
+`cpu_memory_cycle_exact=true` also forces — did not split a misaligned `MOVES` access across a page
+boundary. Amix copies between kernel and user space with `MOVES`, so files, the kernel heap and X
+traffic were corrupted. The reporter caught it by compiling the same C file three times and comparing
+the outputs.
+
+**Rule:** use an Amiberry build that contains `845af02`; with an older build, set
+`cpu_compatible=false` and leave `cpu_memory_cycle_exact` off, since it forces the mode back on.
+
 ## Time & Y2K quirks
 
 ### 7. Y2K and the battery clock: a `setclk` bug, not a kernel cap ✅/🟡 {#7-y2k-setclk-and-the-kernels-1999-date-cap}
@@ -1118,14 +1166,14 @@ keep an on-box-authored root at or below 1 234 567 blocks.
 - BlitterStudio/amiberry issue #1376 and WinUAE/FS-UAE docs (emulation consequences of the SCSI IDs and RAM ceiling).
 - The A4091-on-Amix project — networking investigation, 2026-06-07 (reproduced locally ✅): instrumented `/etc/rc2` per-script timing on Amix 2.1c under Amiberry isolated `S69inet` at 180 s; boot **210 s → 29 s** after switching the boot-time `ifconfig`s to literal IPs. Files: `/etc/rc2.d/S69inet`, `/etc/inet/network-config`, `/etc/inet/rc.inet` on the running system (quirk 13).
 - The amix-z3660net project — the `z3660eth` driver bring-up on a real A4000 + Z3660, 2026-06-21 ✅: the firmware INT6-per-RX-frame storm (Amix has no level-6 ethernet handler) and the disable-IRQ/poll fix (`ZZ_CONFIG_DISABLE`, `timeout()` RX drain), diagnosed via the firmware serial `[PC]` heartbeat + `nm` of `relocunix` (quirk 14). See [the Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md).
-- The amix-z3660scsi project @ `8ea1605` — the `z3660` piscsi block-driver bring-up on a real A4000 + Z3660, 2026-06-12/13 ✅: the 2.1 `bootinfo.autocon[]` miss and the multi-method detect that cleared the silent hang (quirk 15), and the firmware-emulator-vs-driver triage (quirk 16 — the apparent hang was the 68k emulator demand-paging the driver's own pages, not the driver; firmware-owned fix, cited not reproduced). See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
+- The [amix-z3660scsi](https://github.com/jusii/amix-z3660scsi) project, commits `86b7a37` (the multi-method detect, quirk 15) and `0d67693` (the emulator triage, quirk 16) — the `z3660` piscsi block-driver bring-up on a real A4000 + Z3660, 2026-06-12/13 ✅: the 2.1 `bootinfo.autocon[]` miss and the multi-method detect that cleared the silent hang (quirk 15), and the firmware-emulator-vs-driver triage (quirk 16 — the apparent hang was the 68k emulator demand-paging the driver's own pages, not the driver; firmware-owned fix, cited not reproduced). See [the Z3660 piscsi SCSI driver](../drivers/z3660-scsi-driver.md).
 - Research brief §19 (emulation fidelity), from the Z3660 firmware project (branch `amix-main`, 2026-06) — quirk 17 (the A3000-SCSI bootstrap's INT2 sensitivity to interrupt-service cadence; the `service_cadence` knob ✅ / the 4-boots-8-hangs boundary 🟡) and the emulator-side mechanism behind quirk 16 (68030 bus-error-frame fidelity on the demand-paging path). See [Emulation Fidelity](emulation-fidelity.md).
 - Research brief §20 (stock SVR4 package system), from the amix-packagemanager project (firsthand on a clean Amix 2.1c image, 2026-07-01) — quirk 10's `amixpkg`-is-install-media-only correction ✅/🟡, and quirk 18 (the `/var/sadm/install/contents` space-in-pathname record that breaks `pkgrm`/`pkginfo -l` out of the box, ✅). See [Package management](package-management.md).
 - The **amix-cdfs** project @ `31e8c3b` — quirk 19 (`mount(2)` silently stacks on an already-mounted directory; `mount(2)`'s only busy check is `v_vfsmountedhere`, which `lookupname` clears by traversing into the mount; guard in the fs's own mount op like `prmount`/`fdmount`), from stock-kernel disassembly + reproduction on a real A4000 + Z3660, 2026-07-13 ✅ (`844c2ed`). See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
-- The **amix-kerntools** bench forensics @ `8a76775` — quirk 20 (SVR4 `login`'s future-`lastchg` "expired" trap on an RTC-1978 box after a clock was set forward; same-password workaround, never set the RTC forward), root-caused on a real A4000 + Z3660, 2026-07-11 ✅.
-- The **Installer-NG** field work (first-party record, 2026-07-22/24; amix-installng @ `7106f1b`, amix-packagemanager @ `4539ad2`) — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
-- The **amix-kerntools** inetd investigation @ `f7d741d` (`docs/inetd-telnet-throttle.md`) and the
-  **amix-cdfs** Packet C wedge soak @ `c3eba7e` (`docs/packet-c-wedge-soak.md`), 2026-07-26/27 ✅ —
+- **Bench forensics** (first-party record, 2026-07-11) — quirk 20 (SVR4 `login`'s future-`lastchg` "expired" trap on an RTC-1978 box after a clock was set forward; same-password workaround, never set the RTC forward), root-caused on a real A4000 + Z3660 ✅.
+- The **Installer-NG** field work (first-party record, 2026-07-22/24; the projects are public as [amix-installng](https://github.com/jusii/amix-installng) and [amix-packagemanager](https://github.com/jusii/amix-packagemanager), released as amigaux 1.0) — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The **`inetd` investigation** and a **wedge soak on the `cdfs` bench** (first-party record,
+  2026-07-26/27) ✅ —
   quirk 23 (the `TOOMANY=40` / `CNT_INTVL=60 s` / `RETRYTIME=600 s` throttle read out of the shipped
   `/usr/sbin/inetd` as compile-time immediates, the absent `nowait.<max>` syntax proven by disassembly
   *and* a live `SIGHUP` test, per-service independence measured both directions, and the rate bound:
@@ -1134,11 +1182,13 @@ keep an on-box-authored root at or below 1 234 567 blocks.
   rather than `/var/adm/messages`, and the measured 293 B of log growth under abuse). Quirk 26's
   `netstat -a` control run and the `sar -v`/`ipcs -a` failures are from the same soak's wedge-time
   capture ✅.
-- The **amix-cdfs** Packet C bench run @ `419e16c` (`docs/packet-c-bench-results.md` §6), 2026-07-26 ✅
+- A **`cdfs` bench run** (first-party record, 2026-07-26) ✅
   — quirk 27: on a 1.25 GiB multi-extent UDF disc, `dd skip=` to the 1 GiB mark transfers rather than
   seeks and needs a ~20-minute command timeout.
-- The **amiberry** project fork `docs/amix-guest-cycle-exact.md` @ `aa077b0` and the
-  **amix-kerntools** rig ablation `docs/piscsi-rig.md` §3 @ `33ab7c3`, 2026-07-26 ✅ — quirk 25: the
+- A **read of the upstream Amiberry source** ([BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry):
+  `src/cfgfile.cpp` `default_prefs()`, `src/main.cpp` `fixup_prefs()` → `fixup_cpu()`, `src/osdep/amiberry.cpp`
+  `default_disable_cycle_exact`) and a **rig ablation** on the emulated bench (first-party record,
+  2026-07-26) ✅ — quirk 25: the
   `default_prefs()` all-true initialisation, the four non-equivalent config keys, the host-dependent
   `default_disable_cycle_exact`, the `fixup_prefs()` host-log tell (present in 6/6 omitting runs,
   absent in 10/10 pinning runs) and its `cpu_compatible` side effect, and the 10-boot single-variable
@@ -1156,15 +1206,16 @@ keep an on-box-authored root at or below 1 234 567 blocks.
   2026-07 ✅ — quirk 29: the stock kernel's unconditional `0xde0002` write in both the boot and the
   reboot/halt paths, and its benignity on the A4000, where every metal boot forwards the write
   through the accelerator to the physical bus with no ill effect.
-- The **amix-kerntools** cdevsw free-row gate + 2026-07-31 half-patch audit (`2b23808` →
-  `f025444`) and the **amix-z3660net** patch-script hardening (`603c719`), 2026-07-30/31 ✅ —
+- A **cdevsw free-row gate and half-patch audit** (first-party record, 2026-07-30/31) and the
+  [amix-z3660net](https://github.com/jusii/amix-z3660net) patch-script hardening (`603c719`) ✅ —
   quirk 30: the `ed` miss-then-write half-patch reproduced host-side with GNU `ed` over the real
   stock file layouts, its name-wide-grep permanence, the wrong-row-overwrite and wrapping-search
   variants, and the pre-probe / one-run-per-edit / post-verify-the-row pattern. See
   [building a kernel](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed-the-half-patch-trap).
-- The **amix-kerntools** transport lint (`amix-transport-lint.py` @ `2de5264`) and the two live
-  defects it generalises from — `amix-kerntools` and **Z3660** (`d40ce94`/`0fe57b4`) CHANGELOG entries,
-  both 2026-08-27 ✅ — quirk 39: the transport's appended `; echo DONE_$?` turning a bare trailing `&`
+- The project's **transport lint** (first-party record, 2026-08-27) and the two live defects it
+  generalises from — an `amix-kerntools` runner defect (first-party record, 2026-08-27) and the
+  [Z3660 firmware fork](https://github.com/jusii/Z3660-amix)'s `CHANGELOG.md` entry of 2026-08-27
+  (branch `release-1.0`) ✅ — quirk 39: the transport's appended `; echo DONE_$?` turning a bare trailing `&`
   into the Bourne syntax error `&;`, the parenthesise-the-launch fix, and the four
   superficially-similar shapes that are safe and must not be flagged (the linter's `--self-test`
   exercises all four plus the unsafe one).
@@ -1211,7 +1262,12 @@ keep an on-box-authored root at or below 1 234 567 blocks.
   each individually exercised 🟡. The matching porting note is on
   [040/060 status](68040-68060-status.md#what-a-soft-fpu-port-would-require); the unrelated GNU `as`
   2.8.1 mis-encode that produces a 64-bit divide form on a 68030 is on
-  [the toolchain page](../drivers/toolchain.md).
+  [the toolchain page](../drivers/toolchain.md). What the amigaux 1.0 kernels emulate (Motorola's
+  68060 Integer Support Package: the 64-bit multiply and divide forms, `MOVEP`, `CMP2`/`CHK2`; only
+  `CAS2` and a misaligned `CAS` still killed; earlier kernels only some multiply forms) is from the 1.0
+  release notes ([amix-installng](https://github.com/jusii/amix-installng)
+  `docs/release-notes-amigaux-1.0.md`, "The package engine: 1.12.3 replaces 1.12.0 on the 68060") and
+  the amigaux.org known-issues page ✅.
 - The **Z3660 real-68060 sessions**, real A4000 + Z3660 with a real
   68LC060 (first-party record, 2026-09-08/09) ✅ — quirks 54, 55 and 56. Quirk 54 read from the firmware source (the
   `amix_mode` → `cpu_ram = 0` forcing, and the `scsiboot && cpu_ram` gate whose else-arm prints
@@ -1227,7 +1283,12 @@ keep an on-box-authored root at or below 1 234 567 blocks.
   shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c`
   — the load-address phantom at `0xDD0000` sorting as card 0, the lazy first-I/O initialisation, the
   no-timeout busy-wait; on an A4000T that window is the onboard NCR 53C710. The hang itself is
-  predicted from source, not reproduced on the metal 🟡.
+  predicted from source, not reproduced on the metal 🟡. The chipset gate in the amigaux 1.0 68060
+  kernels ✅: the [amix-installng](https://github.com/jusii/amix-installng) acceptance-rig configs
+  (`configs/accept-z3660-060-fd0.uae`: with the probe in, the Z3660 is card 0) and
+  [amix-a4091](https://github.com/jusii/amix-a4091) `docs/A4000T-ONBOARD-710.md` §2 (the A4000T
+  kernel must carry the gate, enforced at media build); the public port's mainline leaves the guess
+  alone per its [README](https://github.com/asokero/amix-040-060-port).
 - The **2026-09-28/29 battery-clock work**, first-party, real A4000T and the installer bench ✅ —
   quirk 7's boot behaviour and its three details: the RP5C01 ticking and holding time across a
   power-off, the stock image coming up at 1977 with a working clock, the stock `setclk` run ending in
@@ -1243,7 +1304,7 @@ keep an on-box-authored root at or below 1 234 567 blocks.
   `iso7`–`iso19` half is fixed on the fork.
 - The **amix-gayle-ide review** (2026-09-28/29) and the three fixes it prompted — `amix-a4091`
   CHANGELOG 2026-09-29 (`support.c.patch`, low-nibble gate), `amix-z3660scsi` CHANGELOG 2026-09-28,
-  and `amix-kerntools/docs/k0-families.md` (the ECS-NTSC bench row, VPOSR id `0x30`) ✅ — quirk 61.
+  and the ECS-NTSC bench row, VPOSR id `0x30` (first-party record, 2026-09-29) ✅ — quirk 61.
 - The **2026-10-02 large-target bracket** ✅ — the installer's own author sequence on blank 600–1024 MB targets on a 68030 and a 68060 kernel, the stock `sddevsize()` default of 1 234 567 blocks found as the cause, the whole-disk raw-read hang bisected, and the fix (default `0x3FFFFF` + a `dd.c` offset check) re-run green at every size (first-party record, 2026-10-02).
 - The **CD-unit overrun fix** ✅ — `amix-z3660scsi` CHANGELOG 2026-10-02 (commit `e072408`: refuse a READ/WRITE larger than `nbyte`; host harness 184/0) and its metal check on an A4000T the same day (raw `dd` at three block sizes → `I/O error`, counter +3; first-party record, 2026-10-02).
 - The **FTP passive-mode truncation** ✅ — the 2026-10-02 bench matrix (passive from `cdfs` 18/80 short, passive from UFS 0/80, active 0/40, `226` on every truncated transfer; first-party record, 2026-10-02) and the earlier 68030 measurement plus the length-gate recipe in `amix-kerntools/tools/amixsync.py` ("the truncation trap"; this `ftpd` has no `SIZE`). The short-write mechanism is a diagnosis from behaviour 🟡.
@@ -1251,6 +1312,8 @@ keep an on-box-authored root at or below 1 234 567 blocks.
 - The **signed manufacturer compare in stock `autocon()`** ✅ — `amix-a4091` commit `06a7d96` (2026-10-02, `support.c.patch`: the unsigned shift, codegen `swap`/`ext.l` → `clr.w`/`swap`), the matching one-byte `asr.l` → `lsr.l` patch in the 68040/68060 relink tooling the same day, and the A4000D metal run that proved it (the A4092's `0xC0DE0001` handed over in `bootinfo.autocon[]` but unregistered without the fix, registered as card 1 with it; first-party record, 2026-10-02).
 - The **2026-10-02 local-I/O peek measurements**, first-party, on an A4000D with a Z3660 ✅ — a supervisor-mode, fault-catching peek tool under AmigaOS: the first read of `$DD0000` never returned; reads of Gary's `$DE0000`/`$DE0001` on the A4000D terminated (`FF`→`7F`, `7F`) (first-party record, 2026-10-02). The CPLD side is read from the Z3660's CPLD sources (`TERM.vhd`/`BUSTERM.vhd`: termination waits on `DSACK`/`AVEC`/`BERR`, `nTEA` only from the bus-error state, no timeout counter anywhere). The meaning of the A4000's `$DE0000`/`$DE0001` bits is unsourced 🔴.
 - The **CPU-path resolution and the TOENB cell** (2026-10-02) — the Z3660 emulator sources (`Z3660_emu/src/cpu_emulator.cpp` `wait_read_ack()` timeout, `uae_emulator.cpp` `make_dummy_address_bank()`, `uae/memory.cpp` Gary non-range → `hardware_exception2` when `gary_toenb`), UAE's Gary register map (`amiberry/src/gayle.cpp`: `$DE0000`/`$DE0001`/`$DE0002` bit 7 = timeout/TOENB/coldboot), and a first-party A4000D test writing `0x80` to `$DE0001` (read back `0xFF`) before a `$DD0000` read that still hung ✅; whether the A4000 board logic can assert a bus error there at all awaits a scope look 🟡.
-- The **Z3660 `kickstart 0` ordering and the `.d6` rule** (2026-10-03) ✅ — the FPGA source (`z3660.v`: `maprom_enable` latched only under `RESET_IN || GPIO_s[31]`, the MAPROM range served from DDR when set) and the firmware `main.c` order (MAPROM enabled at start-up, FPGA reset pulsed, CPU side started, the bit cleared for `kickstart 0` afterwards with no further reset), the same order in upstream shanshe/Z3660 `50e98e0` (v1.03 beta 21), and a first-party A4000D run with Kickstart 3.2.3 in the sockets (black screen, no SCSI I/O, 2/2), then the reordered firmware on the project's fork booting `kickstart 0` and SCSI-booting Amix with `kickstart 1` unchanged (same box, 2026-10-03), and on an A4000T booting DiagROM 2.0 from the sockets (2026-10-03); the `.d6` patch and its CRC pairs from the project's patcher, with DiagROM's `$F800D6` reset PC as seen on the bench (first-party record, 2026-10-03).
+- The **Z3660 `kickstart 0` ordering and the `.d6` rule** (2026-10-03) ✅ — the FPGA source (`z3660.v`: `maprom_enable` latched only under `RESET_IN || GPIO_s[31]`, the MAPROM range served from DDR when set) and the firmware `main.c` order (MAPROM enabled at start-up, FPGA reset pulsed, CPU side started, the bit cleared for `kickstart 0` afterwards with no further reset), the same order in upstream shanshe/Z3660 `50e98e0` (v1.03 beta 21), and a first-party A4000D run with Kickstart 3.2.3 in the sockets (black screen, no SCSI I/O, 2/2), then the reordered firmware on the project's fork booting `kickstart 0` and SCSI-booting Amix with `kickstart 1` unchanged (same box, 2026-10-03), and on an A4000T booting DiagROM 2.0 from the sockets (2026-10-03); the fix shipping in the fork's firmware 1.0 (`C96EAD03`) per [jusii/Z3660-amix](https://github.com/jusii/Z3660-amix) branch `release-1.0` (`CHANGELOG.md` 2026-10-04, `release/MANIFEST-1.0.txt`) and the amigaux 1.0 release notes; the `.d6` patch and its CRC pairs from the project's patcher, with DiagROM's `$F800D6` reset PC as seen on the bench (first-party record, 2026-10-03).
 - The **68040/68060 disk write stream** (2026-10-03) ✅ — measured on the project's emulator rig through a disk-write capture replayed exactly onto the image (every 2 KiB piece landing with its own tag; inode blocks flushed twice per `sync`, 69–75 ms apart in three captures (first-party record, 2026-10-03); a driver fault knob refusing one piece of an inode-block write, with the refused piece reaching no LBA and all four rewritten at their own LBAs on the next flush; a time-masked duplicate detector), and the request break-up read from the kernel binary (first-party record, 2026-10-03).
-- The **stock `installf` crash on the 68060** (2026-10-03) ✅ — an installer acceptance cell in an emulator run of the 68060 kernel: `installf -f core` → `User BUS ERROR at 4AFC0002`, a core in `/`, the entry left with `?` fields; `/usr/apkg/bin/installf -f core` on the same system → exit 0 and the kernel's true checksum; the installer's first-boot step switched to APKG's `installf`, run from `/tmp` (`amix-installng` commit `0cf2bca`).
+- The **stock `installf` crash on the 68060** (2026-10-03) 🟡 — an installer acceptance cell in an emulator run of the 68060 kernel: `installf -f core` → `User BUS ERROR at 4AFC0002`, a core in `/`, the entry left with `?` fields; `/usr/apkg/bin/installf -f core` on the same system → exit 0 and the kernel's true checksum; the installer's first-boot step switched to APKG's `installf`, run from `/tmp` (first-party record, 2026-10-03). The engine builds (1.12.3 shipped in 1.0; the July 2026 1.12.0 build killed by 64-bit divides on a 68060 kernel before 1.0) are from the amigaux 1.0 release notes ([amix-installng](https://github.com/jusii/amix-installng) `docs/release-notes-amigaux-1.0.md`, "The package engine: 1.12.3 replaces 1.12.0 on the 68060") ✅.
+- The **A4091 driver's real-hardware scope** — the [amix-a4091](https://github.com/jusii/amix-a4091) README's status table: the A4092 on the 68060 line (A4000D + Z3660) with its root filesystem ✅, the A4091 board and the 68030 line still pending on real hardware 🟡 (quirk 3).
+- The **`AF_UNIX` memory-pressure corruption and the Amiberry `MOVES` page-boundary defect** 🟡 — third-party reports from [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) (`docs/findings.md`; the reproducer `test/sockstress.c`), not reproduced here; the Amiberry fix is upstream commit [`845af02`](https://github.com/BlitterStudio/amiberry/commit/845af02) (quirks 72, 73).
