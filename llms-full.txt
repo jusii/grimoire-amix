@@ -1903,7 +1903,7 @@ For a fuller catalogue of device nodes and major numbers across the system, see 
 
 ---
 title: Networking
-summary: SVR4 STREAMS TCP/IP over the A2065 (aen0), static IP only, DNS off by default, NFS, and the buggy SLIP / no-PPP caveats.
+summary: SVR4 STREAMS TCP/IP over the A2065 (aen0), static IP only, DNS off by default, NFS, the stock 4 KB TCP queue that drops inbound bursts, and the buggy SLIP / no-PPP caveats.
 status: draft
 ---
 
@@ -2108,6 +2108,78 @@ with `use` at baseline, so cdfs is not a source of this ✅; and a *refused* (ra
 connection is the [`inetd` throttle](#the-inetd-anti-looping-throttle-one-service-refuses-connections-while-the-box-is-healthy),
 not this.
 
+## TCP's 4 KB lower read queue: IP drops the fourth segment of every burst, uncounted ✅ {#tcp-lower-read-queue}
+
+On the stock kernel, **a fast sender loses every segment past the third in each burst it delivers to
+the box**, and **no counter on the box records it**. The visible symptom is an inbound TCP transfer
+(FTP `put` into the box) running at a few tens of KB/s while the outbound direction runs at full
+speed. The sender shows hundreds of retransmissions per few MB, each after a ~200 ms timeout. This
+stack has no SACK, so a lost segment costs a whole timeout ✅.
+
+**The discard.** `ipintr`, IP's lower-read service procedure, drains its whole input queue in one
+pass. For each datagram it first counts it (`ipstat.ips_total`), then asks `canput()` of the protocol
+queue above it. When that queue is full, it calls `freemsg()` and moves on. No `ipstat` or `tcpstat`
+field is incremented, and the `STRLOG` call is compiled out. In the USL SVR4 source this is
+`netinet/ip_input.c`, and the Amix binary has the same code (`ipintr+0x41c` in both the stock and the
+2.1c kernels). The allocation failure just above it is silent the same way ✅.
+
+**The limit.** TCP's lower read queue is the one queue under IP that every TCP connection shares. Its
+high-water mark comes from TCP's static `module_info`: `tcpm_info[]` gives every entry
+`hiwat 4096, lowat 1024`. IP's own is 8192. STREAMS copies that value into the queue when IP is
+linked under TCP at boot, so no `mtune` tunable or `ndd`-style setting reaches it. `putq` counts data
+bytes, and a full segment is about 1500 of them:
+
+| Segment in one `ipintr` pass | Queue bytes after it | |
+|---|---|---|
+| 1st | 1500 | passed up |
+| 2nd | 3000 | passed up |
+| 3rd | 4500 ≥ 4096 → QFULL | passed up, queue now full |
+| 4th and later | — | `canput` fails, **freed** |
+
+TCP's service procedure cannot run until `ipintr` returns. So whenever more than three full segments
+reach IP between two runs of the STREAMS scheduler, the rest of the pass is lost ✅. The per-connection
+**receive window** (24576 bytes, `SO_RCVBUF`) is a *different* queue, each connection's upper read
+queue, and changing it does not help. Shrinking the window below 4 KB avoids the loss only by capping
+throughput at about three segments per round trip.
+
+**Who hits it.** Any driver that hands IP several frames at once. A polled driver does this by
+construction. [`z3660eth`](../drivers/z3660-ethernet-driver.md#receive-service-model) drains a whole
+60 Hz tick's worth of frames per pass, up to IP's 8 KB, so its pushes collapsed to 25–30 KB/s. An
+interrupt-per-frame driver on a slow CPU can hit it too, whenever interrupts batch. The limit is in
+the stack, not in any one driver 🟡 (only `z3660eth` has been measured).
+
+**Why it hides.** Every counter a user can read looks healthy. The driver delivered every frame, every
+IP and TCP error counter is zero, and the only sign is that `netstat -s`'s IP "total packets received"
+runs a few hundred above TCP's "total packets received" over a transfer. On a quiet LAN the honest
+gap is only the broadcast floor, a few a second. A packet capture on the sender shows the 4th and
+later frames of each back-to-back train lost, which reads like a receiver going blind. It is the
+kernel. (Mind that `netstat` reads `/stand/unix` for its symbols; on a box booting a different
+kernel, point it at the matching one.)
+
+**The fix: one long word of kernel data.** Raise that `module_info` entry's `mi_hiwat` from `0x1000`
+to `0x4000` (16384). That covers IP's 8 KB queue plus one segment, so one `ipintr` pass always fits ✅.
+In the stock **2.1c** `/stand/unix` the word is at `.data+0xf9c8`, file offset **`0xe6ba4`**, and reads
+`00001000` (followed by the `lowat` word `00000400`). Other kernels place it elsewhere. Find it
+through `tcplrinit`'s `qi_minfo`, which points at `tcpm_info[3]`, and check the old value before
+writing. Patching the file takes effect at the next boot. On a running kernel the copy that counts is
+the live queue's `q_hiwat`. Writing it through `/dev/kmem`, after checking that the queue's `q_qinfo`
+is `tcplrinit`, gives the same effect at once.
+
+Measured on a real Z3660 box (68060, 100 Mbit, 4 MiB FTP push, 2026-10-21) ✅:
+
+| | Push | Sender retransmissions | IP in − TCP in |
+|---|---|---|---|
+| stock 4096 | 24.6 KB/s | 372 | 443 |
+| live `q_hiwat` raised to 16384 | 334 / 294 KB/s | 13 / 15 | 22 / 15 (the broadcast floor) |
+| kernel built with the patch, with the driver's back-pressure | 330–372 KB/s | 0–10 | 9–17 |
+
+The pull was unchanged at about 640 KB/s. The kernels this project builds carry the patch as a
+build-time data patch with an old-value check (first-party record, 2026-10-21; not yet in a public
+repository). The other lever, for a stock kernel left unpatched, is driver-side pacing: hand IP at
+most two or three full frames per scheduler pass, then re-queue. The full Z3660 numbers, including
+the driver and firmware fixes that come on top, are on
+[Z3660 ethernet](z3660-ethernet.md#measured-amix).
+
 ## The `inetd` anti-looping throttle — one service refuses connections while the box is healthy ✅
 
 **If telnet answers `Connection refused` while FTP still answers, ICMP is alive, and the console shows
@@ -2297,6 +2369,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 | NFS export / mount | `share` / `shareall`; `mount -F nfs host:/path /mnt` | ✅ |
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
 | PPP | not available | 🟡 |
+| **Inbound TCP crawls** (push ≪ pull, IP total ≫ TCP total in `netstat -s`) | stock TCP lower-read `hiwat` 4096: patch `tcpm_info[3].mi_hiwat` → `0x4000` (2.1c file offset `0xe6ba4`, old value `0x1000`) | ✅ |
 | STREAMS `mblk` starvation | box wedges (`ldterm: out of blocks`) while `freemem` is fine; tracks session churn — power-cycle, single-session long jobs | 🟡 |
 | **Service refuses connections** (one port only) | `inetd` anti-looping throttle: 40 conns/60 s per service, self-heals ≤ 600 s. Diagnose: port 21 open + port 23 refused ⇒ throttle | ✅ |
 | See the throttle (and every other `daemon.*`) | Comment the `exit` on line 8 of `/etc/init.d/syslogd` (**`cp` in place — 3 hard links**); logs land in `/var/log/notice` | ✅ |
@@ -2306,6 +2379,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md) — how a network interface attaches to the SVR4 stack.
 - [Hydra case study](../drivers/case-studies/hydra.md) — a complete modern STREAMS/DLPI network driver (`hya0`).
 - [Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) — a real-hardware STREAMS/DLPI driver (`zen0`) over the Z3660 firmware mailbox; the INT6 storm and polled RX.
+- [Z3660 ethernet](z3660-ethernet.md) — the card's firmware frame path, its `z3660cfg.txt` keys, and Amix against AmigaOS throughput.
 - [Kernel architecture](kernel-architecture.md) — monolithic SVR4, STREAMS, no loadable modules in stock Amix.
 - [Filesystems and disks](filesystems-and-disks.md) — UFS/s5, needed for NFS server exports.
 - [Quirks](quirks.md) — DNS-off-by-default, the `route` metric, and the SLIP reboot bug in one list.
@@ -2314,6 +2388,13 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 
 ## Sources
 
+- The **4 KB TCP lower-read queue** ✅ — first-party record, 2026-10-21: the stock kernel's `ipintr`,
+  `putq`, `canput`, `iplrput` and `tcplrput` disassembled from the Amix `/stand/unix` objects (stock
+  and 2.1c; `ipintr` identical, 0x24 apart) against the USL SVR4 source (`netinet/ip_input.c`
+  `ipintr`, `netinet/ip_main.c` `ipm_info`, `netinet/tcp_main.c` `tcpm_info`, `netinet/tcp_output.c`,
+  `netinet/in_pcb.c`, `io/stream.c`); the 2.1c file-offset word `00001000` re-read for this page; the
+  live `/dev/kmem` raise and the patched-kernel rows on a real Z3660 box. The "any batching driver"
+  generalisation is 🟡, since only `z3660eth` was measured.
 - The **FTP passive-mode truncation** ✅ — the 2026-10-02 bench matrix (passive from `cdfs` 18/80 short, passive from UFS 0/80, active 0/40, `226` on every truncated transfer) and the earlier 68030 measurement plus the length-gate recipe in `amix-kerntools/tools/amixsync.py` ("the truncation trap"; this `ftpd` has no `SIZE`). The short-write mechanism is a diagnosis from behaviour 🟡.
 - Research brief §11 "Networking, X11, userland" (STREAMS TCP/IP; `aen0`/A2065; static IP, no DHCP; DNS off by default + `libsockdns.so` swap, `in.named`, `/etc/resolv.conf`; `route add default <gw> 1`; NFS server+client; SLIP buggy; no PPP).
 - Research brief §2 "Hardware & requirements" (A2065 native; Hydra via `hydra-amix`; Ariadne I via Gateway 🟡).
@@ -3209,6 +3290,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 72 | **A local `AF_UNIX` stream socket can deliver stale data under memory pressure** — on Amix 2.1c with about 8 MB of fast RAM and a non-blocking writer, a read can return whole 4 KB pages from earlier in the stream; X clients (Xlib writes non-blocking) die on misparsed requests. Third-party report, not reproduced here; none seen with 12 MB or more | 🟡 | [Quirks §72](#72-af-unix-memory-pressure), [X11 & desktop](x11-and-desktop.md) |
 | 73 | **Amiberry builds before upstream commit `845af02` corrupt Amix data in the 68030 MMU's "more compatible" mode** (`cpu_compatible=true`) — a misaligned `MOVES` was not split across a page boundary, and Amix copies between kernel and user space with `MOVES`. On an older build set `cpu_compatible=false`. Third-party report, not reproduced here | 🟡 | [Quirks §73](#73-amiberry-moves-page-boundary), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
 | 74 | **Without an FPU the stock 68030 kernel boots, then panics at the first signal** — the boot probe prints `no fpu detected` and carries on, but `sendsig` is the one caller of the FP-state routines that never checks `fpu_present`: its FRESTORE (kernel text `0x12A`) takes a Line-F fault in supervisor mode, in `init`, seconds after boot. Triage rule: *`no fpu detected`, then a kernel fault in pid 1 at load base + `0x12A`, vector `0xB`* = the card has no FPU — not the disk driver, Kickstart or RAM | ✅ | [Quirks §74](#74-no-fpu-signal-panic), [Hardware](hardware.md#cpu-mmu-fpu-all-three-mandatory) |
+| 75 | **Inbound TCP bursts lose every segment past the third, and nothing counts it** — the stock kernel's `ipintr` frees a datagram when TCP's lower read queue is full, and that queue's high-water mark is 4096 bytes, so the 4th full segment of any batch IP processes in one pass is dropped. Signature: push ≪ pull, hundreds of sender retransmissions, `netstat -s` IP total a few hundred above TCP total, every error counter 0. Fix: `tcpm_info[3].mi_hiwat` `0x1000` → `0x4000` (one long word) | ✅ | [Quirks §75](#75-tcp-lower-read-queue-4k), [Networking](networking.md#tcp-lower-read-queue) |
 
 The rest of this page expands each item.
 
@@ -3571,6 +3653,26 @@ cannot work around it.
 **Rule:** give a box that runs X 12 MB or more of fast RAM. The reporter's reproducer,
 `test/sockstress.c`, streams 32-bit counters through a local socket with Xlib's write pattern and
 exits 2 at the first mismatch.
+
+### 75. Inbound TCP bursts lose every segment past the third, and nothing counts it ✅ {#75-tcp-lower-read-queue-4k}
+
+An FTP `put` into the box crawls at tens of KB/s while the `get` runs at full speed, the sender
+retransmits hundreds of times per few MB, and the box's own counters show no error anywhere. The
+cause is in the stock stack, not the card or the wire. `ipintr` passes each datagram up only if
+`canput()` succeeds on TCP's lower read queue. Otherwise it frees the datagram, with no statistic
+and its `STRLOG` compiled out. That queue holds **4096 bytes** (`tcpm_info[]`'s `hiwat`), so in a
+single `ipintr` pass the third full segment fills it and the fourth onward are discarded. The
+per-connection receive window is a different queue and does not help.
+
+**Triage rule:** compare `netstat -s`'s IP "total packets received" with TCP's over one
+transfer. A gap of hundreds, with every error counter zero, is this queue, not the driver. (The
+honest gap on a quiet LAN is the broadcast floor of a few a second.) A polled or batching driver
+triggers it most, because it hands IP several frames per pass.
+
+**Fix:** raise that one `module_info` long word to `0x4000` (16384): in the stock 2.1c
+`/stand/unix` at file offset `0xe6ba4`, old value `0x1000`. On a running kernel raise the live
+queue's `q_hiwat` instead. Measured on a Z3660 box: push 24.6 → 334 KB/s, retransmissions 372 → 13.
+Mechanism, offsets and numbers: [networking](networking.md#tcp-lower-read-queue).
 
 ### 14. An unhandled board interrupt storms the kernel ✅
 
@@ -4313,6 +4415,10 @@ keep an on-box-authored root at or below 1 234 567 blocks.
 
 ## Sources
 
+- The **4 KB TCP lower-read queue** (2026-10-21) ✅ — quirk 75: the stock kernel's `ipintr` /
+  `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in
+  the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
+  (first-party record); detail and citations on [networking](networking.md#sources).
 - The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).
 - The **`fssm_Device` NUL count** (2026-10-07) ✅ — disassembly of `expansion.library` `MakeDosNode` and the `strap` in Kickstart 3.2.3 and 3.1 r40.68, and a check of 52 Kickstart images from 2.0 to 3.2.3 (first-party record, 2026-10-07); NDK `dos/filehandler.h` (quirk 71). Details on [boot process](boot-process.md#fssm-device-nul).
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
@@ -5030,6 +5136,274 @@ timings file without a named unit is an unlabelled key.**
   that localises the fault to Kickstart's early chipset init; and the single-variable ARM-module swap.
   Card identities, image names and checksums are project bookkeeping and are deliberately not
   reproduced here.
+
+
+================================================================================
+# FILE: docs/how-it-works/z3660-ethernet.md
+================================================================================
+
+---
+title: "Z3660 ethernet: the card's frame path, its config keys, and what each OS gets"
+summary: How a received frame travels from the Z3660's Zynq GEM through the firmware's descriptor ring and backlog to the Amiga driver, the five z3660cfg.txt ethernet keys, the MAC-write ring-offset trap, how to read the card's counters, and measured Amix and AmigaOS throughput with each fix.
+status: draft
+---
+
+# Z3660 ethernet: the card's frame path, its config keys, and what each OS gets
+
+The Z3660's onboard ethernet is a Zynq **Gigabit Ethernet MAC (GEM)** driven by the card's ARM
+firmware. The 68k side never touches the MAC. It reads finished frames out of a firmware backlog and
+writes frames into a staging window, through a small register mailbox. Amix reaches it with the
+[`z3660eth` driver (`zen0`)](../drivers/z3660-ethernet-driver.md). AmigaOS reaches it with the
+SANA-II `Z3660Net.device`. This page covers the firmware half of that path, which both OSes share,
+and the numbers measured on it in October 2026.
+
+> **One-line summary.** In October 2026 an Amix push into a Z3660 ran at **25–30 KB/s** and the pull
+> at about **600 KB/s**. The card was not the cause: the stock Amix kernel discards the fourth
+> segment of every burst ([quirk 75](quirks.md#75-tcp-lower-read-queue-4k)). With that kernel fix,
+> the driver's back-pressure and the firmware's receive ring, both directions now run at
+> **340–370 KB/s** push and **560–650 KB/s** pull. On AmigaOS the levers were the device driver's
+> receive loop and a firmware ring bug, and PrismNet now pushes **363–374 KB/s** and pulls about
+> **1.4 MB/s** ✅.
+
+## The receive path, end to end ✅
+
+```text
+wire → PHY (RGMII, on the Zynq's own pins) → GEM
+     → receive descriptor(s)          one in 1.0 / upstream 1.03 beta 21; a ring of 16 in PR #33
+     → receive ISR copies the frame into the backlog (2048-byte slots, 4-byte header: length, serial)
+     → main loop raises the Amiga interrupt ("nag") while frames wait
+     → 68k driver reads the slot, then writes ETH_RX to release it
+```
+
+- **Descriptors.** The released firmware (the fork's 1.0, and upstream's own 1.03 beta 21) gives the
+  GEM a **single receive descriptor** (`RXBD_CNT 1`). A frame that arrives while that descriptor is
+  still held is dropped in the MAC. The receive ISR plus its copy takes about 26 µs, against 121 µs
+  for a full frame at 100 Mbit, so one descriptor loses frames only when the ISR is held off. The
+  ring in [PR #33](https://github.com/shanshe/Z3660/pull/33) (build flag `ETH_RXRING`, default 16;
+  `0` builds the old single descriptor) gives the GEM 16 descriptors, and the ISR drains every
+  completed one in order ✅.
+- **The backlog is not a ring.** Frames fill slots 0, 1, 2… of a round. The round restarts at slot 0
+  only when the 68k has caught up. A **full backlog discards every frame not yet fetched**, not only
+  the newest. The `eth_taildrop` key changes that (below) ✅.
+- **The backlog's size bug.** The source declares `FRAME_MAX_BACKLOG 64`, but the backlog region in
+  `memorymap.h` is 64 KiB, which is 32 slots of 2048 bytes. Slots 32–47 overwrite the outgoing frame
+  and slots 48–63 the receive DMA buffers. With one descriptor the MAC dropped frames before the
+  backlog grew that far. With a ring and an AmigaOS driver that falls behind, it does grow that far
+  (measured 2026-10-20). PR #33 caps the backlog at 32 slots with a compile-time size check ✅.
+- **The Amiga interrupt.** The receive ISR only fills the backlog. The interrupt to the Amiga is
+  raised by the firmware's main loop after **1500 passes with frames waiting**, about **0.9–1 ms on a
+  real 68060**, and it stays set until the driver acknowledges it. A driver that takes one frame per
+  interrupt therefore drains about **one frame per millisecond** ✅. Amix does not use this interrupt
+  at all: `z3660eth` disables it and polls ([the INT6 storm](../drivers/z3660-ethernet-driver.md#the-int6-interrupt-storm-the-real-hardware-blocker)).
+
+## The MAC-write ring-offset trap ✅ {#mac-write-ring-offset}
+
+Changing the station MAC address goes through `ethernet_update_mac_address()`, which in the released
+firmware does `XEmacPs_Stop`, `XEmacPs_SetMacAddress`, `XEmacPs_Start`. **`XEmacPs_Start` rewrites
+the GEM's receive and transmit queue base registers (`RXQBASE`, `TXQBASE`) to the first
+descriptor**, while the firmware's software ring keeps its own head. With one descriptor the two
+cannot disagree. With a ring they do if any frame arrived before the MAC write, and on a LAN there
+is always broadcast traffic.
+
+AmigaOS's `Z3660Net.device` writes the MAC when it opens, so on a ring build the receive ring came up
+**offset for the whole boot** on six of seven AmigaOS boots. The signature:
+
+- idle ping round trips of **seconds** (worst 6.8 s) instead of under a millisecond;
+- one handler entry draining a dozen descriptors at once, then nothing for seconds;
+- under load, GEM **resource errors** (the MAC laps into descriptors still in use);
+- the interrupt controller showing nothing pending or masked: the interrupts were raised and taken,
+  but the handler looked at an empty descriptor each time.
+
+The fix in PR #33 writes the MAC registers in place (`LADDR1L`, then `LADDR1H`) without stopping and
+restarting the GEM. After it, three of three cold boots were clean: idle ping about 0.7 ms, no
+resource errors, and AmigaOS pushes of 305–315 KB/s on AmiTCP_NG. Amix never hit the trap, because
+`z3660eth` reads the MAC once at probe and never writes it.
+
+## Transmit ✅
+
+- The trigger is synchronous: the 68k writes the frame length to the TX register, and its bus cycle
+  is held until the firmware returns. In the released firmware the wait for transmit-done sleeps in
+  fixed `usleep(100)` steps. On a real 68060 that holds the CPU's register cycle about **92 µs per
+  transmitted frame**, of which about 70 µs is sleep after the GEM has already finished. The
+  `eth_tx_poll` key polls the send count against the ARM's global timer instead, with the same 1.1 ms
+  worst-case bound. That cuts the held cycle to about **22 µs** per frame (measured average; the
+  firmware's own wait drops from about 80 to 11 µs).
+- On Amix the 68k-side cost per full 1514-byte frame was measured at about 730 µs, in roughly equal
+  thirds. About 255 µs goes to building a flat frame from the DLPI message, about 221 µs to copying
+  it into the card's window (about 6.9 MB/s over the bridge), and about 188 µs to the trigger. The
+  receive copy runs at about 7.5 MB/s (188–208 µs per frame). Those numbers come from profiling
+  builds on the 1.0 firmware, before `eth_tx_poll`.
+
+## Link speed ✅
+
+The boot menu's own network stack (the bundled lwIP driver) links at **gigabit**. The OS-time
+firmware then takes over the PHY and, in the released firmware, **advertises 10/100 only**. The
+link re-forms at 100 Mbit full duplex a few seconds after power-on, so a switch's port display may
+show the menu phase rather than the running state. No recorded reason exists for withdrawing gigabit.
+The RGMII path works at 1000 on the card as strapped: the menu and the OS-time `eth_adv1000` image
+both ran gigabit with byte-exact transfers. At 1000 the measured transmit time of a full frame (DMA plus
+wire) drops from 136 µs to about 29 µs. The key stays **default off** until it has more running hours, and so far it has one
+clean acceptance row 🟡.
+
+## The ethernet keys in `z3660cfg.txt` ✅ {#config-keys}
+
+PR #33 adds five keys. They are read from `z3660cfg.txt` at boot, and an absent line keeps the
+default, so an existing config file needs no change.
+
+| Key | Default | What it does |
+|---|---|---|
+| `eth_reraise` | `YES` | When the Amiga releases a frame and more remain, raise the ethernet interrupt again at once instead of waiting for the next nag (~1 ms). Helps any driver that takes one frame per interrupt. |
+| `eth_rxkick` | `YES` | When a frame lands in an **empty** backlog, the next main-loop pass raises the interrupt instead of waiting the full nag. Cuts up to ~0.9 ms off the first frame of every burst. |
+| `eth_taildrop` | `YES` | A frame that finds the backlog full is dropped alone. The frames already queued stay. Without it a full backlog loses every unfetched frame. |
+| `eth_tx_poll` | `YES` | Transmit wait polls the send count instead of sleeping in 100 µs steps: the 68060's held cycle drops from ~92 to ~22 µs per frame. |
+| `eth_adv1000` | `NO` | The OS-time PHY setup also advertises 1000BASE-T. Autonegotiation then picks the speed, and the GEM speed and clocks follow the resolved link. |
+
+The receive ring itself is a build flag (`ETH_RXRING`, default 16 in PR #33), not a config key. The
+keys were measured together: `eth_reraise`, `eth_rxkick` and `eth_taildrop` as one "keys on" set
+(table below), and `eth_tx_poll` on its own. Every one helped or was neutral on both AmigaOS stacks
+and on Amix. Measured 2026-10-21, single runs per cell ✅.
+
+## Reading the card's counters: where a lost frame went ✅ {#reading-the-counters}
+
+The GEM's statistics registers answer "did the card lose it?", and nothing else in the box can.
+They need care:
+
+- **"Frames received" counts only frames copied to memory** (Zynq-7000 TRM UG585, the GEM
+  statistics registers). A frame the MAC accepted but could not copy is a **resource error** (no free
+  descriptor, or the bus not granted in time) or an **overrun** (packet buffer full). If both are
+  zero and the frame count equals what the switch sent, the card delivered everything, and the loss
+  is above it.
+- **With one descriptor the resource-error counter ticks once per frame** and is not a loss counter.
+  The receive-status "buffer not available" bit likewise sets dozens of times per transfer without
+  loss. Only on a ring build do both mean what they say.
+- **The firmware's own counters** report backlog-full events and frames lost to them, and the
+  driver's counters report frames delivered. When MAC frames = firmware frames = driver frames and
+  the transfer still retransmits, the loss is inside the OS. On Amix, that was the 4 KB TCP queue.
+
+A packet capture on the sender can mislead here. With the stock Amix kernel the lost frames are the
+**fourth and later frames of every back-to-back train**, about 1 ms after the previous send. That
+looks exactly like a receiver going blind after three frames. Raw-frame bursts with no TCP on top
+(every train length, every gap, with the 68060 running or halted) lost nothing. The timing pattern
+was the box's own 60 Hz drain, not the wire. Count the MAC's frames against the capture before
+blaming the card.
+
+## Measured: Amix ✅ {#measured-amix}
+
+4 MiB FTP transfers, 100 Mbit, real 68060, Amix 2.1-line kernels from the 040/060 port's driver line,
+2026-10-19 to 2026-10-21. "Push" is host → box. Every transfer was byte-exact.
+
+| Kernel's TCP lower queue | `z3660eth` receive | Firmware | Push KB/s | Retransmissions | Pull KB/s |
+|---|---|---|---|---|---|
+| stock, 4096 B | published (frees on refusal) | 1.0, one descriptor | 22–31 | 319–392 | 570–600 |
+| stock, 4096 B | back-pressure | 1.0 | 25–31 | 348–375 | 629–649 |
+| patched, 16384 B | published | 1.0 | 120–126 | 109–119 | ~575 |
+| patched, 16384 B | back-pressure | 1.0 | 227–334 | 10–46 | 570–640 |
+| patched, 16384 B | back-pressure | ring of 16 | 314–352 | 3–8 | 570–650 |
+| patched, 16384 B | back-pressure | PR #33 build, keys at defaults | **338–372** | 0–1 | 560–640 |
+
+- **The kernel fix is the big lever** (×4–13): see [the 4 KB TCP queue](networking.md#tcp-lower-read-queue).
+- **The driver's back-pressure** (hold the frame in the firmware slot when IP cannot take it, and
+  resume from the read service procedure) removes the driver's own loss below IP. It matters only
+  once the kernel fix is in. It is first-party work, not yet in the published `amix-z3660net`
+  ([the driver's service model](../drivers/z3660-ethernet-driver.md#receive-service-model)).
+- **The ring** removes the remaining MAC-level drops of the single descriptor.
+- **Gigabit** (`eth_adv1000 YES`) was measured only on the stock-kernel stack: push 59.7 KB/s against
+  29.0 at 100 Mbit, the pull 675 KB/s. It halves a loss that lives in the kernel, so it is no
+  substitute for the kernel fix.
+- **The next ceiling** is the driver's **60 Hz receive poll**. Frames and the acknowledgements they
+  trigger wait up to a tick (about 11 ms on average), so the push settles at about half the pull 🟡.
+  Interrupt-driven receive in `z3660eth` is the lever. It is on the 1.1 list, behind the reason its
+  interrupt handler was unregistered.
+
+## Measured: AmigaOS, and the two stacks compared ✅ {#measured-amigaos}
+
+Same card class, real 68060, 100 Mbit, 4 MiB FTP (PrismNet's `ftpd` on both stacks), 2026-10-21.
+Every image carried the 16-descriptor ring and the MAC-write fix. "Keys on" = `eth_reraise`,
+`eth_rxkick` and `eth_taildrop`. Single runs per cell, all transfers complete and byte-exact, GEM
+resource errors 0 in every run.
+
+| Stack | Keys | `Z3660Net.device` | Push KB/s | Retransmissions | Pull KB/s |
+|---|---|---|---|---|---|
+| PrismNet | off | 1.4 (one frame per wake) | 62 | 561 | 80 |
+| PrismNet | on | 1.4 | 157 | 374 | 319 |
+| PrismNet | off | 1.5 (drain-all) | 288 | 355 | 1428 |
+| PrismNet | **on** | **1.5** | **374** | **177** | **1424** |
+| AmiTCP_NG | off | 1.4 | 307 | 487 | 922 |
+| AmiTCP_NG | on | 1.4 | 303 | 475 | 959 |
+| AmiTCP_NG | off | 1.5 | 325 | 477 | 207 (one outlier) |
+| AmiTCP_NG | on | 1.5 | 305 | 453 | 963 |
+
+On the PR #33 build with default keys and driver 1.5, PrismNet pushed **363 KB/s** and pulled
+**1436 KB/s**. With `eth_adv1000 YES` (gigabit) it pushed 354 and pulled **1604 KB/s**.
+
+- **`Z3660Net.device` 1.4 takes one frame per interrupt** and then waits for the next interrupt. It
+  never checks whether more frames are queued. With the ~1 ms nag that drains about a frame per
+  millisecond, fills the backlog and loses frames to it. **1.5 drains until the slot serial repeats**
+  (at most 256 frames per wake). That is
+  [PR #32](https://github.com/shanshe/Z3660/pull/32), and it is the lever for PrismNet: push 62 → 288,
+  pull 80 → 1428.
+- **The keys are not made moot by the driver fix.** On top of 1.5 they take the PrismNet push from
+  288 to 374 and halve the retransmissions.
+- **AmiTCP_NG sits at 300–325 KB/s push whatever the card or the driver does.** Its retransmissions
+  all come from the backlog filling, so the limit is above the device: the stack itself takes about
+  230 frames a second 🟡 (a reading of its counters; nothing in AmiTCP_NG was traced).
+- **Before the ring fixes** (released firmware, one descriptor), AmiTCP_NG pushed about 333–344 KB/s
+  and PrismNet 50–139 KB/s, both with 200–400 retransmissions per 4 MiB. AmigaOS lost frames at
+  about the rate Amix did but recovered faster, so it never collapsed to Amix's 25 KB/s 🟡 (ranges
+  from the AmigaOS bench's own notes).
+
+**Amix against AmigaOS on the same card:** after the fixes the push is about equal (Amix 338–372,
+PrismNet 363–374, AmiTCP_NG ~300). The pull is not: PrismNet pulls about 1.4 MB/s against Amix's
+~600 KB/s. Amix's figure fits its measured transmit time of about 2.4 ms per full frame end to end,
+a third of it in the driver (above) 🟡.
+
+## Upstream status
+
+Both changes are open pull requests against upstream `shanshe/Z3660` as of 2026-10-21:
+[#32](https://github.com/shanshe/Z3660/pull/32) (`Z3660Net.device` 1.5, the drain loop) and
+[#33](https://github.com/shanshe/Z3660/pull/33) (the 16-descriptor ring, the MAC write without a GEM
+restart, and the five keys). Until they are merged, the released firmware and driver behave as
+described under "released" above. The single-descriptor drop, the whole-backlog discard and the
+one-frame-per-wake drain are upstream behaviour, not something the Amix-interop fork introduced.
+Upstream's own 1.03 beta 21 image measured squarely inside the fork's 1.0 band.
+
+## See also
+
+- [Case study: Z3660 ethernet driver (`zen0`)](../drivers/z3660-ethernet-driver.md): the mailbox
+  registers, the frame windows, the INT6 storm and the receive service model.
+- [Networking](networking.md#tcp-lower-read-queue): the stock kernel's 4 KB TCP queue, which affects
+  every network card on Amix, not just this one.
+- [Quirks §75](quirks.md#75-tcp-lower-read-queue-4k): the same fact as a one-line triage rule.
+- [Z3660 board timings](z3660-timings.md): the card's CPLD clock rows, a different layer of the same
+  card.
+- [Real hardware](../getting-started/real-hardware.md): the rest of `z3660cfg.txt` and the preset
+  overlay.
+
+## Sources
+
+- **Upstream pull requests** (public, ✅): [shanshe/Z3660 #33](https://github.com/shanshe/Z3660/pull/33)
+  (branch `upstream-eth-rxring` on <https://github.com/jusii/Z3660-amix>, commits `4f5d43e` the
+  receive ring and the 32-slot backlog cap, `00999fc` the in-place MAC write, `b7ca029` the five
+  `z3660cfg.txt` keys) and [shanshe/Z3660 #32](https://github.com/shanshe/Z3660/pull/32) (branch
+  `upstream-z3660net-drain`, `Z3660Net.device` 1.5). Key names, defaults and semantics are from
+  `src/config_file.h` (`CFG_ETH_DEFAULT_*`), `src/config_file.c` and the key comment block in
+  `src/ethernet.c` on that branch.
+- **Firmware source** (✅): upstream `shanshe/Z3660` `main` (1.03 beta 21) and the fork's
+  `release-1.0`: `src/ethernet.c` (`RXBD_CNT 1`, `FRAME_MAX_BACKLOG 64`, the 10/100-only
+  advertisement, `XEmacPs_Start` in the MAC-update path), `src/memorymap.h` (the 64 KiB backlog
+  region), `src/rtg/rtg.c` (`ethernet_thread`'s nag counter, `ETH_BACKLOG_NAG_COUNTER_MAX_060`).
+- **Zynq-7000 SoC Technical Reference Manual, UG585 v1.7**, chapter 16 (Gigabit Ethernet Controller:
+  receive/transmit buffer descriptor queues, `rx_qbase` `0x18`, `tx_qbase` `0x1C`, `spec_addr1_bot`
+  `0x88`, `spec_addr1_top` `0x8C`) and appendix B (the statistics registers: "frames received"
+  counts frames copied to memory) ✅.
+- **The October 2026 frame-path profile** (first-party record, 2026-10-19 to 2026-10-21) ✅: stamped
+  driver and firmware builds (flag off = byte-identical), the transmit breakdown, the GEM and firmware
+  counters around every transfer, raw-frame burst probes with the 68060 running and halted, the
+  receive-descriptor probe that caught the ring offset, the keys × driver × stack matrix, and the
+  acceptance rows on two A4000-class machines. Hosts, cards and image checksums are project
+  bookkeeping and are not reproduced here.
+- The AmigaOS release-firmware ranges (🟡) are from the AmigaOS bench's own notes of the same week,
+  relayed rather than re-measured for this page.
 
 
 ================================================================================
@@ -12033,6 +12407,12 @@ a large-memory machine was the wrong trade, and now uses the windows directly �
 > window — a 64-deep backlog would overrun the ring. The driver mitigates by **eager-draining** every
 > poll tick *and* by **mapping the full 64-slot / 128 KB range**, so any `ZZ_ETH_RX_ADDR` value the
 > firmware returns is always mapped memory. No overrun was observed in practice.
+>
+> ✅ **Confirmed, and fixed upstream-bound (2026-10-20/21).** The overrun is real: with a firmware
+> receive *ring* and an AmigaOS driver that falls behind, the backlog does grow past 32, and slots
+> 32–63 overwrite the TX frame and the receive DMA buffers. Under Amix the eager drain keeps it far
+> below that. [shanshe/Z3660 PR #33](https://github.com/shanshe/Z3660/pull/33) caps the backlog at
+> 32 slots. See [Z3660 ethernet](../how-it-works/z3660-ethernet.md#the-receive-path-end-to-end).
 
 ### TX / RX mechanics and the FCS boundary
 
@@ -12040,6 +12420,11 @@ a large-memory machine was the wrong trade, and now uses the windows directly �
   `ZZ_ETH_TX`. The trigger is **synchronous (~1 ms) with no completion IRQ**; reading `ZZ_ETH_TX` back
   returns the result code (`res = 0` = OK, observed on the wire). The single shared TX window is
   serialized by `info->tx_busy`; the ~1 ms trigger is **not** held at raised spl.
+  Measured on a real 68060 (2026-10-19), the trigger itself takes about 188 µs per full frame, most
+  of it the firmware's wait for transmit-done. The whole driver transmit path is about 730 µs per
+  1514-byte frame (build, copy, trigger in roughly equal thirds). The firmware key `eth_tx_poll`
+  cuts the held bus cycle to about 22 µs; see
+  [Z3660 ethernet](../how-it-works/z3660-ethernet.md#transmit).
 - **RX** ✅ — drained by re-reading `ZZ_ETH_RX_ADDR`, comparing each slot's serial header against
   `info->last_serial` to find fresh frames, delivering each up the stream, and strobing `ZZ_ETH_RX` to
   free the slot. The drain loop is **bounded** (≤ 256 iterations per call) so a runaway firmware can't
@@ -12318,6 +12703,49 @@ The amix-z3660net repo ships `userland/S99zen` (installed as `/etc/rc2.d/S99zen`
 > ⚠️ `zen0` only comes up after the **full** boot completes (including an `fsck` + reboot if the SD
 > image is dirty). Do **not** conclude "broken" from an early serial check — give it the whole boot. ✅
 
+## Receive service model and throughput ✅ {#receive-service-model}
+
+**The model.** Receive is polled at the clock tick: a `timeout()` callout every tick
+(`Z3660ETH_POLL_TICKS 1`, `HZ` 60, so 16.7 ms) runs `z3660eth_drain`, at IPL 4. The drain walks up
+to 256 slots. For each fresh frame it asks `canput()` of the queue above it, IP's lower read queue
+(`iplrput` → `putq`, high-water mark 8192), and passes the frame on with `putnext`. One drain
+therefore hands IP up to about **six full frames at once**. A frame waits up to one tick for its
+poll. Under a push the measured residence in the firmware was 10–16 ms, and the box's
+acknowledgements leave from inside the drain, so the sender's next burst also waits for a tick.
+
+**What happens when IP refuses** differs by version:
+
+- **Published driver** (`amix-z3660net` `master`): the frame is freed and counted in `couldnt_put`.
+  Its firmware slot is already released, so the frame is gone.
+- **Back-pressure version** (first-party, 2026-10-20; not yet published): the drain stops and leaves
+  that frame, and everything behind it, in the firmware backlog. The failed `canput()` marks IP's
+  queue `QWANTW`. When IP drains, STREAMS back-enables the driver's new read service procedure
+  `z3660ethrsrv`, which resumes the drain, usually within the same tick. Two bounds keep a stuck
+  stream from wedging the card: at slot 24 of a backlog round the drain catches up instead of
+  holding, and a frame held 30 ticks (HZ/2) is released. Only those forced releases count in
+  `couldnt_put` now.
+
+**The batch meets the stack's 4 KB limit.** IP's service pass passes the whole batch upward before
+TCP's service procedure runs, and the stock TCP lower read queue holds only 4096 bytes. So the
+fourth full segment of every batch is freed inside IP, uncounted. That, not the card, was why pushes
+into a `zen0` box ran at 25–30 KB/s
+([networking: the 4 KB TCP queue](../how-it-works/networking.md#tcp-lower-read-queue)). A polled
+driver is the worst case for that limit, because it batches by construction.
+
+**Measured (4 MiB FTP, real 68060, 100 Mbit, 2026-10-21):**
+
+| Fixes in place | Push | Retransmissions | Pull |
+|---|---|---|---|
+| none (stock kernel, published driver, 1.0 firmware) | 22–31 KB/s | 319–392 | ~600 KB/s |
+| kernel's TCP queue raised to 16 KB | 120–126 KB/s | 109–119 | ~575 KB/s |
+| + driver back-pressure | 227–334 KB/s | 10–46 | 570–640 KB/s |
+| + firmware receive ring (PR #33 build) | 314–372 KB/s | 0–8 | 560–650 KB/s |
+
+The full ladder, the firmware's keys and the AmigaOS comparison are on
+[Z3660 ethernet](../how-it-works/z3660-ethernet.md#measured-amix). The next ceiling is the 60 Hz
+poll itself: the push settles at about half the pull 🟡, and interrupt-driven receive is the lever
+(see Known issues).
+
 ## Status — ✅ works on real hardware (2026-06-21)
 
 Validated on a real **A4000 + Z3660**, all reproduced live ✅:
@@ -12332,9 +12760,10 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 | Remote login (`telnet` / `ftp` over `zen0`) | works (drove the box entirely over the network) |
 | Sustained FTP throughput | **~185 KiB/s**, stable across 3 consecutive ~3.4 MB transfers |
 
-> 🟡 **Throughput note.** ~185 KiB/s (≈1.5 Mbit/s) is the measured FTP rate — a working baseline, not
-> a tuned result; the performance side is considered still flaky and not worth chasing yet. The
-> interface itself reports **zero** errors/collisions even under flood load.
+> 🟡 **Throughput note.** ~185 KiB/s (≈1.5 Mbit/s) was the measured FTP rate in June 2026, a working
+> baseline, not a tuned result. The interface itself reports **zero** errors/collisions even under
+> flood load. The October 2026 measurements and the fixes behind 340–370 KB/s pushes are under
+> [Receive service model and throughput](#receive-service-model).
 
 ## Known issues & open questions
 
@@ -12348,7 +12777,8 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 - ✅ **Interrupt-driven RX is future work.** RX is polled today. A true ISR path (`z3660ethintr()`
   wired into `int2_tbl[]`) needs a level-6 hook the firmware's INT6 model doesn't safely give Amix; it
   is gated on a board-mod. The polled callout is correct and measured to work; interrupt RX would
-  mainly help latency/CPU.
+  mainly help latency/CPU. Since the October 2026 fixes it is also the throughput lever: the
+  60 Hz poll is what holds the push at about half the pull 🟡.
 - ✅ **Cache maintenance off by default** (`z3660eth_cache = 0`; the 040/060 line can turn it on at
   run time); revisit only if a future board, firmware or kernel changes the cacheability of the eth
   windows.
@@ -12365,7 +12795,10 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 - [Hydra DLPI case study](case-studies/hydra.md) — the other modern Amix net driver; the mirror-image
   60-vs-64 CRC boundary lives there.
 - [Networking](../how-it-works/networking.md) — the SVR4 STREAMS TCP/IP stack `zen0` joins; static IP,
-  DNS off by default, the `route` metric.
+  DNS off by default, the `route` metric, and [the 4 KB TCP queue](../how-it-works/networking.md#tcp-lower-read-queue)
+  that a polled driver hits hardest.
+- [Z3660 ethernet](../how-it-works/z3660-ethernet.md) — the firmware half of the path: descriptors,
+  backlog, the `z3660cfg.txt` ethernet keys, and measured Amix and AmigaOS throughput.
 - [Emulation Fidelity](../how-it-works/emulation-fidelity.md) — the 68030 bus-error-frame and SCSI
   INT2-latency requirements of the **same Z3660 UAE-derived emulator** this driver runs on.
 - [Building and installing a kernel](kernel-build.md) — the relink → `relocunix` cycle and the D245
@@ -12422,6 +12855,11 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   set in the live kernel on a real A4000 + Z3660 (98 arena pages reclaimed across the ethernet and
   SCSI drivers), read with `adb -k` against the on-box native-linked kernel; and the byte-vs-int
   `adb` format trap that makes a set flag print as `16777216`.
+- **The October 2026 receive-path work** (first-party record, 2026-10-19 to 2026-10-21) ✅: the
+  stamped transmit/receive profile on a real 68060, the back-pressure version of the drain (not yet
+  in the public repository; its design notes describe the hold, the `z3660ethrsrv` resume and the
+  24-slot / 30-tick bounds), and the push/pull rows on two A4000-class machines. The firmware side
+  is cited on [Z3660 ethernet](../how-it-works/z3660-ethernet.md#sources).
 - Magic numbers (✅): cdevsw major **51** (48 until 2026-07-30); board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.0.2.39`; build box `192.0.2.38`; TFTP `192.0.2.29`; station MAC
   `00:80:51:01:02:03`.

@@ -26,6 +26,7 @@ order=(
   docs/how-it-works/quirks.md
   docs/how-it-works/emulation-fidelity.md
   docs/how-it-works/z3660-timings.md
+  docs/how-it-works/z3660-ethernet.md
   docs/how-it-works/load-averages.md
   docs/how-it-works/performance-benchmarks.md
   docs/how-it-works/glossary.md

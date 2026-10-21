@@ -1,6 +1,6 @@
 ---
 title: Networking
-summary: SVR4 STREAMS TCP/IP over the A2065 (aen0), static IP only, DNS off by default, NFS, and the buggy SLIP / no-PPP caveats.
+summary: SVR4 STREAMS TCP/IP over the A2065 (aen0), static IP only, DNS off by default, NFS, the stock 4 KB TCP queue that drops inbound bursts, and the buggy SLIP / no-PPP caveats.
 status: draft
 ---
 
@@ -205,6 +205,78 @@ with `use` at baseline, so cdfs is not a source of this ✅; and a *refused* (ra
 connection is the [`inetd` throttle](#the-inetd-anti-looping-throttle-one-service-refuses-connections-while-the-box-is-healthy),
 not this.
 
+## TCP's 4 KB lower read queue: IP drops the fourth segment of every burst, uncounted ✅ {#tcp-lower-read-queue}
+
+On the stock kernel, **a fast sender loses every segment past the third in each burst it delivers to
+the box**, and **no counter on the box records it**. The visible symptom is an inbound TCP transfer
+(FTP `put` into the box) running at a few tens of KB/s while the outbound direction runs at full
+speed. The sender shows hundreds of retransmissions per few MB, each after a ~200 ms timeout. This
+stack has no SACK, so a lost segment costs a whole timeout ✅.
+
+**The discard.** `ipintr`, IP's lower-read service procedure, drains its whole input queue in one
+pass. For each datagram it first counts it (`ipstat.ips_total`), then asks `canput()` of the protocol
+queue above it. When that queue is full, it calls `freemsg()` and moves on. No `ipstat` or `tcpstat`
+field is incremented, and the `STRLOG` call is compiled out. In the USL SVR4 source this is
+`netinet/ip_input.c`, and the Amix binary has the same code (`ipintr+0x41c` in both the stock and the
+2.1c kernels). The allocation failure just above it is silent the same way ✅.
+
+**The limit.** TCP's lower read queue is the one queue under IP that every TCP connection shares. Its
+high-water mark comes from TCP's static `module_info`: `tcpm_info[]` gives every entry
+`hiwat 4096, lowat 1024`. IP's own is 8192. STREAMS copies that value into the queue when IP is
+linked under TCP at boot, so no `mtune` tunable or `ndd`-style setting reaches it. `putq` counts data
+bytes, and a full segment is about 1500 of them:
+
+| Segment in one `ipintr` pass | Queue bytes after it | |
+|---|---|---|
+| 1st | 1500 | passed up |
+| 2nd | 3000 | passed up |
+| 3rd | 4500 ≥ 4096 → QFULL | passed up, queue now full |
+| 4th and later | — | `canput` fails, **freed** |
+
+TCP's service procedure cannot run until `ipintr` returns. So whenever more than three full segments
+reach IP between two runs of the STREAMS scheduler, the rest of the pass is lost ✅. The per-connection
+**receive window** (24576 bytes, `SO_RCVBUF`) is a *different* queue, each connection's upper read
+queue, and changing it does not help. Shrinking the window below 4 KB avoids the loss only by capping
+throughput at about three segments per round trip.
+
+**Who hits it.** Any driver that hands IP several frames at once. A polled driver does this by
+construction. [`z3660eth`](../drivers/z3660-ethernet-driver.md#receive-service-model) drains a whole
+60 Hz tick's worth of frames per pass, up to IP's 8 KB, so its pushes collapsed to 25–30 KB/s. An
+interrupt-per-frame driver on a slow CPU can hit it too, whenever interrupts batch. The limit is in
+the stack, not in any one driver 🟡 (only `z3660eth` has been measured).
+
+**Why it hides.** Every counter a user can read looks healthy. The driver delivered every frame, every
+IP and TCP error counter is zero, and the only sign is that `netstat -s`'s IP "total packets received"
+runs a few hundred above TCP's "total packets received" over a transfer. On a quiet LAN the honest
+gap is only the broadcast floor, a few a second. A packet capture on the sender shows the 4th and
+later frames of each back-to-back train lost, which reads like a receiver going blind. It is the
+kernel. (Mind that `netstat` reads `/stand/unix` for its symbols; on a box booting a different
+kernel, point it at the matching one.)
+
+**The fix: one long word of kernel data.** Raise that `module_info` entry's `mi_hiwat` from `0x1000`
+to `0x4000` (16384). That covers IP's 8 KB queue plus one segment, so one `ipintr` pass always fits ✅.
+In the stock **2.1c** `/stand/unix` the word is at `.data+0xf9c8`, file offset **`0xe6ba4`**, and reads
+`00001000` (followed by the `lowat` word `00000400`). Other kernels place it elsewhere. Find it
+through `tcplrinit`'s `qi_minfo`, which points at `tcpm_info[3]`, and check the old value before
+writing. Patching the file takes effect at the next boot. On a running kernel the copy that counts is
+the live queue's `q_hiwat`. Writing it through `/dev/kmem`, after checking that the queue's `q_qinfo`
+is `tcplrinit`, gives the same effect at once.
+
+Measured on a real Z3660 box (68060, 100 Mbit, 4 MiB FTP push, 2026-10-21) ✅:
+
+| | Push | Sender retransmissions | IP in − TCP in |
+|---|---|---|---|
+| stock 4096 | 24.6 KB/s | 372 | 443 |
+| live `q_hiwat` raised to 16384 | 334 / 294 KB/s | 13 / 15 | 22 / 15 (the broadcast floor) |
+| kernel built with the patch, with the driver's back-pressure | 330–372 KB/s | 0–10 | 9–17 |
+
+The pull was unchanged at about 640 KB/s. The kernels this project builds carry the patch as a
+build-time data patch with an old-value check (first-party record, 2026-10-21; not yet in a public
+repository). The other lever, for a stock kernel left unpatched, is driver-side pacing: hand IP at
+most two or three full frames per scheduler pass, then re-queue. The full Z3660 numbers, including
+the driver and firmware fixes that come on top, are on
+[Z3660 ethernet](z3660-ethernet.md#measured-amix).
+
 ## The `inetd` anti-looping throttle — one service refuses connections while the box is healthy ✅
 
 **If telnet answers `Connection refused` while FTP still answers, ICMP is alive, and the console shows
@@ -394,6 +466,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 | NFS export / mount | `share` / `shareall`; `mount -F nfs host:/path /mnt` | ✅ |
 | SLIP | works once per boot; **reboot between sessions** | 🟡 |
 | PPP | not available | 🟡 |
+| **Inbound TCP crawls** (push ≪ pull, IP total ≫ TCP total in `netstat -s`) | stock TCP lower-read `hiwat` 4096: patch `tcpm_info[3].mi_hiwat` → `0x4000` (2.1c file offset `0xe6ba4`, old value `0x1000`) | ✅ |
 | STREAMS `mblk` starvation | box wedges (`ldterm: out of blocks`) while `freemem` is fine; tracks session churn — power-cycle, single-session long jobs | 🟡 |
 | **Service refuses connections** (one port only) | `inetd` anti-looping throttle: 40 conns/60 s per service, self-heals ≤ 600 s. Diagnose: port 21 open + port 23 refused ⇒ throttle | ✅ |
 | See the throttle (and every other `daemon.*`) | Comment the `exit` on line 8 of `/etc/init.d/syslogd` (**`cp` in place — 3 hard links**); logs land in `/var/log/notice` | ✅ |
@@ -403,6 +476,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md) — how a network interface attaches to the SVR4 stack.
 - [Hydra case study](../drivers/case-studies/hydra.md) — a complete modern STREAMS/DLPI network driver (`hya0`).
 - [Z3660 ethernet driver case study](../drivers/z3660-ethernet-driver.md) — a real-hardware STREAMS/DLPI driver (`zen0`) over the Z3660 firmware mailbox; the INT6 storm and polled RX.
+- [Z3660 ethernet](z3660-ethernet.md) — the card's firmware frame path, its `z3660cfg.txt` keys, and Amix against AmigaOS throughput.
 - [Kernel architecture](kernel-architecture.md) — monolithic SVR4, STREAMS, no loadable modules in stock Amix.
 - [Filesystems and disks](filesystems-and-disks.md) — UFS/s5, needed for NFS server exports.
 - [Quirks](quirks.md) — DNS-off-by-default, the `route` metric, and the SLIP reboot bug in one list.
@@ -411,6 +485,13 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 
 ## Sources
 
+- The **4 KB TCP lower-read queue** ✅ — first-party record, 2026-10-21: the stock kernel's `ipintr`,
+  `putq`, `canput`, `iplrput` and `tcplrput` disassembled from the Amix `/stand/unix` objects (stock
+  and 2.1c; `ipintr` identical, 0x24 apart) against the USL SVR4 source (`netinet/ip_input.c`
+  `ipintr`, `netinet/ip_main.c` `ipm_info`, `netinet/tcp_main.c` `tcpm_info`, `netinet/tcp_output.c`,
+  `netinet/in_pcb.c`, `io/stream.c`); the 2.1c file-offset word `00001000` re-read for this page; the
+  live `/dev/kmem` raise and the patched-kernel rows on a real Z3660 box. The "any batching driver"
+  generalisation is 🟡, since only `z3660eth` was measured.
 - The **FTP passive-mode truncation** ✅ — the 2026-10-02 bench matrix (passive from `cdfs` 18/80 short, passive from UFS 0/80, active 0/40, `226` on every truncated transfer) and the earlier 68030 measurement plus the length-gate recipe in `amix-kerntools/tools/amixsync.py` ("the truncation trap"; this `ftpd` has no `SIZE`). The short-write mechanism is a diagnosis from behaviour 🟡.
 - Research brief §11 "Networking, X11, userland" (STREAMS TCP/IP; `aen0`/A2065; static IP, no DHCP; DNS off by default + `libsockdns.so` swap, `in.named`, `/etc/resolv.conf`; `route add default <gw> 1`; NFS server+client; SLIP buggy; no PPP).
 - Research brief §2 "Hardware & requirements" (A2065 native; Hydra via `hydra-amix`; Ariadne I via Gateway 🟡).

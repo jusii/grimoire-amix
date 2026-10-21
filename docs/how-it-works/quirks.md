@@ -87,6 +87,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 72 | **A local `AF_UNIX` stream socket can deliver stale data under memory pressure** — on Amix 2.1c with about 8 MB of fast RAM and a non-blocking writer, a read can return whole 4 KB pages from earlier in the stream; X clients (Xlib writes non-blocking) die on misparsed requests. Third-party report, not reproduced here; none seen with 12 MB or more | 🟡 | [Quirks §72](#72-af-unix-memory-pressure), [X11 & desktop](x11-and-desktop.md) |
 | 73 | **Amiberry builds before upstream commit `845af02` corrupt Amix data in the 68030 MMU's "more compatible" mode** (`cpu_compatible=true`) — a misaligned `MOVES` was not split across a page boundary, and Amix copies between kernel and user space with `MOVES`. On an older build set `cpu_compatible=false`. Third-party report, not reproduced here | 🟡 | [Quirks §73](#73-amiberry-moves-page-boundary), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
 | 74 | **Without an FPU the stock 68030 kernel boots, then panics at the first signal** — the boot probe prints `no fpu detected` and carries on, but `sendsig` is the one caller of the FP-state routines that never checks `fpu_present`: its FRESTORE (kernel text `0x12A`) takes a Line-F fault in supervisor mode, in `init`, seconds after boot. Triage rule: *`no fpu detected`, then a kernel fault in pid 1 at load base + `0x12A`, vector `0xB`* = the card has no FPU — not the disk driver, Kickstart or RAM | ✅ | [Quirks §74](#74-no-fpu-signal-panic), [Hardware](hardware.md#cpu-mmu-fpu-all-three-mandatory) |
+| 75 | **Inbound TCP bursts lose every segment past the third, and nothing counts it** — the stock kernel's `ipintr` frees a datagram when TCP's lower read queue is full, and that queue's high-water mark is 4096 bytes, so the 4th full segment of any batch IP processes in one pass is dropped. Signature: push ≪ pull, hundreds of sender retransmissions, `netstat -s` IP total a few hundred above TCP total, every error counter 0. Fix: `tcpm_info[3].mi_hiwat` `0x1000` → `0x4000` (one long word) | ✅ | [Quirks §75](#75-tcp-lower-read-queue-4k), [Networking](networking.md#tcp-lower-read-queue) |
 
 The rest of this page expands each item.
 
@@ -449,6 +450,26 @@ cannot work around it.
 **Rule:** give a box that runs X 12 MB or more of fast RAM. The reporter's reproducer,
 `test/sockstress.c`, streams 32-bit counters through a local socket with Xlib's write pattern and
 exits 2 at the first mismatch.
+
+### 75. Inbound TCP bursts lose every segment past the third, and nothing counts it ✅ {#75-tcp-lower-read-queue-4k}
+
+An FTP `put` into the box crawls at tens of KB/s while the `get` runs at full speed, the sender
+retransmits hundreds of times per few MB, and the box's own counters show no error anywhere. The
+cause is in the stock stack, not the card or the wire. `ipintr` passes each datagram up only if
+`canput()` succeeds on TCP's lower read queue. Otherwise it frees the datagram, with no statistic
+and its `STRLOG` compiled out. That queue holds **4096 bytes** (`tcpm_info[]`'s `hiwat`), so in a
+single `ipintr` pass the third full segment fills it and the fourth onward are discarded. The
+per-connection receive window is a different queue and does not help.
+
+**Triage rule:** compare `netstat -s`'s IP "total packets received" with TCP's over one
+transfer. A gap of hundreds, with every error counter zero, is this queue, not the driver. (The
+honest gap on a quiet LAN is the broadcast floor of a few a second.) A polled or batching driver
+triggers it most, because it hands IP several frames per pass.
+
+**Fix:** raise that one `module_info` long word to `0x4000` (16384): in the stock 2.1c
+`/stand/unix` at file offset `0xe6ba4`, old value `0x1000`. On a running kernel raise the live
+queue's `q_hiwat` instead. Measured on a Z3660 box: push 24.6 → 334 KB/s, retransmissions 372 → 13.
+Mechanism, offsets and numbers: [networking](networking.md#tcp-lower-read-queue).
 
 ### 14. An unhandled board interrupt storms the kernel ✅
 
@@ -1191,6 +1212,10 @@ keep an on-box-authored root at or below 1 234 567 blocks.
 
 ## Sources
 
+- The **4 KB TCP lower-read queue** (2026-10-21) ✅ — quirk 75: the stock kernel's `ipintr` /
+  `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in
+  the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
+  (first-party record); detail and citations on [networking](networking.md#sources).
 - The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).
 - The **`fssm_Device` NUL count** (2026-10-07) ✅ — disassembly of `expansion.library` `MakeDosNode` and the `strap` in Kickstart 3.2.3 and 3.1 r40.68, and a check of 52 Kickstart images from 2.0 to 3.2.3 (first-party record, 2026-10-07); NDK `dos/filehandler.h` (quirk 71). Details on [boot process](boot-process.md#fssm-device-nul).
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](quirks.md#57-loader-placement-a3000-scsi)).

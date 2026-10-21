@@ -102,6 +102,12 @@ a large-memory machine was the wrong trade, and now uses the windows directly �
 > window — a 64-deep backlog would overrun the ring. The driver mitigates by **eager-draining** every
 > poll tick *and* by **mapping the full 64-slot / 128 KB range**, so any `ZZ_ETH_RX_ADDR` value the
 > firmware returns is always mapped memory. No overrun was observed in practice.
+>
+> ✅ **Confirmed, and fixed upstream-bound (2026-10-20/21).** The overrun is real: with a firmware
+> receive *ring* and an AmigaOS driver that falls behind, the backlog does grow past 32, and slots
+> 32–63 overwrite the TX frame and the receive DMA buffers. Under Amix the eager drain keeps it far
+> below that. [shanshe/Z3660 PR #33](https://github.com/shanshe/Z3660/pull/33) caps the backlog at
+> 32 slots. See [Z3660 ethernet](../how-it-works/z3660-ethernet.md#the-receive-path-end-to-end).
 
 ### TX / RX mechanics and the FCS boundary
 
@@ -109,6 +115,11 @@ a large-memory machine was the wrong trade, and now uses the windows directly �
   `ZZ_ETH_TX`. The trigger is **synchronous (~1 ms) with no completion IRQ**; reading `ZZ_ETH_TX` back
   returns the result code (`res = 0` = OK, observed on the wire). The single shared TX window is
   serialized by `info->tx_busy`; the ~1 ms trigger is **not** held at raised spl.
+  Measured on a real 68060 (2026-10-19), the trigger itself takes about 188 µs per full frame, most
+  of it the firmware's wait for transmit-done. The whole driver transmit path is about 730 µs per
+  1514-byte frame (build, copy, trigger in roughly equal thirds). The firmware key `eth_tx_poll`
+  cuts the held bus cycle to about 22 µs; see
+  [Z3660 ethernet](../how-it-works/z3660-ethernet.md#transmit).
 - **RX** ✅ — drained by re-reading `ZZ_ETH_RX_ADDR`, comparing each slot's serial header against
   `info->last_serial` to find fresh frames, delivering each up the stream, and strobing `ZZ_ETH_RX` to
   free the slot. The drain loop is **bounded** (≤ 256 iterations per call) so a runaway firmware can't
@@ -387,6 +398,49 @@ The amix-z3660net repo ships `userland/S99zen` (installed as `/etc/rc2.d/S99zen`
 > ⚠️ `zen0` only comes up after the **full** boot completes (including an `fsck` + reboot if the SD
 > image is dirty). Do **not** conclude "broken" from an early serial check — give it the whole boot. ✅
 
+## Receive service model and throughput ✅ {#receive-service-model}
+
+**The model.** Receive is polled at the clock tick: a `timeout()` callout every tick
+(`Z3660ETH_POLL_TICKS 1`, `HZ` 60, so 16.7 ms) runs `z3660eth_drain`, at IPL 4. The drain walks up
+to 256 slots. For each fresh frame it asks `canput()` of the queue above it, IP's lower read queue
+(`iplrput` → `putq`, high-water mark 8192), and passes the frame on with `putnext`. One drain
+therefore hands IP up to about **six full frames at once**. A frame waits up to one tick for its
+poll. Under a push the measured residence in the firmware was 10–16 ms, and the box's
+acknowledgements leave from inside the drain, so the sender's next burst also waits for a tick.
+
+**What happens when IP refuses** differs by version:
+
+- **Published driver** (`amix-z3660net` `master`): the frame is freed and counted in `couldnt_put`.
+  Its firmware slot is already released, so the frame is gone.
+- **Back-pressure version** (first-party, 2026-10-20; not yet published): the drain stops and leaves
+  that frame, and everything behind it, in the firmware backlog. The failed `canput()` marks IP's
+  queue `QWANTW`. When IP drains, STREAMS back-enables the driver's new read service procedure
+  `z3660ethrsrv`, which resumes the drain, usually within the same tick. Two bounds keep a stuck
+  stream from wedging the card: at slot 24 of a backlog round the drain catches up instead of
+  holding, and a frame held 30 ticks (HZ/2) is released. Only those forced releases count in
+  `couldnt_put` now.
+
+**The batch meets the stack's 4 KB limit.** IP's service pass passes the whole batch upward before
+TCP's service procedure runs, and the stock TCP lower read queue holds only 4096 bytes. So the
+fourth full segment of every batch is freed inside IP, uncounted. That, not the card, was why pushes
+into a `zen0` box ran at 25–30 KB/s
+([networking: the 4 KB TCP queue](../how-it-works/networking.md#tcp-lower-read-queue)). A polled
+driver is the worst case for that limit, because it batches by construction.
+
+**Measured (4 MiB FTP, real 68060, 100 Mbit, 2026-10-21):**
+
+| Fixes in place | Push | Retransmissions | Pull |
+|---|---|---|---|
+| none (stock kernel, published driver, 1.0 firmware) | 22–31 KB/s | 319–392 | ~600 KB/s |
+| kernel's TCP queue raised to 16 KB | 120–126 KB/s | 109–119 | ~575 KB/s |
+| + driver back-pressure | 227–334 KB/s | 10–46 | 570–640 KB/s |
+| + firmware receive ring (PR #33 build) | 314–372 KB/s | 0–8 | 560–650 KB/s |
+
+The full ladder, the firmware's keys and the AmigaOS comparison are on
+[Z3660 ethernet](../how-it-works/z3660-ethernet.md#measured-amix). The next ceiling is the 60 Hz
+poll itself: the push settles at about half the pull 🟡, and interrupt-driven receive is the lever
+(see Known issues).
+
 ## Status — ✅ works on real hardware (2026-06-21)
 
 Validated on a real **A4000 + Z3660**, all reproduced live ✅:
@@ -401,9 +455,10 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 | Remote login (`telnet` / `ftp` over `zen0`) | works (drove the box entirely over the network) |
 | Sustained FTP throughput | **~185 KiB/s**, stable across 3 consecutive ~3.4 MB transfers |
 
-> 🟡 **Throughput note.** ~185 KiB/s (≈1.5 Mbit/s) is the measured FTP rate — a working baseline, not
-> a tuned result; the performance side is considered still flaky and not worth chasing yet. The
-> interface itself reports **zero** errors/collisions even under flood load.
+> 🟡 **Throughput note.** ~185 KiB/s (≈1.5 Mbit/s) was the measured FTP rate in June 2026, a working
+> baseline, not a tuned result. The interface itself reports **zero** errors/collisions even under
+> flood load. The October 2026 measurements and the fixes behind 340–370 KB/s pushes are under
+> [Receive service model and throughput](#receive-service-model).
 
 ## Known issues & open questions
 
@@ -417,7 +472,8 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 - ✅ **Interrupt-driven RX is future work.** RX is polled today. A true ISR path (`z3660ethintr()`
   wired into `int2_tbl[]`) needs a level-6 hook the firmware's INT6 model doesn't safely give Amix; it
   is gated on a board-mod. The polled callout is correct and measured to work; interrupt RX would
-  mainly help latency/CPU.
+  mainly help latency/CPU. Since the October 2026 fixes it is also the throughput lever: the
+  60 Hz poll is what holds the push at about half the pull 🟡.
 - ✅ **Cache maintenance off by default** (`z3660eth_cache = 0`; the 040/060 line can turn it on at
   run time); revisit only if a future board, firmware or kernel changes the cacheability of the eth
   windows.
@@ -434,7 +490,10 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 - [Hydra DLPI case study](case-studies/hydra.md) — the other modern Amix net driver; the mirror-image
   60-vs-64 CRC boundary lives there.
 - [Networking](../how-it-works/networking.md) — the SVR4 STREAMS TCP/IP stack `zen0` joins; static IP,
-  DNS off by default, the `route` metric.
+  DNS off by default, the `route` metric, and [the 4 KB TCP queue](../how-it-works/networking.md#tcp-lower-read-queue)
+  that a polled driver hits hardest.
+- [Z3660 ethernet](../how-it-works/z3660-ethernet.md) — the firmware half of the path: descriptors,
+  backlog, the `z3660cfg.txt` ethernet keys, and measured Amix and AmigaOS throughput.
 - [Emulation Fidelity](../how-it-works/emulation-fidelity.md) — the 68030 bus-error-frame and SCSI
   INT2-latency requirements of the **same Z3660 UAE-derived emulator** this driver runs on.
 - [Building and installing a kernel](kernel-build.md) — the relink → `relocunix` cycle and the D245
@@ -491,6 +550,11 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   set in the live kernel on a real A4000 + Z3660 (98 arena pages reclaimed across the ethernet and
   SCSI drivers), read with `adb -k` against the on-box native-linked kernel; and the byte-vs-int
   `adb` format trap that makes a set flag print as `16777216`.
+- **The October 2026 receive-path work** (first-party record, 2026-10-19 to 2026-10-21) ✅: the
+  stamped transmit/receive profile on a real 68060, the back-pressure version of the drain (not yet
+  in the public repository; its design notes describe the hold, the `z3660ethrsrv` resume and the
+  24-slot / 30-tick bounds), and the push/pull rows on two A4000-class machines. The firmware side
+  is cited on [Z3660 ethernet](../how-it-works/z3660-ethernet.md#sources).
 - Magic numbers (✅): cdevsw major **51** (48 until 2026-07-30); board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.0.2.39`; build box `192.0.2.38`; TFTP `192.0.2.29`; station MAC
   `00:80:51:01:02:03`.

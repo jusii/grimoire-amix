@@ -19,13 +19,14 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [How Amix Boots](docs/how-it-works/boot-process.md): Superkickstart → bootblock → compressed kernel; RDB layout.
 - [Kernel Architecture](docs/how-it-works/kernel-architecture.md): monolithic SVR4, /usr/sys, switch tables, MMU, STREAMS.
 - [Filesystems & Disk Layout](docs/how-it-works/filesystems-and-disks.md): RDB partitions, UFS vs s5, /dev disk naming.
-- [Networking](docs/how-it-works/networking.md): STREAMS TCP/IP, A2065, DNS-off default, NFS, SLIP.
+- [Networking](docs/how-it-works/networking.md): STREAMS TCP/IP, A2065, DNS-off default, NFS, SLIP, and the stock 4 KB TCP lower-read queue that silently drops inbound bursts.
 - [X11 & the Desktop](docs/how-it-works/x11-and-desktop.md): X11R4/R5, OpenLook, A2410 color, RTG (X11R5 + X11R6.3 generations, Mesa 3.1).
 - [Package Management](docs/how-it-works/package-management.md): the stock SVR4 pkg system — /var/sadm contents(4) DB, media formats, pkgadd mechanics, and a space-in-pathname defect that breaks pkgrm/pkginfo on the shipped image.
 - [The Amix Package Repository Format](docs/how-it-works/package-repository.md): the canonical public host pkg.amigaux.org (plain HTTP for apkg), the static repo tree, the pipe-delimited catalog v1 grammar and names.conf, md5+size integrity, the apkg client's three sources (HTTP / mounted medium / raw slice), the two publish gates (owner-run publish, fail-closed licence gates) and the catalog-regenerate trap.
 - [Quirks & Gotchas](docs/how-it-works/quirks.md): the Amiga-port surprises.
 - [Emulation Fidelity](docs/how-it-works/emulation-fidelity.md): what a 68030/MMU/interrupt emulator must implement — format-$B bus-error frames, SCSI INT2 latency — or Amix's demand-paging boot fails, sometimes silently.
 - [Z3660 board timings](docs/how-it-works/z3660-timings.md): CPLD clock rows are per-unit and per-clock — the laws, the 25.000 MHz edge, and the config-vs-failing-card diagnostic.
+- [Z3660 ethernet](docs/how-it-works/z3660-ethernet.md): the card's receive path (GEM descriptors, firmware backlog, the ~1 ms interrupt nag), the MAC-write ring-offset trap, the five z3660cfg.txt ethernet keys, reading the GEM counters, and measured Amix vs AmigaOS (AmiTCP_NG, PrismNet) throughput.
 - [Load averages](docs/how-it-works/load-averages.md): why uptime and w print garbage (two independent stock defects) and how to read the real value.
 - [Performance benchmarks](docs/how-it-works/performance-benchmarks.md): measured Dhrystone, sequential disk-I/O and CPU-temperature figures for Amix on real and emulated 68k, with the method behind each set of numbers.
 - [Glossary](docs/how-it-works/glossary.md): terms used across the docs.

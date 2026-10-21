@@ -64,6 +64,7 @@ is plain Markdown with stable headings, exact commands, and inline source-confid
 [Quirks](how-it-works/quirks.md) ·
 [Emulation fidelity](how-it-works/emulation-fidelity.md) ·
 [Z3660 board timings](how-it-works/z3660-timings.md) ·
+[Z3660 ethernet](how-it-works/z3660-ethernet.md) ·
 [Load averages](how-it-works/load-averages.md) ·
 [Performance benchmarks](how-it-works/performance-benchmarks.md) ·
 [Glossary](how-it-works/glossary.md)
