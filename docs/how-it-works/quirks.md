@@ -37,7 +37,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 21 | **A colon-less zoneinfo `TZ` crashes every `tzset()` caller** — `TZ=US/Eastern` gives `User BUS ERROR at 474D5400` (= ASCII `"GMT\0"` dereferenced as a pointer) in `date`, `who -r`, `cron`, `ls -l`…; use the colon form `TZ=:US/Eastern` | ✅ | [Quirks §21](#21-a-colon-less-zoneinfo-tz-crashes-every-tzset-caller) |
 | 22 | **A fresh miniroot ships no `/etc/mnttab`** — its bare `mount(2)` writes none, yet `pkgadd` needs the file, so an installer must seed it before it calls `pkgadd`; a reused root floppy can carry a stale one and hide the gap | ✅ | [Quirks §22](#22-reused-writable-test-media-accumulates-state-that-masks-bugs), [Package management](package-management.md) |
 | 23 | **`inetd` disables a service after 40 connections in 60 s** — that port answers `Connection refused` while every *other* port, ICMP and the console stay healthy; it re-enables itself within 10 min. No config knob exists (`nowait.N` is silently ignored). Diagnosis: port 21 open + port 23 refused ⇒ throttle | ✅ | [Networking](networking.md#the-inetd-anti-looping-throttle-one-service-refuses-connections-while-the-box-is-healthy) |
-| 24 | **`syslogd` ships deliberately disabled** — a vendor `exit` on line 8 of `/etc/init.d/syslogd`, so every `daemon.*`/`auth.*` message on the box is discarded. One commented-out line enables it; this SVR4 logs to `/var/log/*`, **not** `/var/adm/messages`. ⚠ that file is one inode with 3 hard links — edit with `cp` in place, never `mv` | ✅ | [Networking](networking.md#why-it-is-silent-syslogd-ships-deliberately-disabled) |
+| 24 | **`syslogd` ships deliberately disabled** — a vendor `exit` on line 8 of `/etc/init.d/syslogd`, so every `daemon.*`/`auth.*` message on the box is discarded. One commented-out line enables it; this SVR4 logs to `/var/log/*`, **not** `/var/adm/messages`. ⚠ that file is one inode with 3 hard links — edit with `cp` in place, never `mv`. Enabled can still mean not started: a stale `/etc/syslog.pid` fools the start test | ✅ | [Networking](networking.md#why-it-is-silent-syslogd-ships-deliberately-disabled), [stale pid](networking.md#syslogd-stale-pid) |
 | 25 | **A hand-written UAE-family `.uae` selects the cycle-exact 68030 core and Amix dies at PID 1** — omitting `cycle_exact` is not neutral, the default is `true` (and host-dependent). Pin `cycle_exact=false`; it also silently overrides `cpu_compatible=false` | ✅ | [Emulation fidelity](emulation-fidelity.md#the-cycle-exact-core-a-correct-emulator-default-that-amix-does-not-survive), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
 | 26 | **Three diagnostic tools lie or don't work**: `netstat -a` prints `corrupt control block chain` on a perfectly healthy box; `sar -v` fails `sadc: Not enough space`; `ipcs -a` fails `read error: No such device or address`. Don't chase any of them, and don't budget on them for a capture | ✅ | [Quirks §26](#26-three-diagnostic-tools-that-lie-or-do-not-work) |
 | 27 | **`dd skip=` on a `cdfs` file is not an effective seek** — the skipped bytes are really transferred, through the one-sector in-kernel SCSI path, so a read at the 1 GiB mark needs ~20 minutes. Never score that timeout as a read failure | ✅ | [Quirks §27](#27-dd-skip-on-cdfs-is-not-a-seek), [Filesystems & disks](filesystems-and-disks.md#mounting-a-cd) |
@@ -631,6 +631,11 @@ Enabling it is one commented-out line and needs **no** `/etc/syslog.conf` change
 > 🔗 **Edit it with `cp` in place, never `mv`.** `/etc/init.d/syslogd` and `/etc/rc2.d/S70syslogd` are
 > the **same inode** (3 hard links). `mv` replaces the file and silently breaks the `rc2.d` hook, so
 > the fix works once and never again after a reboot ✅ — the same hazard as `S69inet`/`inetinit`.
+
+Enabled is not the same as running: the script skips the start whenever the previous boot's pid,
+left in `/etc/syslog.pid`, belongs to a live process at S70 time, and a small change to the early boot
+is enough to make that happen on every boot ✅. See
+[the stale pid file](networking.md#syslogd-stale-pid).
 
 ### 40. Amix keeps no persistent boot log — the console is the only record ✅ {#40-no-persistent-boot-logging}
 
@@ -1244,6 +1249,9 @@ keep an on-box-authored root at or below 1 234 567 blocks.
   rather than `/var/adm/messages`, and the measured 293 B of log growth under abuse). Quirk 26's
   `netstat -a` control run and the `sar -v`/`ipcs -a` failures are from the same soak's wedge-time
   capture ✅.
+- The **stale `/etc/syslog.pid`** note under quirk 24 (first-party record, 2026-10-26) ✅ — the
+  script text, the `sh -x` trace and the early-boot variant test, as cited on
+  [Networking](networking.md#syslogd-stale-pid).
 - A **`cdfs` bench run** (first-party record, 2026-07-26) ✅
   — quirk 27: on a 1.25 GiB multi-extent UDF disc, `dd skip=` to the 1 GiB mark transfers rather than
   seeks and needs a ~20-minute command timeout.

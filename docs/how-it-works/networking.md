@@ -407,6 +407,67 @@ cost is zero (`syslogd -m 0` disables it outright) ✅. Nothing else broke acros
 put it on the console, add one line — `daemon.err<TAB>/dev/console`. Reverse it by restoring the
 `exit`.
 
+### Enabled, yet not running: the stale `/etc/syslog.pid` ✅ {#syslogd-stale-pid}
+
+With the `exit` commented out, the same script can still skip starting the daemon at boot, silently.
+The start branch of `/etc/init.d/syslogd` (Patchlevel `syslogd_1.0`, identical on two separately
+installed 2.1c disks) decides "already running" from a pid file ✅:
+
+```sh
+pid=`cat -s /etc/syslog.pid`
+...
+	    kill -0 $pid 2> /dev/null
+	    #
+	    #	If there wasn't a pid to kill, or the process
+	    #	did not exists, start syslogd
+	    #
+	    if [ -z "$pid" -o $? -ne 0 ]
+	    then
+		/usr/sbin/syslogd
+	    fi
+```
+
+`syslogd` writes its pid to `/etc/syslog.pid` when it starts, and nothing in the boot sequence
+removes the file: after a reboot it still holds the previous boot's pid ✅. When `S70syslogd` runs, it
+sends `kill -0` to that old number. If any live process happens to own it at that moment, the test
+succeeds, the script concludes `syslogd` is already up, and **the daemon is not started**. Nothing is
+printed; `cron`, `lpsched` and `inetd` start as normal and logins work ✅. Since the daemon never
+starts, the file is never rewritten, so the same stale pid is tested again on every following boot.
+
+Early pid numbering repeats from boot to boot, so whether this bites is decided by **how many
+processes start before S70**, not by chance ✅. On one disk, each variant booted twice, with the
+previous boot's `syslogd` at pid 86 in the file:
+
+| Early-boot additions | `syslogd` after boot |
+|---|---|
+| none | running (pid 86, the same number as the stale file) |
+| one extra `sysinit` entry in `/etc/inittab` running a short command | running (pid 87) |
+| one extra `/etc/rc2.d/S01…` script running a short command | running (pid 88) |
+| both | **not running**, 6 of 6 boots; the file still holds 86 |
+
+So an unrelated, harmless addition to the early boot can switch logging off. Recognise it by: no
+`syslogd` in `ps -ef` although line 8 is commented out, `/var/log/*` staying zero-length, and
+`/etc/init.d/syslogd start` working when run by hand. `sh -x` of the script on an affected system,
+after pid 86 has gone away again, shows the logic ✅:
+
+```text
++ cat -s /etc/syslog.pid
+pid=86
++ [ -x /usr/sbin/syslogd -a -r /etc/syslog.conf ]
++ kill -0 86
++ [ -z 86 -o 1 -ne 0 ]
++ /usr/sbin/syslogd
+```
+
+The kernel side is not involved: once `syslogd` is started, its open of `/dev/log` and the
+`ioctl(I_STR)` that registers it as the console logger both succeed ✅.
+
+**Remedy** 🟡 (follows from the script logic; one boot per install tested, both early-boot additions
+present, `syslogd` running afterwards on both): remove the pid file before S70 runs — for example a
+new `/etc/rc2.d/S05syslogpid` holding `rm -f /etc/syslog.pid` — or change the start test to look for
+the process by name rather than trusting `kill -0`. If you edit `/etc/init.d/syslogd` itself, the
+`cp`-in-place rule above applies.
+
 ### The operational rule for anything that drives an Amix box ✅
 
 The throttle only ever fires on **automation**. Any harness that opens a fresh telnet (or FTP)
@@ -470,6 +531,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 | STREAMS `mblk` starvation | box wedges (`ldterm: out of blocks`) while `freemem` is fine; tracks session churn — power-cycle, single-session long jobs | 🟡 |
 | **Service refuses connections** (one port only) | `inetd` anti-looping throttle: 40 conns/60 s per service, self-heals ≤ 600 s. Diagnose: port 21 open + port 23 refused ⇒ throttle | ✅ |
 | See the throttle (and every other `daemon.*`) | Comment the `exit` on line 8 of `/etc/init.d/syslogd` (**`cp` in place — 3 hard links**); logs land in `/var/log/notice` | ✅ |
+| `syslogd` enabled but not running after boot | stale `/etc/syslog.pid` passes the script's `kill -0`; `rm -f /etc/syslog.pid` before S70 | ✅ / fix 🟡 |
 
 ## See also
 
@@ -516,6 +578,11 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   telnet tripped → 21 open), and the `syslogd` enablement (`/etc/init.d/syslogd` line-8 `exit`, the
   3-hard-link `cp`-in-place hazard, `daemon.err` already selected by the stock `syslog.conf`, 293 B of
   growth in 23 min of abuse).
+- The **stale `/etc/syslog.pid`** ✅ — first-party record, 2026-10-26: the start branch of
+  `/etc/init.d/syslogd` (Patchlevel `syslogd_1.0`) read on two separately installed 2.1c disks; a live
+  `sh -x /etc/init.d/syslogd start` on an affected boot; a `truss` of `/usr/sbin/syslogd` (`/dev/log`
+  open and `I_STR` ioctl both succeed); a four-way variant test of early-boot additions on one disk under
+  emulation, two boots per variant. The pid-file-removal remedy is 🟡, one boot per install.
 - The wedge soak run during the `cdfs` port (first-party record, 2026-07-26/27) ✅ —
   the rate measurements: the refusal reproduced with the filesystem loop **paused**; four bare-TCP trips (29.9/min → no trip in 200 invocations;
   ~550–575/min → trip at 40/61/77); three self-recoveries at 9m48s / 10m11s / 10m00s; FTP up throughout;
