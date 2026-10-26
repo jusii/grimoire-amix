@@ -2,6 +2,15 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-26 — stale /etc/syslog.pid; Z3660 ethernet page and quirk 75 (502f80b, 4d1dc1b)
+
+Stale /etc/syslog.pid (4d1dc1b): the stock syslogd start script trusts kill -0 on the previous boot's pid, which nothing
+clears at boot, so a small addition to the early boot can leave an enabled syslogd unstarted on every boot; remedy =
+removing the pid file before S70 (🟡). Z3660 ethernet (502f80b): new how-it-works page (the card's receive path, the MAC-write
+ring offset, the five z3660cfg.txt keys, GEM counters, Amix vs AmigaOS numbers), the zen0 page's 60 Hz service model;
+quirks 75: stock TCP's 4 KB lower read queue drops bursts uncounted in ipintr, 2.1c fix at file 0xe6ba4 0x1000 → 0x4000
+(push 24.6 → 334 KB/s).
+
 ## 2026-10-14 — quirk 74: the stock 68030 kernel without an FPU panics at the first signal (7b4ca6f, 579ac44)
 
 Boots past `no fpu detected`, then `sendsig`'s ungated FRESTORE (text 0x12A) faults in pid 1; seen on a real A1200 030
