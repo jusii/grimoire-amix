@@ -534,6 +534,16 @@ On real hardware, on a kernel whose arena had been moved (except where the row s
 | **≈151 MB** | **End stop** — a further page-table extent bound in the root map; nothing beyond it was reached | ✅ |
 | **528 MB** | Fatal, in exactly the way described above | ✅ |
 
+**On the 1.1 module kernels (emulation, 2026-10-26)** ✅: the stock bind code puts a 68030 kernel
+into the largest non-chip region with no address limit, and a k30 kernel whose bind region exceeds
+about 64 MB never starts (a 128 MB bank fails, 64 MB works); the project's new boot loader therefore
+caps a k30 kernel at 64 MiB. A kernel of either line bound at or above `0x40000000` (Zorro III
+expansion RAM) never starts either: the kernels identity-map only the low 1 GiB and keep `syssegs` and
+the `sptalloc` arena at virtual `0x40040000`–`0x40440000`, so the stock bind code's lack of an address
+limit is a trap on any box with Zorro III RAM, and the new loader binds only below it. The k46 (68040/68060) kernel
+passes at 128 MB. What is left of the arena for drivers once the box runs is on [loadable kernel
+modules → kernel memory](../drivers/loadable-modules.md#kernel-memory-what-a-module-can-get).
+
 The 88 MB row is what supersedes the old text. This page used to say **"nothing between 32 MB and
 512 MB has ever been booted"** and that the boundary had never been bisected. On a **stock** kernel
 that remains true. On a kernel with the arena moved it is not: 88 MB is a durable, networked
@@ -680,6 +690,7 @@ offset**, and validated each step by booting a real A4000 rather than an emulato
 
 ## Sources
 
+- The 1.1 module-kernel bind rows (emulation, 2026-10-26) ✅: [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/CHANGELOG.md`, entries "boot2: a k30 kernel gets at most 64 MiB of fast memory; Z3 RAM is never kernel memory" and "boot2 binds the kernel only below 0x40000000"; the kmem figures in `kernel/dlm/docs/measurements/2026-10-26-u1.md` and `2026-10-26-u4.md`.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
 - `sources/research-brief.md` §2 (hardware envelope: 4–16 MB Fast RAM) and §4 (kernel HAT/MMU, RAM
   ceiling) — grounding for the 16 MB figure, now tagged 🟡 and retracted as a ceiling (2026-09-15).
@@ -1541,10 +1552,18 @@ This is the same picture the [Ditto driver paper](../reference/bibliography.md) 
 ### Loadable modules: none in stock Amix {#loadable-modules}
 
 Stock Amix 2.1 and every kernel the 1.0 release ships are monolithic: nothing can be loaded into a
-running kernel, and every page on this site that adds a driver assumes that model ✅. A third-party
-kit has since built a loadable-module facility (a subset of the UnixWare module format) into its own
-kernels; it runs under emulation only, is GPL-2 licensed and is not part of any shipped Amix kernel 🟡
-(third-party report, 2026-10, not reproduced here).
+running kernel, and every page on this site that adds a driver assumes that model ✅.
+
+Two loadable-module efforts exist outside the stock system:
+
+- The **ashnazag** project (kdedon; one SVR4 kernel for 68k Mac, Atari and Amiga) built a
+  loadable-module core (DLM) into its own kernels 🟡. Its earlier commits are GPL-2.0; from
+  2026-10-14 the DLM core is MIT-licensed ✅ (`amigaux/amix` `kernel/dlm/core/upstream.pin`).
+- The **amigaux 1.1** release is building loadable modules for Amix itself, on both CPU lines, with
+  its own boot loader and a patch queue on that MIT core. It runs in emulation and on real 68060
+  hardware but is not released (2026-10-29) ✅. See [loadable kernel modules](../drivers/loadable-modules.md).
+
+Until 1.1 ships, the static model on this page and on the driver pages is the one that applies.
 
 ## The kernel as object libraries in /usr/sys
 
@@ -1608,6 +1627,7 @@ The layout of the kernel heap allocator was recovered by full disassembly of `km
 - `kmem_alloc` returns **≥ 16-aligned** pointers. A "returned" pointer that is `0 mod 2048` but not `8 mod 16` relative to its wrapper cannot have come from the allocator — a handy alignment argument when a theory needs disproving. ✅
 - **`kmem_free` writes `[next][prev]` freelist links into a freed chunk's first 8 bytes**, so use-after-free / wild-free corruption characteristically shows **pointer-shaped values at a block's head**. ✅
 - **The DMA hazard (the important one):** a `> 4096`-byte allocation is virtually contiguous but **physically scattered** — `segkmem_alloc` pops arbitrary frames off `page_freelist` and maps them at consecutive virtual addresses with no physical adjacency. So `vtop()` on such a buffer is valid for **exactly one page** (`NBPP = 2048` on the stock 030 kernel; 4096 on the 040/060 kernels), and any single DMA transfer that crosses a page boundary lands its tail in a **different, unrelated physical frame**. This is the mechanism behind the cdfs wild-write corruption; the driver-side rule (page-align every DMA target, guard `(va & (NBPP-1)) + nbyte > NBPP`) is on [the driver model → DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary). ✅
+- **How much a large request can get.** Requests above a page come out of the fixed 4 MiB kernel map that `page[]` and the u-areas share, so a box with more RAM has *less* room: after multi-user the largest single `KM_NOSLEEP` request was 256 KiB on a 128 MB 040/060 kernel and 512 KiB on a 64 MB 030 kernel, and a `KM_SLEEP` request above that never returns ✅ (emulator). The full table is on [loadable kernel modules → kernel memory](../drivers/loadable-modules.md#kernel-memory-what-a-module-can-get).
 
 ## SVR4 networking: STREAMS, TLI, sockets
 
@@ -1649,6 +1669,7 @@ One userland gotcha worth flagging at the kernel/system level: Amix's `/bin/sh` 
 - AT&T SVR4 *DDI/DKI Reference Manual* and *STREAMS Programmer's Guide* (the standard SVR4 substrate cited by the Ditto paper).
 - The 040/060 scope of the CPU, FPU and page-size facts: [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `include-modelb/sys/immu.h` (`NBPP` 4096, `PNUMSHFT` 12) ✅; the [040/060 status page](68040-68060-status.md) (the port, the 68LC060 software-FPU lane) ✅; the [amigaux.org downloads](https://amigaux.org/downloads/) page (the 1.0 68060 media for an A3000, A4000 or A4000T with a Z3660) ✅.
 - The kmem-allocator map (buddy pools / `sptalloc` whole-page scatter; `vtop()` valid for one page; freelist links in a freed chunk's first 8 bytes) — full disassembly of `kmem_alloc`/`kmem_free`/`kmem_allocbpool`/`sptalloc`/`segkmem_alloc`/`page_get` in the shipped kernel, and the DMA-scatter corruption reproduced on a real A4000 + Z3660, from the **amix-cdfs** port @ `31e8c3b` (`NBPP = 2048` per `sys/immu.h`). ✅ See [the driver model DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary).
+- The loadable-module facts (2026-10-29): [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/README.md`, `kernel/dlm/core/upstream.pin` (kdedon's DLM core, MIT from upstream `b736c59`, 2026-10-14; earlier commits GPL-2.0) ✅; the ashnazag project itself, <https://github.com/kdedon/ashnazag> 🟡 (not reproduced here).
 
 
 ================================================================================
@@ -8862,6 +8883,262 @@ Neither is committed work; the family-kernel convention above deliberately avoid
 
 
 ================================================================================
+# FILE: docs/drivers/loadable-modules.md
+================================================================================
+
+---
+title: Loadable Kernel Modules (amigaux 1.1, in development)
+summary: The loadable-module system the amigaux project is building for its 1.1 release — own boot loader, module core, kbootset generations, the ABI kit and kabi rule, module classes, the static floor, the kernel facts a module author needs (interrupt levels, kmem budget, board windows, DMA), and what is proven where as of 2026-10-29.
+status: draft
+---
+
+# Loadable Kernel Modules (amigaux 1.1, in development)
+
+**Stock Amix 2.1 and every kernel of the amigaux 1.0 release are monolithic: nothing loads into a
+running kernel** ✅ ([kernel architecture](../how-it-works/kernel-architecture.md#loadable-modules)).
+The amigaux project is building a loadable-module system for its **1.1** release, on both CPU lines
+and on every install medium. Its code is public in the [`amigaux/amix`](https://github.com/amigaux/amix)
+monorepo, under `kernel/dlm` (the loader, the module core, the composer and the ABI kit) and
+`kernel/modules` (generic modules) ✅. As of **2026-10-29** it runs end to end in emulation on both
+lines and on real 68060 hardware, and **nothing of it is released**: no module, module kernel or
+loader is in the public package catalog ✅. Interfaces are versioned (below) but can still change
+before 1.1.
+
+If you are writing a driver for a released Amix today, use the static model:
+[the driver model](driver-model.md) and [building the kernel](kernel-build.md). This page is for
+anyone who wants to build a module against the kit, or who needs the kernel facts the module work
+established (they hold for static drivers too).
+
+## Status on 2026-10-29
+
+| What | Where it stands | Tag |
+|---|---|---|
+| Code | `kernel/dlm`: `loader/` (boot1, boot2), `core/` (a patch queue over the upstream core), `kbootset/`, `modtools/`, `abi/` (the kit sources), host tests; `kernel/modules`: `monsw`, `ramdisk` | ✅ |
+| Emulation (Amiberry), both lines | module boots and root-on-a-module boots, the CD boot, the floppy pair, the network-install medium, the RAM-disk installer, upgrade and rollback | ✅ first-party record |
+| Real hardware, 68060 line | A4000 + Z3660 (68LC060 and full 68060): network modules polled and interrupt-driven, RTG with the monitor switch, root on the Z3660's SCSI, on an A4092, on Gayle IDE; the A4000T's onboard 53C710 as a root controller | ✅ first-party record |
+| Real hardware, 68030 line | no real 68030 Amiga tested yet; the only "030" metal rows are a Z3660 in its 68030-emulation mode | 🔴 open |
+| Release | 1.1 only; the package catalog at `pkg.amigaux.org` has no kernel-space entries | ✅ |
+
+## The parts
+
+| Part | What it is |
+|---|---|
+| **boot1, boot2** | The project's own boot loaders, written from scratch, replacing the stock bootstrap on 1.1 media. boot2 reads a *generation manifest*, loads the kernel and the root-class modules as separate files, reads disks, floppies and 2048-byte CD blocks, and offers a boot menu with a rollback key and a safe mode ✅ |
+| **Module core** | A patch queue on the MIT-licensed DLM ("dynamically loadable modules") core by kdedon, from the [ashnazag](https://github.com/kdedon/ashnazag) project (one SVR4 kernel for 68k Mac, Atari and Amiga). The queue adds pre-root loading, ABI identity, match keys, disk-controller and filesystem registration, interrupt attachment and a halt pass ✅. The queue's base is upstream `b736c59` (2026-10-14) or later; that project's earlier commits are GPL-2.0 ✅ |
+| **kbootset** | The composer, a userland program. It builds a *generation* (kernel + root modules + manifest + module store) from the installed packages, writes it to the boot slice behind fail-closed checks with read-back, keeps the previous generation and the pristine install generation, rolls back, and marks a generation good only after a full multi-user boot ✅ (spec; proven in emulation) |
+| **ABI kit** | Per kernel line: the headers, the list of kernel names a module may import (the DDI), the major registry, the module tools (`mkmod`, `modfix`, `modcheck.py`), a make fragment and a sample module. A host-side artefact: nothing in it runs on Amix ✅ |
+| **kinfo** | A read-only identity device on the static floor (character major 53): CPU line, kabi, generation, boot and root disk, board set, loader record ✅ (spec) |
+
+## Two kernel lines, one kabi rule
+
+Modules are built per **kernel line**: `k30` (68030, 2 KiB pages) and `k46` (68040/68060, 4 KiB pages)
+✅. The 68040 and 68060 kernels of the module line differ in one byte (a CPU stamp), so k46 is one ABI
+for both CPUs ✅ (measured: `kernel/dlm/docs/measurements/2026-10-26-m-reg1-m-abi1.md`). One module
+source gives one object per line, shipped as two packages (`<name>-k30`, `<name>-k46`) ✅.
+
+Each kernel carries a **kabi** tag, `k30.1.N` / `k46.1.N` ✅:
+
+| Minor | Adds |
+|---|---|
+| 1.0 | the first DDI |
+| 1.1 | `sd_register` on both lines, `root_defer` on k46 |
+| 1.2 | `iodone`, `ramdisk_image`, `vfs_register`, `root_defer` on k30, the DMA calls, the filesystem helpers |
+| 1.3 | what the Paula audio module needs (`AllocMem`, `FreeMem`, `displaytype`, `paula_busy`, `audio_nopen`); only a kernel whose cut patches the stock audio driver exports it |
+
+A module's tag is the highest minor among the names it imports, never below the kit's `KABI_MIN`
+(1.2 at present), and it loads on a kernel of that minor or later ✅. The kit's `abi.txt` fingerprint
+covers the DDI's **data** names with their sizes and the structure layouts a module shares with the
+kernel; adding a function name changes the minor, not the fingerprint ✅ (`kernel/dlm/abi/README.md`).
+
+## Module classes
+
+| Class | Loaded | Typical member |
+|---|---|---|
+| `root` | placed in memory by boot2 and linked by the core **before the root is mounted** | root disk controllers (Z3660 SCSI, A4091/A4092, Gayle IDE, the A4000T onboard 53C710), root filesystems (ufs, s5, cdfs), the RAM disk |
+| `boot` | after the root is mounted, from the generation's store, checked by SHA-256 | network drivers (z3660eth), anything needed every boot |
+| `demand` | at the first open of one of its majors, or before a module that names it in `depend` | the monitor switch (`monsw`) |
+
+✅ (`kernel/dlm/docs/abi/writing-a-module.md` §3). The core loads only modules listed in the booted
+generation's manifest, each checked by SHA-256, unless the boot menu's development load is on ✅.
+
+### The static floor and safe mode
+
+What stays linked into every kernel, on both lines alike ✅ (`kernel/dlm/docs/spec/70-static-floor.md`):
+the base kernel (VM, processes, STREAMS, the non-root pseudo-filesystems, the inet stack), the console
+and serial port, the floppy driver, floating-point support (the 68040/68060 FPE), the stock WD33C93
+host adapters (A3000 onboard SCSI, A2091/A2090) with the `sd`/`dd` disk layer, the A2065 ethernet,
+the QIC tape driver, `kinfo` and the module core. Everything else is a module, and a floor member is
+never also shipped as a module.
+
+**Safe mode** = the floor kernel + the root controller's module + the root filesystem's module, and
+nothing else; the kernel learns it is in safe mode from boot2's loader record ✅. A stock-controller
+box needs only its root filesystem module. Safe mode has no network unless the administrator marks the
+network module `safe` in `/etc/conf/modreg.local.d` ✅ (spec).
+
+## Writing a module — the short form
+
+The full guide is `kernel/dlm/docs/abi/writing-a-module.md` in amix; the kit's `sample/hello` is the
+template. You need the pinned [gcc-cross-amix](toolchain.md) (`m68k-cbm-sysv4-gcc` 2.7.2.3) on `PATH`,
+the kit for the line (`make kit` in `kernel/dlm`), and Python 3 ✅. **Kernel space is never built with
+GCC 14** ✅ — see [the toolchain page](toolchain.md).
+
+```c
+#include "sys/types.h"
+#include "sys/moddefs.h"
+#include "sys/amixddi.h"
+
+extern int printf();
+
+static int
+hello_load(params)
+	char *params;		/* "name=value ..." from the manifest, or 0 */
+{
+	printf("hello: loaded\n");
+	return 0;		/* or ENXIO: no hardware, the module is not kept */
+}
+
+static int
+hello_unload()
+{
+	printf("hello: goodbye\n");
+	return 0;
+}
+
+MOD_MISC_WRAPPER(hello, hello_load, hello_unload, "the ABI kit's sample module");
+```
+
+A `Master` file beside it gives the `.moddata` keys (`$modtype`, `$class`, `$majors`, `$match`,
+`$rank`, `$fs`, `$depend`, `$unload`, `$param`, `$desc`) and the definition line; a `Makefile` sets
+`KIT`, `MODULE`, `OBJS` and includes `$(KIT)/mk/module.mk`. `make` gives `build/<line>/mod.d/<name>`,
+checked by `modfix` and `modcheck.py`, which make the same refusals the core makes at load time ✅.
+`kabi` and `cc` come from the kit; never write them yourself ✅.
+
+What changes from a static driver ✅ (`writing-a-module.md` §4):
+
+- `_load` does the init work (find, map, set up the board) and returns `ENXIO` with nothing left
+  behind if there is no board; `_unload` undoes everything; `_halt` stops a board that can interrupt or
+  write memory.
+- No `cdevsw` edit, no `init_tbl` entry, no `parinit` wrapper: majors come from `.moddata`, and each
+  major must be registered to the module's name in the kit's `registry/majors`.
+- Interrupts go through `intr_attach`; polled stays the default.
+- The console goes through `cons_hook_set`, never `conputc`.
+
+## Kernel facts a module (or any driver) author needs
+
+These were measured or read from the kernels during the module work. They are properties of the
+stock kernels and the 040/060 port, so they bind static drivers as much as modules.
+
+### Interrupt levels
+
+- In these kernels **no `spl` masks level 6**: `spl5`–`spl7` stop at level 4 (the kernels run with
+  fast interrupts) ✅ (disassembly; `kernel/dlm/docs/abi/ddi.md`). A level-6 handler therefore calls
+  **no** kernel function: it acknowledges, masks and flags, and the work runs at level 4 or below ✅.
+- **A STREAMS open runs at level 4** (the stock `qattach` raises the SR to `0x2400`), so a level-2
+  interrupt stays pending until the open returns. A self-test inside an open that waits for its own
+  level-2 interrupt with a spin never sees it: wait with a one-tick `timeout`/`sleep` round, or test
+  at load time ✅ (disassembly and emulator).
+- A root-class module's `_load` runs in the **root pass**: process 0, level 7, the clock stopped; it
+  may not sleep, arm a timeout or read a file ✅.
+
+### Kernel memory: what a module can get
+
+The kernel heap's large requests share the **fixed 4 MiB kernel map** with `page[]` and the u-areas —
+the same arena behind the [RAM ceiling](../how-it-works/ram-ceiling.md) — so the more RAM a box has,
+the less kmem is left ✅. Measured in emulation on the module kernels ✅
+(`kernel/dlm/docs/measurements/2026-10-26-u1.md`, `2026-10-26-u4.md`):
+
+| When | k46 at 128 MB | k30 at 64 MB |
+|---|---|---|
+| Root pass, largest single `KM_NOSLEEP` | 2 MiB | 1 MiB (2 MiB fails) |
+| After multi-user, largest single `KM_NOSLEEP` | 256 KiB (512 KiB fails) | 512 KiB (1 MiB fails) |
+| After multi-user, total in 64 KiB pieces | about 320 KiB | about 640 KiB |
+| `KM_SLEEP` one step above the `KM_NOSLEEP` limit | **never returns** | **never returns** |
+
+A `KM_SLEEP` request that the map cannot satisfy sleeps for ever and the box does not shut down
+cleanly ✅. The rules that follow, enforced by the kit: a module's image is at most 256 KiB and its file
+under 256 KiB; each kmem request is at most 256 KiB; every `KM_NOSLEEP` result is checked for 0; a
+module whose load needs more than about 160 KiB belongs in boot class, not demand class ✅. No metal
+number exists for these figures yet 🔴.
+
+### Board windows and DMA
+
+- **Below `VSECT1` (0x40000000) the kernels map physical addresses one to one** (page-table early
+  termination, not transparent translation): a board window there is reachable at `phystokv(phys)`,
+  the identity, with nothing to map ✅ (`ddi.md`).
+- Above it, `sptalloc(npages, mode, pfn, 0)` maps the pages from the same fixed 4 MiB `sptmap`; on a
+  box with much RAM a large run may not be left. Map only what you need ✅. On k46, `dev_kvmap(phys,
+  nbytes, cm, flags)` maps a device window at a cache class (0x40 non-cacheable serialised, for
+  registers; 0x60 non-cacheable) ✅.
+- **The k46 kernel heap is not identity-mapped** (a heap address in the `0x402…` range sits at a
+  high physical address), so never hand a bus master the address of kmem or of the module's own
+  memory ✅. From kabi 1.2 the DDI has DMA calls: `dma_alloc` (at most 64 KiB, 16-aligned, reachable by
+  a Zorro III master; on k46 a heap block through its cache-inhibited DTT0 alias), `dma_prepare`,
+  `dma_complete`, `dma_addr` (on k30 it may return a bounce buffer, or 0 meaning "do not arm") and
+  `dma_free` ✅ (`ddi.md`, DMA section).
+
+### Smaller traps
+
+- **The kernel `printf` has no `l` modifier**: it takes `%s %d %u %x %o %c` only ✅ (`ddi.md`).
+- `<sys/systm.h>` declares `cputype` as a `short`, but the kernels define a `long`: read it through
+  the kit's `DDI_CPUTYPE` ✅.
+- The module core takes the six system-call slots **64–69**, which are `nosys` in the shipped kernels
+  ✅ (`core/upstream/NOTES.md`).
+- A stock header's tentative definition (`int ifnet;`) becomes a private copy in your module; the
+  checker warns about every COMMON symbol ✅.
+
+## Majors in the module registry
+
+The kit's `registry/majors` is the 1.1 allocation; the core refuses a module whose majors are not
+registered to it ✅. It agrees with the [major-number registry](../reference/major-number-registry.md):
+
+| Major | Module |
+|---|---|
+| c 49 | `z3660rtg` (the Z3660 RTG target of the zz9000 driver) |
+| c 51 | `z3660eth` |
+| c 52 | `monsw`, the monitor switch |
+| c 53 | `kinfo` (static floor) |
+| c 54 | `paula` (the static Paula driver's 53 is `kinfo`'s in 1.1) |
+| b 20 | `ramdisk` (replaces the stock `ram` driver's row) |
+
+## The two example modules
+
+| Module | Class | What it shows |
+|---|---|---|
+| [`monsw`](https://github.com/amigaux/amix/tree/master/kernel/modules/monsw) | demand, `c:52` | A card-independent monitor switch (CIA-B PRA bits 4 and 2) with a kernel API for RTG drivers (`monsw_register`, `monsw_set`, `monsw_lastclose`) and `/dev/monsw` ioctls. The same source still builds the static object the 040/060 port links ✅ |
+| [`ramdisk`](https://github.com/amigaux/amix/tree/master/kernel/modules/ramdisk) | root, `b:20` | Unit 0 is the miniroot image boot2 placed at the top of the largest fast-memory region (below `VSECT1`, so reached by identity with nothing mapped); units 1 and 2 are scratch disks allocated in ≤ 256 KiB `KM_NOSLEEP` pieces at first open ✅ |
+
+The stock Amix 2.1 RAM disk (`ram`, block major 20, three kmem-backed units of 128 KiB, 512 KiB and
+2 MiB) cannot present an image loaded before the kernel started, which is why the module kernels drop
+it for `ramdisk` ✅ (`kernel/modules/ramdisk/README.md`).
+
+## See also
+
+- [Kernel architecture](../how-it-works/kernel-architecture.md#loadable-modules) — the monolithic stock model.
+- [The RAM ceiling](../how-it-works/ram-ceiling.md) — the fixed 4 MiB kernel arena behind the kmem budget.
+- [Toolchain](toolchain.md) — gcc-cross-amix for kernel space, gcc14-cross-amix for userland.
+- [Major-number registry](../reference/major-number-registry.md).
+- [Composing multi-driver kernels](kernel-composition.md) — the static-kernel answer the module system replaces in 1.1.
+
+## Sources
+
+- [`amigaux/amix`](https://github.com/amigaux/amix) @ `95bf2f3` (2026-10-29), public ✅:
+  `kernel/dlm/README.md`; `kernel/dlm/abi/README.md` (kit contents, kabi minors, `abi.txt`);
+  `kernel/dlm/abi/registry/majors`; `kernel/dlm/docs/abi/writing-a-module.md` (§1–§9);
+  `kernel/dlm/docs/abi/ddi.md` (contexts, the level-6 rule, memory, `VSECT1`, the DMA section);
+  `kernel/dlm/docs/spec/00-overview.md` and `70-static-floor.md`;
+  `kernel/dlm/docs/measurements/2026-10-26-u1.md`, `2026-10-26-u4.md` (kmem),
+  `2026-10-26-m-reg1-m-abi1.md` (one k46 ABI; free syscall slots); `kernel/dlm/core/upstream.pin` and
+  `core/upstream/NOTES.md` (the adopted core, its licence and base commit);
+  `kernel/modules/README.md`, `monsw/README.md`, `ramdisk/README.md`.
+- The kernel-module campaign (first-party record, 2026-10-25 to 2026-10-29) ✅: the emulator rows on
+  both lines and the metal rows on two A4000-class machines with a Z3660 (68LC060 and 68060), the
+  STREAMS-open level read from the stock `qattach`, the k46 heap mapping read from the port. Bench
+  hosts and run numbers are project bookkeeping and are not reproduced here.
+- The public package catalog, `http://pkg.amigaux.org/catalog`, read 2026-10-29: catalog format 1,
+  41 rows, no kernel-space block ✅.
+
+
+================================================================================
 # FILE: docs/drivers/kernel-reverse-engineering.md
 ================================================================================
 
@@ -15289,7 +15566,7 @@ The cross-tree claim map outgrew this page. **[The Major-Number Registry](major-
 now carries every known `cdevsw[]`/`bdevsw[]`/`vfssw[]`/AutoConfig claim across the community trees —
 including the live collision (stock `mx` vs `hydra` at char 47; the `z3660eth`-vs-unpublished-`random`
 collision at char 48 was **resolved** when `z3660eth` moved to 51 on 2026-07-30), the free ranges
-(52–67, 69; `CDEVSIZE` = 70 so nothing above 69 exists), and the
+(55–67, 69, after the 1.1 module registry took 52–54; `CDEVSIZE` = 70 so nothing above 69 exists), and the
 conventions for adding a driver ✅. Pick your slot there.
 
 ### Minor-number encoding for the SCSI disk (major 18)
@@ -15492,8 +15769,8 @@ status: draft
 
 # Major-Number Registry
 
-**Pick a character major in 51–67 or 69.** Everything below 51 is either stock, claimed by a
-community driver, or a trap; 70 and above does not exist without editing the array bounds. That one
+**Pick a character major in 55–67 or 69.** Everything below 55 is either stock, claimed by a
+community driver or the 1.1 module line, or a trap; 70 and above does not exist without editing the array bounds. That one
 sentence is the whole answer — the rest of this page is the evidence, the other three namespaces
 nobody tracks, and the two collisions that already exist in the wild.
 
@@ -15573,7 +15850,10 @@ between the two shows **five hunks, all of them hydra** — so both trees agree 
 | **49** | **`zz9000`** (isoriano1968) — **also the Z3660 RTG target** (`amix-z3660rtg`, a row-selected build of the same driver, 2026-09-16 design decision: same node `/dev/zz9000`, same ABI, no new major claimed) | community | claimed ✅ |
 | 50 | `sad` — STREAMS administrative driver | stock | occupied ✅ |
 | **51** | **`z3660eth`/`zen0`** (this family) — renumbered from 48, 2026-07-30 | community | claimed ✅ — **live in shipped kernels: `mknod /dev/zen0 c 51 0` verified on real hardware 2026-09-09** (A4000 + Z3660, `zen0` up at 0 % packet loss). |
-| **52–67** | — | — | ✅ **FREE** — verified row-by-row in two trees; **take a slot here** |
+| **52** | **`monsw`** — the monitor switch (amigaux; static in the 040/060 port's kernels, a module in 1.1) | community | claimed ✅ |
+| **53** | **`kinfo`** — the 1.1 kernel-identity device (static floor); also the static Paula driver's number, which moves to 54 as a 1.1 module | community | claimed ✅ (1.1 registry) / 🟡 the static Paula claim |
+| **54** | **`paula`** — the Paula audio module of 1.1 | community | claimed ✅ (1.1 registry) |
+| **55–67** | — | — | ✅ **FREE** — verified row-by-row in two trees; **take a slot here** |
 | **68** | **`va2000`** (asokero) | community | claimed ✅ |
 | **69** | — | — | ✅ **FREE** — the last slot in the array |
 | 70+ | *does not exist* | — | 🚫 requires extending `cdevsw[]` ✅ |
@@ -15641,7 +15921,7 @@ built before 2026-07-30 (and their `/dev/zen0` nodes) register and open 48; curr
 | 17 | `hd` | occupied ✅ |
 | **18** | **`dd`** — SCSI disk | occupied ✅ — **shared, see below** |
 | 19 | `dummydisk` | occupied ✅ |
-| 20 | `ramdisk` | occupied ✅ |
+| 20 | stock RAM disk (`ram.c`) — replaced on the 1.1 module kernels by the `ramdisk` module on the same major | occupied ✅ |
 | 21–31 | — | free ✅ |
 
 **No SCSI host adapter consumes a block major.** The [A4091](../drivers/a4091-53c710-driver.md) and
@@ -15726,7 +16006,7 @@ friendliest pattern for a shared kernel and the one this project recommends.
 
 ## 7. Conventions for adding a driver
 
-1. **Take 51–67 or 69.** Never 7, 38, 39, 44, 45 (traps), never ≥ 70 (off the end of the array).
+1. **Take 55–67 or 69.** Never 7, 38, 39, 44, 45 (traps), never ≥ 70 (off the end of the array).
 2. **Respect existing community claims** — 47, 48, 49, 68 (48 = an unpublished dev-tree claim; this project vacated it anyway, 2026-07-30). When in doubt, the party who has *not*
    shipped hardware-proven kernels renumbers.
 3. **A SCSI host adapter takes no new major** — add a `scsicard[]` row under block 18 (§3).
@@ -15748,6 +16028,10 @@ friendliest pattern for a shared kernel and the one this project recommends.
 | [`z3660scsi`](../drivers/z3660-scsi-driver.md) (this family) | via 40 | via **18** (`scsicard[]`, `0x144B0001`) | — | ✅ 2026-06 |
 | [`a4091`](../drivers/a4091-53c710-driver.md) (this family) | via 40 | via **18** (`scsicard[]`, ×3 IDs) | — | 🟡 emulated; metal pending |
 | `cdfs` (this family) | — | — | `vfssw[]` last row | ✅ 2026-07 |
+| [`monsw`](../drivers/loadable-modules.md#the-two-example-modules) (amigaux) | **52** | — | `parinit` hook (static form) | ✅ |
+| `kinfo` (amigaux 1.1, static floor) | **53** | — | — | ✅ emulated |
+| `paula` (isoriano1968's paula-amix; 1.1 module) | **54** (static form: 53) | — | — | 🟡 |
+| [`ramdisk`](../drivers/loadable-modules.md#the-two-example-modules) (amigaux 1.1 module) | — | **20** (replaces stock `ram`) | — | ✅ emulated |
 | [`hydra`](../drivers/case-studies/hydra.md) (isoriano1968) | **47** ⚔ | — | `init_tbl[]`, `int2_tbl[]` | ✅ 2026-06 |
 | [`zz9000`](../drivers/case-studies/zz9000.md) (isoriano1968) | **49** | — | `init_tbl[]` | ✅ |
 | `amix-z3660rtg` (this family; the Z3660 RTG **target** of the same `zz9000` driver, `-DZZ9K_TARGET_Z3660` board-table row) | **49** (shared by design — one driver, two board rows) | — | `init_tbl[]` | 🟡 design 2026-09-16; real-hardware status: see the [ZZ9000/Z3660 RTG page](../drivers/case-studies/zz9000.md) |
@@ -15781,6 +16065,10 @@ friendliest pattern for a shared kernel and the one this project recommends.
 - [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix) @ `75e2449` —
   `integration/kernel.c.txt` (major 49 entry, the `47/48/49/50` dev-tree prose line), `INSTALL.md`,
   `mkdev.sh` (`mknod /dev/zz9000 c 49 0`), `integration/c1-console.txt`.
+- The amigaux 1.1 module registry, [`amigaux/amix`](https://github.com/amigaux/amix) @ `95bf2f3`
+  `kernel/dlm/abi/registry/majors` (c 49, 51, 52, 53, 54; b 20) and
+  `kernel/modules/{monsw,ramdisk}/README.md` (the stock `ram` driver on block 20 and its
+  replacement) ✅; the static Paula number (53) is from that registry file's comment 🟡.
 - [`asokero/va2000-amix`](https://github.com/asokero/va2000-amix) @ `fec1c68` — `KERNEL_CHANGES.md`
   (`cdevsw` slot 68, `io_init[]` entry, `mknod /dev/va2000 c 68 0`), `install-va2000-driver.sh`
   (the `/*68*/` literal-match patcher), `src/va2000.c` (`VA2000_PRODUCT = 0x6D6E0001`).
