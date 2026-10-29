@@ -291,7 +291,7 @@ The **stock** Amix kernel **predates the 68040 MMU** and has no support for it (
 
 ### Zorro III — stock support is Zorro II only
 
-**Stock** Amix supports **Zorro II expansion only**; out of the box it has **no Zorro III support**. ✅ The stock drivers just dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)), and — because that kernel source was never shipped — the *stock* card set can't be patched in place. ✅ This is **not** a hard wall for a *purpose-written* driver, though: one that maps the board explicitly (the kernel's `sptalloc()` primitive, or a window that happens to fall inside the identity map) **can** reach a Zorro III board — the [A4091/A4092 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 — real hardware via an A4092 under the 68060 kernels, measured on one machine; emulation only on the 68030 line) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do. For ordinary use, assume a card must work in (or fall back to) **Zorro II** address ranges.
+**Stock** Amix supports **Zorro II expansion only**; out of the box it has **no Zorro III support**. ✅ The stock drivers just dereference the address `autocon()` returns, which only reaches Zorro II boards (≤ 24-bit, inside [the identity-mapped low 1 GB](../drivers/zorro-autoconfig.md#the-identity-map)), and — because that kernel source was never shipped — the *stock* card set can't be patched in place. ✅ This is **not** a hard wall for a *purpose-written* driver, though: one that maps the board explicitly (the kernel's `sptalloc()` primitive, or a window that happens to fall inside the identity map) **can** reach a Zorro III board — the [A4091/A4092 SCSI driver](../drivers/a4091-53c710-driver.md) (🟡 — real hardware via an A4092 under the 68060 kernels, measured on one machine; emulation only on the 68030 line, and a Z3660 in its 68030-emulation mode cannot do bus-master DMA at all ✅) and the [Z3660 ethernet driver](../drivers/z3660-ethernet-driver.md) (✅ real hardware) both do. For ordinary use, assume a card must work in (or fall back to) **Zorro II** address ranges.
 
 Board addresses are assigned at reset by the Amiga **AUTOCONFIG** mechanism, which Amix reads through the kernel's `autocon()` interface — again, **Zorro II only**. ✅ See [the Zorro autoconfig driver page](../drivers/zorro-autoconfig.md) for how drivers consume this.
 
@@ -308,7 +308,21 @@ The following cards are known to work. Entries are ✅ unless tagged 🟡 (commu
 | A2091 | ✅ | A2500UX option |
 | GVP Series II | 🟡 | Needs a kernel rebuild + an RDB `dummy_handler` |
 | **A4091** | 🟡 | Zorro III SCSI-2 (NCR/Symbios **53C710**, AutoConfig product id `0x02020054`); driven by the modern [A4091 / 53C710 driver](../drivers/a4091-53c710-driver.md) — **boots Amix with root on the A4091** (emulation-proven; the A4091 board on real hardware pending) |
-| **A4092** | 🟡 | Modern 53C710 board (AutoConfig `0xc0de0001`) bound by the same driver. On the 68060 line (A4000 + Z3660) it carries a root filesystem on real hardware, and the amigaux 1.0 CD installer reads its CD and installs onto a disk behind it — measured on one machine; untested on real hardware on the 68030 line |
+| **A4092** | 🟡 | Modern 53C710 board (AutoConfig `0xc0de0001`) bound by the same driver. On the 68060 line (A4000 + Z3660) it carries a root filesystem on real hardware, and the amigaux 1.0 CD installer reads its CD and installs onto a disk behind it — one machine, two cards; untested on real hardware on the 68030 line. A card with CPLD 1.4.21 needs the driver to set `CTEST8.SM` ([details](../drivers/a4091-53c710-driver.md#a4092-cpld-and-53c710-behaviour)) |
+| A4000T onboard 53C710 | 🟡 | No AutoConfig; fixed at `$DD0000`, registers at +`0x40`; readable only after the A4000T ROM's NCR driver has initialised it. Carries the root on the 1.1 module kernel (68060 line), one machine ([details](../drivers/a4091-53c710-driver.md#a4000t-onboard-53c710)) |
+| A4000 Gayle IDE | 🟡 | The A4000/A4000T motherboard IDE (task file at `0xDD2020`, `ALTSTAT` at `0xDD303A`), driven by Emre Bastuz's [amix-gayle-ide](https://github.com/hmlio/amix-gayle-ide) driver — see [IDE](#ide-the-a4000-gayle-port) |
+
+#### IDE: the A4000 Gayle port {#ide-the-a4000-gayle-port}
+
+The A4000's motherboard IDE has its task file at `0xDD2020` and its alternate status at `0xDD303A`;
+the A4000T has the same task file ✅. The A4000 has **no Gayle interrupt-enable register**, and a
+software raise of `INTREQ` cannot pass on the A4000, so an interrupt self-test must issue a real
+command (`READ VERIFY`) ✅. The A1200/A600 Gayle id register at `0xDE1000` does not exist on these
+machines and is never touched ✅. On real hardware (A4000D, 68LC060 on a Z3660, 1.1 module kernel) the
+driver runs **interrupt-driven**, with an A4092 and the Z3660's disk beside it, in safe mode and as the
+root controller, and passed a 200 MB raw write and read-back with zero interrupt errors ✅ (one machine).
+To check an ATAPI CD behind it, mount it (`mount -F cdfs`); a raw `dd bs=2048` returns every fourth
+block ([quirk 63](quirks.md#63-dd-512-unit-overrun)).
 
 **On a multi-controller machine, a disk's `cXd0` name follows its controller** ✅: `cN = card × 8 + unit`, with cards numbered in ascending board-address order ([device list](../reference/device-list.md)). With an A3000's on-board SCSI (card 0) plus an A4091 (card 1), a disk at ID 6 on the A3000 reads as `c6d0`, while the *same* disk moved to ID 6 on the A4091 becomes `c14d0` — so `c6d0` no longer reaches it (`dd` I/O error, `fsck` "Can't open"). A disk behind a second controller is still a valid install target: the amigaux 1.0 CD installer installs onto a disk behind an A4092 and the system roots from it as `c9d0` (card 1, unit 1) 🟡 (measured on one A4000 + Z3660). A CD is addressed differently: `cdfs` reaches it by **`<card>,<unit>`** (HBA-enumeration order — e.g. an A3000-plus-A4091 box mounts the A4091's CD at `1,3`), not through the `cXd0` disk names.
 
@@ -378,6 +392,7 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 - a4091.device open-source project: [github.com/A4091/a4091-software](https://github.com/A4091/a4091-software) (A4091 autoboot ROM + the `ncr53cxxx` SCRIPTS assembler).
 - The **amix-packagemanager** bench-RAM investigation, 2026-07-22 (Amiberry, fixed kernel sum-r 42265): 16 MB-exactly proven clean (SCSI read/write-readback/double-read + byte-exact base-set digest, recomputed via `tools/repo/altroot_attest.py`) and the 8 MB memory-exhaustion livelock signature (pegged host CPU, no panic, all I/O dead) reproduced ✅.
 - The **Installer-NG** project ([amix-installng](https://github.com/jusii/amix-installng); first-party record, 2026-07-22/24) — blank-disk→bootable installs under Amiberry and on a real A4000 + Z3660 (install captures, s5/UFS state reads, and an on-metal digest attestation) ✅ (🟡 where tagged).
+- Gayle IDE and the A4000T onboard 53C710 (2026-10-27/28) ✅: [`hmlio/amix-gayle-ide`](https://github.com/hmlio/amix-gayle-ide) (the driver; the project's fork's CHANGELOG 2026-10-27 for the module form, the `INTREQ` and `0xDE1000` notes); `amix-kerntools` CHANGELOG 2026-10-27 (the A4000D interrupt-mode rows); `amix-a4091` `docs/A4000T-ONBOARD-710.md`.
 
 
 ================================================================================
@@ -3458,6 +3473,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 84 | **The stock `/dev/audio` open spins at level 4 with no timeout** waiting for the sound chip's interrupt — a silent chip (an emulator with sound output off) freezes the whole box | ✅ | [Quirks §84](#84-audio-open-no-timeout) |
 | 85 | **The 1992 console programs only OCS/ECS display registers** — AGA state left behind by whatever ran before the kernel (`FMODE`, `BPLCON3`, `BPLCON4`, the copper list) garbles the Amix console on an AGA machine | ✅ | [Quirks §85](#85-console-ocs-ecs-only), [Boot process](boot-process.md#what-the-strap-checks) |
 | 86 | **Swap is not optional in the stock kernel** — with no swap device the first `fork` panics, and `swapconf` panics (`lookupname failed - error 2`) when the configured swap node does not exist; a RAM-rooted medium points swap at `/dev/fakeswap` (block 19,0, the stock dummy disk) | ✅ | [Quirks §86](#86-swap-not-optional) |
+| 87 | **On the Z3660, the second of two back-to-back register accesses can land at (previous address AND this address)** — a mailbox write becomes a different command (a WRITE doorbell to the previous block; a READ turned WRITE that reports GOOD), an interrupt acknowledge is lost. Precede every register write with a covering read, in one block at IPL 7 | 🟡 | [Quirks §87](#87-z3660-address-capture), [Z3660 SCSI driver](../drivers/z3660-scsi-driver.md#address-capture-race) |
 
 The rest of this page expands each item.
 
@@ -3722,6 +3738,18 @@ registers through the same data port and read the first back, so an open bus (wh
 to the *last* write) cannot pass ✅. Full source and rationale on
 [Zorro autoconfig](../drivers/zorro-autoconfig.md); the anti-alias readback is the reference design
 for [any board probe](../drivers/kernel-composition.md). Decode the chipset id by its low nibble ([§61](#61-vposr-low-nibble)).
+
+
+### 87. Z3660: back-to-back register accesses can land at (previous AND this address) 🟡 {#87-z3660-address-capture}
+
+When the 68060 makes two accesses to the Z3660's register window back to back, the card can deliver
+the second at the bitwise AND of the two addresses 🟡 (phantom writes with exactly that signature,
+counted by a tripwire firmware build on two A4000-class machines; the FPGA mechanism is not confirmed,
+and a proving boot did not reproduce it 🔴). For the piscsi mailbox and the ethernet registers this
+turns ordinary access pairs into other commands ✅ (read from the register map). The defensive rule
+costs little: read an offset that covers the target immediately before each write, in one `asm`
+block at IPL 7, and read descriptors back before a doorbell ✅. Details and the affected pairs: [the
+Z3660 SCSI driver](../drivers/z3660-scsi-driver.md#address-capture-race).
 
 ## Networking quirks
 
@@ -5290,13 +5318,50 @@ and the validation must be redone from scratch.
 ## A measured clock envelope: one A4000D card, 80 MHz the only stable rung 🟡
 
 The firmware prints its realised clock tree on every boot. Read the values off that printout, not
-the preset label 🟡. The `cpufreq` presets 50 and 80 MHz realise the same 25.00 MHz bus clock; the
-presets in between dip below it, to values like 17.50 and 15.00 MHz 🟡. On a measured card,
+the preset label 🟡. On that card's **customised** clock table the `cpufreq` presets 50 and 80 MHz
+realised the same 25.00 MHz bus clock and the presets in between dipped below it, to values like
+17.50 and 15.00 MHz 🟡. The **stock** table gives other bus clocks for the same presets — 12.50 MHz at
+50 and 20.00 MHz at 80 ✅ (the firmware's printout, campaign below) — so a preset number says nothing
+about the bus clock without the table it indexes. On a measured card,
 stability followed the realised bus clock rather than the nominal CPU MHz, and 50 MHz still failed
 for a different reason: hitting 25.00 MHz exactly is necessary, not sufficient — the
 [motherboard-25 MHz edge](#the-derived-clock-law-and-the-one-hard-edge) seen from the failure side 🟡.
 The same printout gives the ARM part's maximum as 866.667 MHz, against an in-spec default of
 666.667 MHz 🟡. Clock rows are per-unit: **re-measure on yours** before quoting any envelope.
+
+## Campaign 1: two cards measured row by row (2026-10-22/23) ✅ {#campaign-1}
+
+Both cards (one in an A4000D with a 68LC060, one in an A4000T with a full 68060) were scanned row by
+row from the **stock** `default_timings.txt`, phase by phase, under emulation and on the real CPU ✅:
+
+- **The two cards share no usable set of rows.** Row 80's CPU-clock window is centred at 257° on one
+  card and 182° on the other. The real 68060 found windows at rows 55–90 and 100 on the first card (none
+  at 50 or 95), and only rows 50, 70, 75 and 80 usable on the second (55–65, 95 and 100 run away).
+- **Shipped values sit close to a window edge** — within 0–10° on several rows.
+- **Under an OS, a clean scan is not enough.** On the first card a tuned row 80 ran an hour of AmigaOS
+  and an hour of Amix; row 85 hung both, although every memory path and the register path scanned
+  clean 🔴 (cause open). Switching between rows 80 and 70 twenty times under a running AmigaOS worked ✅.
+
+Method laws that hold for any such scan ✅:
+
+1. **A failing step can leave the board faulty, and the fault looks like timing**: motherboard-RAM
+   errors persist until an Amiga reset, a run that ends on a failing step poisons the next one, and the
+   AutoConfig path can stay broken until a power cycle. Reset after **every** failing step.
+2. **The 360° trap**: under emulation, a phase whose sum with the emulation extra is exactly 360 fails
+   repeatably; the real 68060 accepts 0. Never write a phase that sums to 360.
+3. **The 90° CPU-clock → CLK90 offset is a convention**, not a requirement: on one card 60–270° all
+   passed, and the conventional 90° sat 30° from the edge.
+4. **ARM speed did not move the windows**: 667 and 1000 MHz gave identical windows, emulated and real.
+   (That is a statement about timing windows only; the read-path corruption below was seen at 1100.)
+5. **No temperature shift was measurable**, and the only sensor, the Zynq die, reaches about 45 °C
+   within 90 s of power-on, so it is no board thermometer.
+6. **Gary never turns an unanswered motherboard read into a bus error**, whichever timeout bits are
+   written: it ends the cycle with its timeout and wrong data.
+7. **An ARM bus request parks the 68060 safely** while the clocks change (20 of 20 on both cards).
+
+Two oddities, seen on both machines 🟡: the first power-on after a 25–30 min off-hold stalls in memory
+sizing, and one more power cycle cures it; and about one boot in five stalls at `Done processing
+hunks.` before the hand-off to the 68060.
 
 ## An out-of-spec ARM clock corrupts the 060 to Zynq kernel read path ✅ {#arm-overclock-read-path}
 
@@ -5419,6 +5484,7 @@ timings file without a named unit is an unlabelled key.**
   that localises the fault to Kickstart's early chipset init; and the single-variable ARM-module swap.
   Card identities, image names and checksums are project bookkeeping and are deliberately not
   reproduced here.
+- The timing campaign on two cards (first-party record, 2026-10-22 to 2026-10-25) ✅: per-row scans from the stock `default_timings.txt` under emulation and on the real 68060, the firmware's realised clock printouts (bus 12.50 MHz at preset 50, 20.00 MHz at 80), the method findings, the OS hours on the tuned file, the bus-parking rows. Card serials, hosts and session logs are project bookkeeping and are not reproduced here.
 
 
 ================================================================================
@@ -12771,6 +12837,9 @@ The production driver is `src/a4091-wr.c` (the READ+WRITE driver) ✅. Its key p
   set then explicitly cleared. The init writes `SCNTL0=0xCC`, `SCNTL1=0x20`, `DCNTL=0x00`,
   **`DMODE=0xE0`** (burst-8 | FC2, the A4091 value), the one-hot host id `SCID = 1 << 7 = 0x80`, and
   the A4091 bus-arbitration errata bit `CTEST8 |= 0x01` (SM). No SCSI/DMA interrupts are enabled ✅.
+  On an **A4092 with card CPLD 1.4.21 the SM bit is mandatory**: the CPLD grants the bus only with it
+  set, so a 53C710 driver that leaves it clear never gets a DMA cycle ✅ (real hardware and the CPLD's
+  logic) — see [below](#a4092-cpld-and-53c710-behaviour).
   All register **writes go to `reg + 0x40`** (the A4091 write-shadow `WRSHADOW`), reads at `reg + 0`;
   accesses are **8- or 32-bit only, never 16-bit** ✅.
 - **`a4091queue(c, cp)`** — drives **any** CDB from the caller's `sdcom` through a **table-indirect
@@ -12933,6 +13002,73 @@ reach a Z3660's memory concerned RAM autoconfigured *into* Zorro space; they do 
 CPU-local aperture 🟡. Registering the A4092 at all needed the stock-kernel fix in
 [quirks §65](../how-it-works/quirks.md#65-autocon-signed-manufacturer).
 
+**What the Zynq side sees** ✅ (real hardware, A4000D + Z3660). The Z3660's CPU RAM is cache-coherent
+on the ARM side through the Zynq's ACP port: writes by the 68060 or by a Zorro master sit as dirty lines
+in the ARM's L2. Firmware that reads memory a bus master has written must **clean and invalidate**, never
+plain-invalidate (that discards the DMA'd data), and must clean anything it wrote before a master reads
+it. The card's bus arbiter ranks **an external master above the ARM above the 68060**, so the ARM can
+take the bus from a running 060 (grant in under 1 µs) and must not issue a bus cycle while the 53C710
+may own it.
+
+### A second card, and root as a module (2026-10-18 to 2026-10-27) ✅
+
+On the same A4000D + Z3660 a **second A4092 card** passed a 22 MB read whose CRC matched with the DMA
+buffer in motherboard RAM and in Z3660 RAM, plus a 4 MiB write/verify; under the 1.1 module kernel
+(68060 line) reads through it were byte-equal to the host copy, and it carried the root filesystem
+alone and beside the Z3660's own disk ✅ (first-party record). The "one machine" caveat in the table below
+still applies: one A4000D, now two A4092 cards.
+
+### A4092 CPLD and 53C710 behaviour ✅ {#a4092-cpld-and-53c710-behaviour}
+
+Measured on real hardware with the 53C710 driven from the Z3660's ARM, and read from the CPLD logic:
+
+- **CPLD 1.4.21 gates the bus grant on `CTEST8.SM`** (the grant follows the chip's SC0 line, which SM
+  drives). Every A4092 with that CPLD needs SM set by the driver. A diagnostic that never sets SM on a
+  53C710 — the `ncr7xx` tool's DMA tests 4–7 — therefore fails on every such card without a fault.
+- The CPLD version is readable from the board's AutoConfig serial number (`01040015` = 1.4.21); the
+  card's ROM header carries manufacturer `0xD0CE`, a nibble swap of the `0xC0DE` AutoConfig id.
+- **Never read the 53C710's longword at +`0x14` while it is connected** to a target: the read pops the
+  SCSI FIFO and raises a gross error.
+- The 53C710 can raise a **selection timeout while connected** and halt SCRIPTS even with `SIEN`
+  clear; re-running the phase switch recovers. SCRIPTS should be phase-adaptive (the reference driver's
+  switch shape); straight-line scripts halt at the end of MSG OUT.
+- **Byte writes of `CTEST8.SM` and `CTEST7.CDIS` misbehave about one boot in four**: write, read back,
+  retry.
+- Rates through the A4092 to a ZuluSCSI target with an asynchronous transfer: 6.4 MB/s on the bus with
+  no OS running, 3.85 MB/s with one; the asynchronous handshake ceiling is about 5.6 MB/s, and DMA is
+  35–48× faster than programmed I/O (9–12 µs per byte). Synchronous transfers were not measured.
+
+### The A4000T's onboard 53C710 ✅ {#a4000t-onboard-53c710}
+
+The A4000T's onboard SCSI is a 53C710 with no AutoConfig ✅ (the reference AmigaOS driver's source and
+real hardware):
+
+| | A4091 / A4092 | A4000T onboard |
+|---|---|---|
+| Discovery | AutoConfig | **none**: fixed base `$DD0000` |
+| Registers | base + `0x800000` | base + **`0x40`**, written directly |
+| DIP switches | base + `0x8c0003` (byte) | base + **`0x3000`** (longword) |
+| `DCNTL` | `0x00` | **`0x20`** (EA: connect `_SLACK`/`_STERM`) |
+| Bus master | Zorro III, through Buster | **a motherboard master**, the class of the A3000's SDMAC |
+
+- **Its register window hangs any read until the A4000T ROM's own NCR driver has initialised the chip**
+  ✅ (real hardware: the first read at `$DD0000` or `$DD0040` hangs under a Kickstart without that
+  driver, and 21 of 21 reads answer once it has run). An A4000D, which has no chip there, froze on a
+  read at or near `$DD0000` too ([quirk 66](../how-it-works/quirks.md#66-local-io-read-hangs)). So a
+  probe must be gated: AGA first ([quirk 61](../how-it-works/quirks.md#61-vposr-low-nibble)), and then
+  only when the A4000T ROM is known to have initialised the chip.
+- Amix boots with its **root on the onboard 53C710** — on the 1.1 module kernel (68060 line), through
+  Kickstart's NCR `scsi.device`, 3 of 3 cold boots ✅ (one A4000T).
+- Its DMA into Z3660 memory was clean (496 MiB, no miscompare, under AmigaOS) ✅; DMA into **chip RAM**
+  with a Z3660 fitted hung or corrupted at random on the one A4000T tested, worse with larger transfers
+  🟡 (a reproduction board with open build items — possibly that board). A loader that keeps its DMA
+  buffer in fast RAM booted cleanly there.
+
+**Not with the Z3660 in 68030 mode** ✅: in its Amix 68030-emulation mode the Z3660 firmware hides the
+motherboard memory (so no memory a bus master can reach remains) and maps `$DD0000` to its emulated A3000
+SCSI, so neither the onboard 53C710 nor any other bus master can be used on that boot. The same mode makes
+Zorro III DMA impossible for the A4091/A4092 as well.
+
 ## Status
 
 | Claim | Status |
@@ -12943,6 +13079,9 @@ CPU-local aperture 🟡. Registering the A4092 at all needed the stock-kernel fi
 | Real-hardware validation of the 68030 line on a physical A3000 and A4000 + A4091 | 🟡 pending (emulation only) |
 | An A4092 on real hardware (A4000D + Z3660, 68060 kernel): registered, raw reads match a host copy of the disk, DMA into the Z3660's RAM | ✅ 2026-10-02 |
 | The same A4092: writes, root (two boots, 2026-10-03), a full install onto a disk behind it (2026-10-11) | 🟡 one machine |
+| A second A4092 card on the same machine; root on an A4092 under the 1.1 module kernel (68060 line) | ✅ 2026-10-27, one machine |
+| The A4000T onboard 53C710 as root (1.1 module kernel, 68060 line) | ✅ 2026-10-28, one machine |
+| Any bus-master DMA with the Z3660 in its 68030-emulation mode | ✅ not possible (firmware hides the reachable memory) |
 
 ## See also
 
@@ -12994,6 +13133,9 @@ CPU-local aperture 🟡. Registering the A4092 at all needed the stock-kernel fi
   above 16 MB inside the affected envelope ✅.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx`
   SCRIPTS assembler).
+- The Zorro III write-path and DMA work on an A4000D + Z3660 (first-party record, 2026-10-17 to 2026-10-19) ✅: the ACP coherence rule, the CPLD arbiter priority, the A4092 CPLD 1.4.21 `SM` gate (with the CPLD's logic), the 53C710 behaviours, the menu-route and OS-route rates.
+- The second A4092 card and the module-kernel rows (first-party record, 2026-10-26 to 2026-10-27) ✅; `amix-kerntools` CHANGELOG 2026-10-27/28 (the A4000D and A4000T metal blocks).
+- `amix-a4091` `docs/A4000T-ONBOARD-710.md` §1 (the onboard chip versus the A4091, from the reference driver's `a4091.h`, `attach.c`, `siop.c`, `ncr7xx.c`), §2 "T0 result" (the read hangs and the 21 answered reads), §10.10 (the Z3660 68030 mode) ✅.
 
 
 ================================================================================
@@ -13471,11 +13613,19 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   drops, i.e. the FS unmounted) before power-cycling.
 - 🟡 **Auto-bring-up race** — mitigated by the hardened `S99zen`, not yet stress-tested across many
   cold boots.
-- ✅ **Interrupt-driven RX is future work.** RX is polled today. A true ISR path (`z3660ethintr()`
-  wired into `int2_tbl[]`) needs a level-6 hook the firmware's INT6 model doesn't safely give Amix; it
-  is gated on a board-mod. The polled callout is correct and measured to work; interrupt RX would
-  mainly help latency/CPU. Since the October 2026 fixes it is also the throughput lever: the
-  60 Hz poll is what holds the push at about half the pull 🟡.
+- ✅ **Interrupt-driven RX exists in the 1.1 module form.** The static driver polls. The loadable
+  module (1.1, in development) can attach an INT6 receive path through the module core's interrupt
+  service: the level-6 handler only acknowledges and flags, and the drain runs at level 2. On real
+  hardware (A4000D, 68LC060) it held 3 × 2000 pings at 5 ms with 0 % loss and a 1.2–1.4 ms round trip,
+  against 11.6 ms polled, and pushed 418–489 KiB/s ✅ (2026-10-26). Polled stays the default.
+- ✅ **Arm every register access against the address-capture race.** The
+  Z3660 can deliver the second of two back-to-back accesses at (previous AND this address) 🟡 — see
+  [the SCSI driver page](z3660-scsi-driver.md#address-capture-race). In this driver the pairs lost the
+  INT6 acknowledge (a write that lands on `MODE` `0x100`, logged by the firmware as
+  `[RTG] Error mode: 255`), lost the receive strobe (one way into a receive-ring wedge), lost the
+  transmit trigger, and read the wrong half of the station MAC at attach ✅ (from the register map and
+  the firmware log). Every register access is now one `asm` block at IPL 7 with a covering read before
+  it ✅.
 - ✅ **Cache maintenance off by default** (`z3660eth_cache = 0`; the 040/060 line can turn it on at
   run time); revisit only if a future board, firmware or kernel changes the cacheability of the eth
   windows.
@@ -13560,6 +13710,7 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 - Magic numbers (✅): cdevsw major **51** (48 until 2026-07-30); board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.0.2.39`; build box `192.0.2.38`; TFTP `192.0.2.29`; station MAC
   `00:80:51:01:02:03`.
+- The INT6 receive rows and the address-capture arming (first-party record, 2026-10-26) ✅: `amix-z3660net` CHANGELOG 1.0.0-5 (every board register access armed); the A4000D module rows (polled and INT6 pings, the M-THR1 transfers).
 
 
 ================================================================================
@@ -13688,6 +13839,43 @@ instruction.
 > `completing` guard) rather than recursing a stack frame per chunk. The transaction is also now
 > bracketed at **spl6** (`908f40a`). This is the generalized **Amix HBA completion contract** — see
 > [the driver model](driver-model.md#the-amix-hbadma-driver-contract-real-hardware). ✅
+
+### The FPGA address-capture race: arm every register write {#address-capture-race}
+
+When the 68060 issues **two accesses to the Z3660's register window back to back**, the card can
+deliver the second one at the address **(previous address AND this address)** 🟡. For this mailbox
+that turns ordinary sequences into different commands ✅ (read from the register map against the
+driver's access pairs):
+
+- `P_DRVNUMX` (`0x90`) then `P_WRITE_ADDR1` (`0x240`) lands on `0x000` — the **WRITE doorbell**, with
+  the block number never written, so the data goes to the **previous request's block**;
+- `P_READ_ADDR3` (`0x28`) then `P_READ` (`0x04`) lands on `0x000` too: a **READ becomes a WRITE**
+  doorbell, and it reports GOOD.
+
+The evidence is a firmware build with a **tripwire** that counts and logs every register write the 68k
+cannot have meant (unknown or read-only registers, out-of-range values, unhandled mailbox offsets)
+together with the previous address and the AND signature: such phantom writes appear in the firmware
+logs of two A4000-class machines, and the long silences once blamed on the mailbox each begin within
+seconds of a phantom command write 🟡. A proving boot with the tripwire did not reproduce the race 🔴,
+and the FPGA-level mechanism is not confirmed 🟡. The AmigaOS `z3660_scsi.device` issues the same
+access pairs 🟡.
+
+**The driver-side rule** ✅: precede **every** register write with a read of an offset that covers it,
+in one `asm` block at IPL 7 (so no interrupt handler's access can fall between them); read each
+descriptor cell back before ringing the doorbell (one rewrite on a mismatch, then `EIO` with no
+doorbell). It costs round trips (a READ goes from 6 to 15 accesses, a WRITE from 5 to 13) and is
+cheap next to the transfer. Firmware that serves the mailbox must keep the covering reads free of side
+effects. The same rule applies to the [ethernet driver](z3660-ethernet-driver.md#known-issues-open-questions).
+
+**A second, separate race** ✅ (firmware source): the ARM could read a mailbox register from DDR before
+the FPGA's write of it had landed — rare (one recorded event, a 2 KiB write at the previous request's
+block). The project's firmware fork re-reads until two reads agree.
+
+**On a real 68060 the driver must push the data cache** ✅ (real hardware, A4000T): with the 68060's
+copyback cache on, a dirty line can be written back over data the ARM has just placed in the staging
+window. The static 040/060 kernels set the driver's cache arm at boot; a driver loaded as a module must
+set it itself from the CPU type, or it fails in ways that look like filesystem damage (`swapconf`
+`ENOTDIR`).
 
 ### The firmware's staging window ✅ {#the-mandatory-bounce-buffer}
 
@@ -13982,6 +14170,8 @@ digest tool built with the box's own `cc` ✅.
 | Firmware serial-breadcrumb lever | 🟡 asserted (no firmware citation / standalone repro) |
 | Unmapped-unit divide in stock firmware, and the driver's block-size-first guard | ✅ read in the stock firmware and driver sources; the divide's on-metal effect 🟡 unmeasured |
 | The pre-fix "hang" | ✅ proven to be a firmware-emulator bug, **not** the driver |
+| Every mailbox write armed against the address-capture race; descriptors read back | ✅ driver source and host harness (2026-10-26); the race itself 🟡 |
+| Root-class loadable module (1.1, both lines) with the 060 cache arm set at load | ✅ real hardware, 68060 line (2026-10-27) |
 | Disk **and** CD units over the mailbox, exercised without the physical board | ✅ on a **downstream** Amiberry fork's Z3660 emulation (2026-07-26): ~261 MB / 40 digest comparisons / 0 mismatches on disk; 6/6 CD files digest-identical on two cold boots. Not upstream Amiberry |
 
 ## See also
@@ -14066,6 +14256,7 @@ digest tool built with the box's own `cc` ✅.
 - The **A4000T `$DD0000` reading** (amix-kerntools; first-party record, 2026-09-24): the shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c` — the load-address phantom at `0xDD0000` sorting as card 0, the lazy first-I/O initialisation, the no-timeout busy-wait; on an A4000T that window is the onboard NCR 53C710. The stall was then measured 🟡 (one machine): amix-a4091 `docs/A4000T-ONBOARD-710.md` §2 (<https://github.com/jusii/amix-a4091>) — on an A4000T with a Z3660, a kernel without the chipset gate stalled during boot on 2 of 2 cold boots (2026-09-28), and reads of the uninitialised 710 window hang under the Z3660 (2026-10-02).
 - The **RTG driver's first metal boot** (amix-z3660rtg `DESIGN.md`, "Metal correction",
   2026-09-18; <https://github.com/jusii/amix-z3660rtg>): with `autoconfig_rtg NO` the hard-mapped combo entered the board list at its real base `0x10000000` because it advertises itself for SCSI boot 🟡.
+- The address-capture race, the tripwire firmware and the module form (first-party record, 2026-10-26/27) ✅/🟡: `amix-z3660scsi` CHANGELOG entries ZS-05 (the armed writes, the host harness with an AND-capture model) and ZS-06 (the cache arm at load); the register-value race and its re-read stopgap in the project's Z3660 firmware fork (an inventory of the fork against upstream, 2026-10-17).
 
 
 ================================================================================
