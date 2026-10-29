@@ -2,6 +2,14 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-29 — hardware (f57108e, 16422ed)
+
+a4091-53c710-driver.md: the Zynq side of Z3 DMA (ACP coherence, arbiter priority), A4092 CPLD 1.4.21 gates the bus grant
+on CTEST8.SM, 53C710 behaviours and rates, the A4000T onboard 53C710 (root 3/3 on the 1.1 k46 module kernel), no
+bus-master DMA with the Z3660 in 68030 mode. hardware.md: A4092, A4000T onboard and Gayle IDE rows and a Gayle IDE
+subsection. z3660-scsi-driver.md: the address-capture race (platform behaviour, tripwire, arm-every-write rule).
+z3660-ethernet-driver.md: INT6 receive in the 1.1 module form. Quirk 87. z3660-timings.md: scoped clock claim, campaign 1.
+
 ## 2026-10-29 — boot, quirks 76–86, the gcc14 runtime correction (69641df, f669feb)
 
 boot-process.md: what the Kickstart strap checks, the AN_BootError reset loop, loader-writer notes, CD boot through an
