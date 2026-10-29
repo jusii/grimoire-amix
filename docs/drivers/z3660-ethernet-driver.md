@@ -566,4 +566,4 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 - Magic numbers (✅): cdevsw major **51** (48 until 2026-07-30); board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.0.2.39`; build box `192.0.2.38`; TFTP `192.0.2.29`; station MAC
   `00:80:51:01:02:03`.
-- The INT6 receive rows and the address-capture arming (first-party record, 2026-10-26) ✅: `amix-z3660net` CHANGELOG 1.0.0-5 (every board register access armed); the A4000D module rows (polled and INT6 pings, the M-THR1 transfers).
+- The INT6 receive rows and the address-capture arming (first-party record, 2026-10-26) ✅: `amix-z3660net` CHANGELOG 1.0.0-5 (every board register access armed); the A4000D module rows (polled and INT6 pings, the 4 MiB FTP throughput transfers).

@@ -6,6 +6,11 @@ status: draft
 
 # Composing multi-driver kernels
 
+> **amigaux 1.1 note.** The loadable-module system in development for amigaux 1.1 replaces this
+> page's one-kernel-per-root-family answer: one kernel per CPU line, with root controllers and
+> filesystems loaded as modules ([loadable kernel modules](loadable-modules.md)). Everything below
+> applies to stock Amix and to the amigaux 1.0 kernels.
+
 Stock Amix has **no loadable kernel modules** — every driver is statically linked into the one
 monolithic kernel image ✅ (see [Kernel architecture](../how-it-works/kernel-architecture.md), which
 also notes [one third-party exception](../how-it-works/kernel-architecture.md#loadable-modules)).

@@ -96,6 +96,28 @@ do not exist or do only AmigaOS work are **wrong**.
 the "amigaunix.com pkg" attribution is unsourced 🔴; a stock box has GNU GCC 1.40.5 ✅). **As of 2026-06 a public, reproducible *cross*-toolchain also exists** —
 [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix), `m68k-cbm-sysv4-gcc` —
 closing the earlier "no public cross recipe" gap ✅; see the [toolchain](../drivers/toolchain.md) page.
+### The amigaux project's repositories (as of 2026-10-29)
+
+On 2026-10-28/29 the amigaux project moved its own code into a GitHub organisation, **`amigaux`**,
+around one monorepo ✅. What is public, and where:
+
+| Repository | What it is | Tag |
+|---|---|---|
+| [`amigaux/amix`](https://github.com/amigaux/amix) | The monorepo that is to build the whole system (MIT; marked work in progress). Today it holds `kernel/dlm` (the [loadable-module](../drivers/loadable-modules.md) loader, core, `kbootset`, ABI kit and spec) and `kernel/modules` (`monsw`, `ramdisk`) with their history kept; `toolchain/` (both cross compilers pinned by commit, a reproducible build container); `system/` (the sha256 manifest of the Commodore system files); CI (a privacy check and the host tests). Other directories hold only a README until their project moves in | ✅ |
+| [`amigaux/amix-040-060-port`](https://github.com/amigaux/amix-040-060-port) | The organisation's fork of Antti Sokero's [68040/68060 port](../how-it-works/68040-68060-status.md); its `k46-module` branch carries the module-kernel chain, and `amigaux/amix` pins a commit of it (`kernel/port/port.pin`) | ✅ |
+| `amigaux/amix-system` | Planned public home of the Commodore system files (both stock kernels, the relink kit, headers, libraries, X11, the three 2.1 floppies); not created yet — `amigaux/amix` already lists its contents by sha256 | 🔴 planned |
+| [`jusii/gcc-cross-amix`](https://github.com/jusii/gcc-cross-amix) | The fork of [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) that `amigaux/amix` pins for kernel space | ✅ |
+| [`asokero/gcc14-cross-amix`](https://github.com/asokero/gcc14-cross-amix) | Antti Sokero's GCC 14 cross compiler, the project's userland compiler ([toolchain](../drivers/toolchain.md#the-userland-compiler-gcc14-cross-amix-gcc-14)) | ✅ |
+| [`jusii/Z3660-amix`](https://github.com/jusii/Z3660-amix) | The project's fork of the Z3660 firmware ([`shanshe/Z3660`](https://github.com/shanshe/Z3660)) | ✅ |
+| [`hmlio/amix-gayle-ide`](https://github.com/hmlio/amix-gayle-ide), [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix), [`isoriano1968/paula-amix`](https://github.com/isoriano1968/paula-amix), [`reinauer/ODFileSystem`](https://github.com/reinauer/ODFileSystem) | Collaborators' projects (Gayle IDE; ZZ9000/Z3660 RTG; Paula audio; the CD filesystem `cdfs` is ported from) — they stay their authors' repositories, and the project works on forks that `amigaux/amix` is to pin by commit | ✅ |
+
+The project's own driver and package repositories (`amix-a4091`, `amix-z3660scsi`, `amix-z3660net`,
+`amix-packagemanager`, `amix-packages`, `amix-installng`, under `jusii/` on GitHub) are to move into
+`amigaux/amix` one at a time with their history; until each does, the `jusii/` repository is the
+public one, and its public copy can lag the work described on this site 🔴 (planned). The package
+repository is [pkg.amigaux.org](../how-it-works/package-repository.md), and the release site is
+[amigaux.org](https://amigaux.org) ✅.
+
 🔴 **Do not propagate:** the hydra-amix README states Amix was "later sold by Haage & Partner." This
 conflicts with the sourced history (Commodore; support ended 1993, bankruptcy 1994 — H&P is the
 AmigaOS-3.5/3.9 era, unrelated). Treat it as upstream lore, not fact. See [versions](versions.md).
@@ -264,3 +286,4 @@ so a reader (human or agent) can resolve and reproduce them:
 - WinUAE / FS-UAE documentation; BlitterStudio/amiberry issue #1376
   (<https://github.com/BlitterStudio/amiberry/issues/1376>).
 - The `llms.txt` convention — Jeremy Howard, Answer.AI, September 2024 (<https://llmstxt.org/>).
+- The amigaux repositories (2026-10-29) ✅: the GitHub API for the `amigaux` organisation and each repository listed (existence, visibility, fork parent; `amigaux/amix-system` not found); `amigaux/amix` @ `95bf2f3` `README.md`, `kernel/port/port.pin`, `toolchain/*.pin`, `kernel/drivers/README.md`, `system/README.md`.

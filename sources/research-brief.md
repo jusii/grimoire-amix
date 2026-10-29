@@ -392,3 +392,57 @@ Three sibling repos published **2026-07-03** by **isoriano1968** (Ignacio Sorian
 - ✅ **Ownership split:** the X11R6.3 repo owns any future server-side GLX extension; the Mesa repo owns the renderer, GL/GLU/GLUT libraries, demos, and client-side GLX/Xlib integration.
 
 > Cross-note for this project (the Z3660 family): the R6.3 tree's `hw/amix/rtg/<card>/` seam plus the `/dev/zz9000`-style char-framebuffer contract (SETMODE/GETFBINFO/mmap) is exactly the shape a future **Z3660 RTG** pairing would slot into — kernel driver at a free major + a new card subdir under `rtg/`. (Planning observation, not a repo fact.)
+
+## 22. The 2026-10 currency sweep — modules, toolchains, stock facts, hardware, repositories (2026-10-29) ✅/🟡/🔴
+
+Grounding index for the pages updated on 2026-10-29. Each line names the page that carries the
+detail, the tag it carries there, and its primary source. First-party records (campaign logs, bench
+rows) are cited in plain words; their hosts and run numbers are project bookkeeping.
+
+- **Loadable modules (amigaux 1.1, in development)** → `docs/drivers/loadable-modules.md`. ✅ from the
+  public `amigaux/amix` @ `95bf2f3`: `kernel/dlm/README.md`, `abi/README.md`, `abi/registry/majors`,
+  `docs/abi/writing-a-module.md`, `docs/abi/ddi.md`, `docs/spec/00-overview.md`, `70-static-floor.md`,
+  `docs/measurements/2026-10-26-{u1,u4,m-reg1-m-abi1,m-ld1-m-ld3}.md`, `core/upstream.pin` (kdedon's DLM
+  core, MIT from `b736c59`, earlier GPL-2.0); `kernel/modules/{README,monsw/README,ramdisk/README}.md`.
+  Emulator and 68060 metal status ✅ from the campaign record; 68030 metal 🔴 open; nothing released ✅
+  (`pkg.amigaux.org/catalog`, format 1, 41 rows, no kernel-space block).
+- **Kernel facts for drivers** (no spl masks level 6; STREAMS open at IPL 4; root pass at IPL 7; kmem
+  after multi-user ≤ 256 KiB on k46/128 MB and ≤ 512 KiB on k30/64 MB, `KM_SLEEP` above never
+  returns; identity map below `VSECT1`; kernel `printf` without `l`; syscall slots 64–69) ✅ — `ddi.md`,
+  the measurements above, disassembly in the campaign record.
+- **RAM**: k30 bind region > ~64 MB never starts; no kernel bound at or above `0x40000000` ✅
+  (emulation; `kernel/dlm/CHANGELOG.md` 2026-10-26) → `docs/how-it-works/ram-ceiling.md`.
+- **Majors**: c 52 monsw, c 53 kinfo, c 54 paula (static Paula 53 🟡), b 20 ramdisk replacing stock
+  `ram` ✅ → `docs/reference/major-number-registry.md`.
+- **Toolchains** → `docs/drivers/toolchain.md`. gcc14-cross-amix (Antti Sokero, MIT; `m68k-elf`, GCC
+  14.2/binutils 2.43.1): return convention (pointers `%a0`+`%d0`, structs in memory; upstream
+  `78a337a`), `-malign-int` as ABI (`sizeof(FILE)` 16), specs, `check-68060-safe.py` ✅ from the public
+  repo; upstream `main` (`58130fe`) builds its runtime `--with-cpu=68060` and is not 68881-safe ✅
+  (first-party check of an upstream build); the m68020-60 runtime and the `--68881` checker mode are the
+  project's, not public ✅; `-mno-strict-align` Dhrystone 1.60× on a 68LC060 ✅, 68040 metal 🔴. Known
+  defects (`%lld` 🔴 open, `libX11.a` `sh_link` ✅, `long double` I/O 🟡). gcc-cross-amix #7 merged
+  upstream 2026-10-19 ✅ (GitHub). Packages-port findings: `vfork` static-only ✅ / semantics 🔴,
+  `sigaltstack` present ✅ / runtime 🟡, help2man empty pages ✅, diffutils 2.8.1 `sdiff -o` ✅.
+- **System files**: patch 2a changes `sys/types.h`, `sys/socket.h`, adds `patchlevel.h`, replaces
+  `make`; the disk holds no kernel; stock kernels by sha256 (2.1 `97ae253a…`, 2.1c `80a1204f…`) ✅
+  (the patch disk's own lists; a cleanly installed 2.1c `/usr`; `amigaux/amix` `system/`) →
+  `docs/boot-disks/anatomy-patch-adf.md`, `docs/reference/versions.md`. `amigaux/amix-system` not
+  created yet 🔴.
+- **Boot** → `docs/how-it-works/boot-process.md`: strap checks `DOS` + checksum only, `UNI\0` = no
+  bootblock (96 emulated cells) ✅; AN_BootError loop behind the Z3660 ROM chain ✅ (emulation); CD boot
+  node from the A4091 ROM mounter (priority 2 for `AMIGA BOOT`/`CDTV`, no boot blocks, Rock Ridge first)
+  ✅ (`spec/10-boot-loader.md` §4.4).
+- **Quirks 76–87** → `docs/how-it-works/quirks.md` ✅ (87 🟡): stock `diff -u`; `syslogd` needs `m4`;
+  `putbuf` needs a console logger; `bcheckrc` reboots; `/stand/unix` namelist; the 2.1 `sh` read
+  buffer; 4 KiB pages vs small-block filesystems; CIA-A timer; `/dev/audio` open; OCS/ECS console;
+  swap; the Z3660 address-capture race.
+- **Hardware** → `docs/drivers/a4091-53c710-driver.md`, `docs/how-it-works/hardware.md`,
+  `docs/drivers/z3660-{scsi,ethernet}-driver.md`, `docs/how-it-works/z3660-timings.md`: Zynq ACP
+  coherence and arbiter priority ✅; A4092 CPLD 1.4.21 grants only with `CTEST8.SM` ✅; 53C710
+  behaviours ✅; A4000T onboard 53C710 (fixed `$DD0000`, window hangs until the ROM's NCR driver) ✅,
+  its chip-RAM DMA fault 🟡; no bus-master DMA with the Z3660 in 68030 mode ✅; Gayle IDE interrupt mode
+  on an A4000D ✅; INT6 receive in the z3660eth module ✅; the address-capture race 🟡 (proving boot 🔴);
+  timing campaign 1 laws ✅, row 85 under an OS 🔴; stock-table bus clocks 12.50/20.00 MHz ✅.
+- **Repositories** → `docs/reference/bibliography.md`, `docs/reference/versions.md`: the `amigaux`
+  organisation, `amigaux/amix` (work in progress), `amigaux/amix-040-060-port` ✅ (GitHub API,
+  2026-10-29); amigaux 1.1 ≠ Commodore Amix 1.1 ✅.

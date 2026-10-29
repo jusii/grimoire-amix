@@ -71,7 +71,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [The Boot-Disk Tooling Pipeline](docs/boot-disks/build-pipeline.md): inspect / extract-kernel / build-bootfloppy / unpack / build scripts.
 
 ## Reference
-- [Version Matrix](docs/reference/versions.md)
+- [Version Matrix](docs/reference/versions.md): Commodore versions 1.1 to 2.1c, the stock kernels by sha256, and why amigaux release numbers (1.0, 1.1) are not Commodore's.
 - [Device & Card Reference](docs/reference/device-list.md)
 - [Major-Number Registry](docs/reference/major-number-registry.md): every known cdevsw/bdevsw/vfssw/AutoConfig claim across the community trees — the two live collisions, the free ranges (55–67, 69; 52–54 went to the 1.1 module line), and the conventions for adding a driver.
 - [Command Cheat Sheet](docs/reference/commands-cheatsheet.md)
@@ -83,4 +83,5 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 
 ## Optional
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home): the established community wiki (end-user/install/history).
+- [amigaux/amix](https://github.com/amigaux/amix): the amigaux project's monorepo (work in progress) — kernel/dlm (loadable modules: loader, core, kbootset, ABI kit, spec) and kernel/modules today; toolchain pins; the system-file manifest. [amigaux/amix-040-060-port](https://github.com/amigaux/amix-040-060-port): the organisation's fork of the 68040/68060 port. [asokero/gcc14-cross-amix](https://github.com/asokero/gcc14-cross-amix): the GCC 14 userland cross compiler. [jusii/gcc-cross-amix](https://github.com/jusii/gcc-cross-amix): the gcc-cross-amix fork the project pins.
 - [va2000-amix](https://github.com/asokero/va2000-amix), [xrtg-amix](https://github.com/asokero/xrtg-amix), [lszorro-amix](https://github.com/asokero/lszorro-amix), [hydra-amix](https://github.com/isoriano1968/hydra-amix), [zz9000-amix](https://github.com/isoriano1968/zz9000-amix), [x11r6.3-amix](https://github.com/isoriano1968/x11r6.3-amix), [mesa-amix](https://github.com/isoriano1968/mesa-amix), [gcc-cross-amix](https://github.com/isoriano1968/gcc-cross-amix) (Linux cross-toolchain): the modern Amix driver, graphics-stack, and toolchain repos this project documents.
