@@ -468,6 +468,14 @@ new `/etc/rc2.d/S05syslogpid` holding `rm -f /etc/syslog.pid` — or change the 
 the process by name rather than trusting `kill -0`. If you edit `/etc/init.d/syslogd` itself, the
 `cp`-in-place rule above applies.
 
+### Running, yet nothing filed: `syslogd` needs `m4` ✅ {#syslogd-needs-m4}
+
+A third, independent cause: `syslogd` runs `/etc/syslog.conf` through `/usr/ccs/bin/m4`, which only the
+stock C development set ships. Without it the daemon runs, every file action is `UNUSED`, and
+`/var/log` stays empty ✅ ([quirk 77](quirks.md#77-syslogd-needs-m4)). And while no `syslogd` is
+registered as the console logger, kernel messages after boot are not kept in the message buffer
+either ([quirk 78](quirks.md#78-putbuf-needs-conslog)).
+
 ### The operational rule for anything that drives an Amix box ✅
 
 The throttle only ever fires on **automation**. Any harness that opens a fresh telnet (or FTP)
@@ -595,3 +603,4 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   The contrary behaviour is real on other image lineages 🟡 and the two must not be generalised across
   each other. Same session: `/etc/net/{ticlts,ticots,ticotsord}/hosts` confirmed as a manual rename
   step that no first-boot script performs.
+- The `syslogd`/`m4` and console-logger rows (first-party record, 2026-10-26; emulation on both kernel lines) ✅ — see [quirks 77 and 78](quirks.md#77-syslogd-needs-m4).

@@ -372,13 +372,20 @@ nothing or kills the process ✅. The toolchain's specs add `-malign-int` to eve
   with static members (`data.o` owns `__iob`), not the shared `libc.so.1` ✅. libgcc, libstdc++ and
   libamixc99 are static ✅. Sockets link dynamically by bare name; an X client needs
   `-lX11 -lsocket -lnsl` ✅.
-- **CPU:** the runtime is built `--with-cpu=m68020-60` (the `m` matters): plain `68060` made libgcc use
-  the 68040/68060-only FPU forms (`fdmove`, `fsadd`, …), which die with SIGSYS on a 68881/68882 ✅.
-  `-m68060` remains available for code that only ever runs on a 68060.
-- **`-mno-strict-align`** is upstream's default from `e8b6997` (2026-10-27): on a 68LC060 at 80 MHz it
-  measured Dhrystone 1.60× the strict build and 1.43× GCC 2.7.2.3 ✅ (first-party record); on a 68040 it
-  needs a port kernel that handles misaligned accesses across a page boundary, not yet measured on
-  68040 metal 🔴.
+- **CPU of the runtime — which build you have matters.** Upstream `main` (as of `58130fe`,
+  2026-10-29) builds libgcc and libstdc++ `--with-cpu=68060`, which keeps them off the 64-bit integer
+  forms the 68060 lacks but makes them use the **68040/68060-only FPU forms** (`fsmove`, `fdmove`,
+  `fsadd`, …): 491 such instructions in that `libgcc.a` and 123 in `libstdc++.a`, so code that reaches
+  them (`__floatundidf`, `unordered_map` rehashing) dies with **SIGSYS on a 68030 with a 68881/68882**
+  ✅ (measured on an upstream build, 2026-10-29). **Upstream `main` is therefore not 68881-safe.** The
+  amigaux project builds the runtime `--with-cpu=m68020-60` instead (the `m` matters: the 68020 set
+  and the 68881 FPU, tuned for the range), which is safe on both; that build is not public yet
+  (2026-10-29) ✅. `-m68060` remains available for code that only ever runs on a 68060.
+- **`-mno-strict-align`** is upstream's default from `e8b6997` (2026-10-27); the build the amigaux
+  packages use predates it and passes the flag explicitly ✅. On a 68LC060 at 80 MHz it measured
+  Dhrystone 1.60× the strict build and 1.43× GCC 2.7.2.3 ✅ (first-party record); on a 68040 it needs
+  a port kernel that handles misaligned accesses across a page boundary, not yet measured on 68040
+  metal 🔴.
 - **Predefines:** `-D__amix__ -D__amix -Damix`; implicit *function* declarations stay errors (only
   implicit `int` is relaxed) ✅. Defining `SVR4` as well sends some autoconf code (make's
   `getloadavg`) down a kmem route; the project's package line leaves it out ✅.
@@ -388,9 +395,10 @@ nothing or kills the process ✅. The toolchain's specs add `-malign-int` to eve
 The 68060 dropped the 64-bit `mul`/`div` forms, and libgcc's 64-bit divide compiled for a 68020 uses
 them; without an integer-support handler in the kernel, any 64-bit division *by a variable* kills the
 process ✅. `tools/check-68060-safe.py` decodes instruction **encodings** (objdump names `divul`/`divull`
-backwards), flags the 64-bit forms, with `--68881` also the 040/060-only FPU forms, reads ELF files,
-archives and listings, and reports a disassembly that lost sync at a label as untrustworthy (exit 3)
-rather than clean ✅. `cas2` traps on the 68060 at any alignment; GCC 14 does not emit it ✅.
+backwards) and flags the 64-bit forms; it reads ELF files, archives and listings, and reports a
+disassembly that lost sync at a label as untrustworthy rather than clean ✅. The project's build adds a
+`--68881` mode that also flags the 040/060-only FPU forms, which upstream's checker does not look for
+(as of `58130fe`) ✅ — so a runtime upstream's checker passes can still trap on a 68030 + 68881. `cas2` traps on the 68060 at any alignment; GCC 14 does not emit it ✅.
 
 ### Known defects and workarounds
 
@@ -589,3 +597,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The project's system-files inventory (first-party record, 2026-10-29) ✅: the patch disk's `replace.list`/`modify.list`/`changes`, compared with `/usr` read from a cleanly installed 2.1c system and with the kernel-work sysroot; the kit rebuilt both ways on both lines.
 - The amix-packages diffutils 2.8.1 port (first-party record, 2026-10-29) ✅: `recipes/diffutils/build.sh` and `recipes/make/build.sh` (the `vfork` pin), the emulated 68030 rows (the `sdiff -o` exit, the empty help2man pages), `nm` and header reads of the sysroot (`sigaltstack`).
 - [isoriano1968/gcc-cross-amix #7](https://github.com/isoriano1968/gcc-cross-amix/pull/7) (the wrapper fixes, opened 2026-10-13, merged 2026-10-19 as `959c17f`; state read with `gh` on 2026-10-29) ✅.
+- The upstream-runtime FPU check (first-party record, 2026-10-29) ✅: an upstream `58130fe` build checked with the project's `check-68060-safe.py --68881` (68060-safe for integer forms; 614 FPU instructions in 040/060-only forms across libgcc and libstdc++); upstream's `README.md` ("defaults to `--with-cpu=68060`") and `toolchain/build-cross.sh` at that commit.

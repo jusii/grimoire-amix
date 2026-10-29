@@ -42,6 +42,59 @@ The bootstrap's responsibilities:
 - Locate the compressed kernel image (string `unix.` ✅).
 - Verify the kernel's checksum, decompress it into RAM, and transfer control.
 
+### What the Kickstart strap actually checks ✅ {#what-the-strap-checks}
+
+Measured with bootblocks that each differ from a good one in a single field, on Kickstart 3.1 and
+3.2.x, from DF0 and from an RDB `UNI\0` partition behind four controllers (A3000 WD, Gayle IDE, an
+A4091 on a 68030 and on a 68060) — the same result in every column ✅ (emulation; 96 cells):
+
+| Bootblock change | Strap |
+|---|---|
+| magic `DOS\1` (any fourth byte) | accepts — only the three bytes `DOS` are checked |
+| magic `UNI\0` (the Amix partition's own DosType) or `BAD\0` | refuses: treated as **no bootblock** |
+| checksum off by one | refuses |
+| third longword 0 | accepts — not checked |
+| last longword (the trailer) 0 | accepts — not checked by the strap (the A3000 SuperKickstart path reads it) |
+
+On refusal, a **disk partition** gets Kickstart's insert-disk screen; **DF0** is skipped and the next
+boot node is tried ✅. Holding **both mouse buttons** from reset opens Kickstart's early-startup boot
+menu; a lone left button does nothing in the stock chain ✅. The Z3660's own boot ROM has not been
+measured this way yet 🔴.
+
+**A bootblock that returns failure.** Behind the Z3660 boot ROM chain, Kickstart raises
+`AN_BootError` and resets the machine about every 14 s instead of trying the next node ✅ (emulation).
+A reset loop like that is unkind to a real 68060 (warm resets are not clean-state resets: [quirk 49](quirks.md#49-power-cycle-law)) 🟡, so a loader should
+stop and print rather than return to the strap.
+
+**Notes for loader writers** ✅ (emulation):
+- After a floppy change, `trackdisk.device` serves its **cached track** of the previous disk unless
+  the reader issues `CMD_CLEAR` and waits for `TD_CHANGENUM` to move: a naive re-read of block 0 sees
+  "volume 1" for ever.
+- Code running from chip RAM on a 25 MHz 68030 competes with the display for the chip bus: an
+  inflate loop ran about 7× slower and CRC-32 about 25× slower than the same code in fast RAM 🟡
+  (emulator chip-bus timing is approximate). For scale, the stock 1.0 LZW boot floppy took 31 s from
+  reset to the kernel's first prompt on a cycle-exact 25 MHz A3000 model ✅.
+- The 1992 console programs only OCS/ECS display registers. A loader that opened an AGA screen must
+  put `FMODE`, `BPLCON3`, `BPLCON4` and the copper list back to their power-on state before the kernel
+  starts, or the Amix console comes up garbled on an AGA machine ✅ ([quirk 85](quirks.md#85-console-ocs-ecs-only)).
+
+### Booting from CD through an A4091/A4092 boot ROM ✅ {#cd-boot-a4091-rom}
+
+An A4091/A4092 boot ROM that carries a CD filesystem (the project's ROM builds include ODFileSystem;
+whether a given release ROM has one must be checked) gives an **ISO9660 data disc** a boot node of
+priority 2 when its System Identifier is `AMIGA BOOT` or `CDTV`, otherwise −1 ✅ (ROM mounter source).
+That node has **no boot blocks** (`de_BootBlocks` 0) and the CD filesystem's DosType (`CD01`/`CDVD`),
+so Kickstart boots **AmigaDOS from the disc** and runs its `S/Startup-Sequence`; no bootblock ever runs
+✅. The ROM takes its RDB path only for a disc with no ISO9660 descriptor ✅. The ROM's filesystem
+prefers Rock Ridge names, then Joliet, then plain ISO9660, and a file without an owner-execute mode
+gets no execute bit, so AmigaDOS refuses to run it ✅. An installed disk at boot priority 2 ties with
+the disc and wins; pick the CD from the early-startup menu ✅ (emulation).
+
+That is how the amigaux 1.1 install CD boots Amix: the startup-sequence runs the project's second-stage
+loader built as an AmigaDOS program, which loads the kernel and a compressed miniroot as plain files and
+takes the machine over; AmigaOS is the carrier for about two seconds ✅ (emulation; see [loadable kernel
+modules](../drivers/loadable-modules.md)). A machine without such a ROM boots the floppy pair instead.
+
 ## Kernel decompression and checksum verification
 
 The on-medium kernel is **compressed and checksummed**; the bootstrap decompresses it at boot time rather than loading a flat executable ✅. We have since reverse-engineered the exact format: the kernel is a **standard Unix `compress` (`.Z`, LZW `-b16`) stream at offset `0x2800`** that decompresses to a **1,171,200-byte m68k ELF** ✅, and the checksum is a **16-bit folded sum whose mismatch is *non-fatal*** (the bootstrap warns and boots anyway) ✅. Full method, evidence, and the rebuild recipe: [Reverse-Engineering the Boot Floppy](../boot-disks/reverse-engineering-boot-adf.md). The diagnostic strings embedded in `amix_21_boot.adf` map the steps one-to-one:
@@ -357,6 +410,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 
 ## See also
 
+- [Loadable kernel modules](../drivers/loadable-modules.md) — the 1.1 loader that reads generations, and its CD and floppy paths.
 - [Anatomy of the boot ADF](../boot-disks/anatomy-boot-adf.md) — byte-level dissection of `amix_21_boot.adf`.
 - [Filesystems and disks](filesystems-and-disks.md) — RDB, s5 vs UFS, swap, and the full partition story.
 - [Kernel architecture](kernel-architecture.md) — the monolithic SVR4 kernel, HAT/MMU layer, switch tables.
@@ -395,3 +449,4 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
 - The **RAM-ceiling measurements** (first-party record, 2026-08-12/14) ✅ — root-filesystem selection is by probe, not by configuration: the Amiga port ships `rootfstype` **empty** (AT&T generic says `s5`), `vfs_mountroot` walks `vfssw[]`, `s5mountroot` returns `EINVAL` politely so the walk continues, and `ufs` sits at `vfssw[2]` in every kernel including the install kernels. Same source for the `cdfs` errno de-laundering that makes the old `errno 5` probe stale; the 🟡 no-media `errno 25` value is a single live probe (first-party record, 2026-08-14/15), carried unchanged. Cross-checked against the `vfs_mountroot` disassembly recorded on [building a kernel](../drivers/kernel-build.md).
 - The **Installer-NG** install work (first-party record, 2026-07-22/24; [amix-installng](https://github.com/jusii/amix-installng)) — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The bootblock-strap measurement and the loader's failure path: [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/docs/measurements/2026-10-26-m-ld1-m-ld3.md` (96 emulated cells, Kickstart 3.1 and 3.2.x) ✅; the CD-boot node facts: `kernel/dlm/docs/spec/10-boot-loader.md` §4.4, read from the A4091 ROM's mounter source (`3rdparty/mounter/mounter.c` in the a4091-software tree) ✅; the trackdisk cache, the chip-RAM timings, the 31 s LZW reference, the AGA display state and the AN_BootError loop: `kernel/dlm/CHANGELOG.md` 2026-10-25 entries and the kernel-module campaign (first-party record, 2026-10-25) ✅.

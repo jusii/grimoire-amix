@@ -88,6 +88,17 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 73 | **Amiberry builds before upstream commit `845af02` corrupt Amix data in the 68030 MMU's "more compatible" mode** (`cpu_compatible=true`) — a misaligned `MOVES` was not split across a page boundary, and Amix copies between kernel and user space with `MOVES`. On an older build set `cpu_compatible=false`. Third-party report, not reproduced here | 🟡 | [Quirks §73](#73-amiberry-moves-page-boundary), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
 | 74 | **Without an FPU the stock 68030 kernel boots, then panics at the first signal** — the boot probe prints `no fpu detected` and carries on, but `sendsig` is the one caller of the FP-state routines that never checks `fpu_present`: its FRESTORE (kernel text `0x12A`) takes a Line-F fault in supervisor mode, in `init`, seconds after boot. Triage rule: *`no fpu detected`, then a kernel fault in pid 1 at load base + `0x12A`, vector `0xB`* = the card has no FPU — not the disk driver, Kickstart or RAM | ✅ | [Quirks §74](#74-no-fpu-signal-panic), [Hardware](hardware.md#cpu-mmu-fpu-all-three-mandatory) |
 | 75 | **Inbound TCP bursts lose every segment past the third, and nothing counts it** — the stock kernel's `ipintr` frees a datagram when TCP's lower read queue is full, and that queue's high-water mark is 4096 bytes, so the 4th full segment of any batch IP processes in one pass is dropped. Signature: push ≪ pull, hundreds of sender retransmissions, `netstat -s` IP total a few hundred above TCP total, every error counter 0. Fix: `tcpm_info[3].mi_hiwat` `0x1000` → `0x4000` (one long word) | ✅ | [Quirks §75](#75-tcp-lower-read-queue-4k), [Networking](networking.md#tcp-lower-read-queue) |
+| 76 | **Stock `diff` has no unified format** — `/usr/bin/diff -u` answers `diff: invalid option -u`; only `-c` exists. The stock `public` package's `/usr/public/bin/patch` (patch level 12u4) *does* apply unified diffs | ✅ | [Quirks §76](#76-stock-diff-no-u), [Cheat sheet](../reference/commands-cheatsheet.md) |
+| 77 | **`syslogd` pipes `/etc/syslog.conf` through `/usr/ccs/bin/m4`, which only the C development set ships** — without it every file action is `UNUSED` and nothing is logged, while the log driver works. Install the development set (or m4 alone) before trusting an empty log | ✅ | [Quirks §77](#77-syslogd-needs-m4), [Networking](networking.md) |
+| 78 | **After boot, kernel `printf` lines are kept in the message buffer only when a console logger is registered** (`syslogd`'s `I_CONSLOG`) — otherwise they go to the console device and are kept nowhere | ✅ | [Quirks §78](#78-putbuf-needs-conslog) |
+| 79 | **Stock `bcheckrc` always reboots after `fsck` repairs the root** (`*** REBOOTING SYSTEM ***`) — a root that never stays clean reboots for ever; boot counters and "try once" logic must allow for it | ✅ | [Quirks §79](#79-bcheckrc-reboots) |
+| 80 | **`netstat`, `ifconfig` and `crash` read kernel symbols from `/stand/unix`, never from `/unix`**, and there is no `/dev/ksyms` — a box whose `/stand/unix` is not the running kernel prints wrong addresses or `no namelist` | ✅ | [Quirks §80](#80-namelist-stand-unix) |
+| 81 | **The 2.1 Bourne shell's `read` keeps its own buffer across `exec <file`** — a second `exec <file; read` continues where the first stopped; and a `while read` loop strips trailing blanks. Use one redirection per pass (`while read …; done < file`) | ✅ | [Quirks §81](#81-sh-read-buffer) |
+| 82 | **The 4 KiB-page (68040/68060) kernels and small-block filesystems**: stock `mkfs` refuses ufs blocks under 4 KiB on both lines, a crafted 2 KiB-block ufs panics the 040/060 kernel at first file access (`ufs_getapage bad bsize`; the 030 kernel handles it), and s5 is broken on 4 KiB pages (bus errors in `ls`) | ✅ | [Quirks §82](#82-4k-page-small-blocks) |
+| 83 | **Kickstart leaves the CIA-A timer running when Amix starts** and nothing in Amix stops it: it raises an ignored interrupt about every 92 ms, and a driver that wants that timer must stop and reprogram it rather than treat "running" as "owned" | ✅ | [Quirks §83](#83-cia-a-timer-left-running) |
+| 84 | **The stock `/dev/audio` open spins at level 4 with no timeout** waiting for the sound chip's interrupt — a silent chip (an emulator with sound output off) freezes the whole box | ✅ | [Quirks §84](#84-audio-open-no-timeout) |
+| 85 | **The 1992 console programs only OCS/ECS display registers** — AGA state left behind by whatever ran before the kernel (`FMODE`, `BPLCON3`, `BPLCON4`, the copper list) garbles the Amix console on an AGA machine | ✅ | [Quirks §85](#85-console-ocs-ecs-only), [Boot process](boot-process.md#what-the-strap-checks) |
+| 86 | **Swap is not optional in the stock kernel** — with no swap device the first `fork` panics, and `swapconf` panics (`lookupname failed - error 2`) when the configured swap node does not exist; a RAM-rooted medium points swap at `/dev/fakeswap` (block 19,0, the stock dummy disk) | ✅ | [Quirks §86](#86-swap-not-optional) |
 
 The rest of this page expands each item.
 
@@ -610,6 +621,19 @@ problem as [§53](#53-unimplemented-integer-vector) is a plausible family, not a
 tools from a scratch directory such as `/tmp`, so a crash cannot leave a core file in `/`. See
 [package management](package-management.md).
 
+### 82. 4 KiB pages and small-block filesystems ✅ {#82-4k-page-small-blocks}
+
+The 68040/68060 kernels use 4 KiB pages; the stock 68030 kernel 2 KiB ✅. Three consequences:
+
+- **Stock `mkfs` refuses ufs block sizes under 4 KiB** on both lines ✅, so a normal ufs is safe on
+  either kernel.
+- A ufs with **2 KiB blocks** (only a modified `mkfs` can make one) mounts on the 040/060 kernel and
+  **panics it at the first file access** (`ufs_getapage bad bsize`) ✅; the 030 kernel handles the same
+  disk fully. The panic is inherited (a 060 kernel with ufs built in does the same), not caused by any
+  later change ✅ (emulation). A mount-time refusal is being added to the 040/060 kernel 🔴.
+- **s5 is broken on 4 KiB pages**: an s5 root on the 040/060 kernel bus-errors in ordinary commands
+  (`ls -l`) ✅ (emulation). Use ufs on the 040/060 line.
+
 ## Diagnostics & logging quirks
 
 ### 24. `syslogd` is present, correct, and deliberately switched off ✅
@@ -856,6 +880,36 @@ only that the low addresses echo.
 
 Withdrawn 2026-10-04 (bench evidence practice, not an Amix fact).
 
+### 77. `syslogd` needs `m4`, which only the development set ships ✅ {#77-syslogd-needs-m4}
+
+The stock `syslogd` runs `/etc/syslog.conf` through `/usr/ccs/bin/m4` before parsing it ✅. On an
+installation without `m4` the daemon starts, `sh: /usr/ccs/bin/m4: not found` goes by, and **every
+file action in the configuration is `UNUSED`**: the log driver delivers messages and nothing is
+written ✅. `m4` is part of the stock C development set (Cdev) and nothing else ships it ✅; a minimal
+installation without that set has the same hole 🟡. Together with the vendor `exit`
+([§24](#24-syslogd-is-present-correct-and-deliberately-switched-off)) and the stale pid file
+([networking](networking.md#syslogd-stale-pid)), that is three independent reasons for an empty
+`/var/log`.
+
+### 78. Kernel messages after boot reach the message buffer only through a console logger ✅ {#78-putbuf-needs-conslog}
+
+Once the kernel finishes booting it sets its print destination to the buffer path (`prt_where`
+0x2). From then on a kernel `printf` line is stored in the message ring (`putbuf`) **only through the
+console logger** — the log driver's copy for a process that registered with `I_CONSLOG`, which is what
+`syslogd` does ✅. With no logger registered (`conslogging` 0), every run-time kernel line goes to the
+console device by `putchar` and is kept nowhere ✅ (read from the kernels' print code, identical on the
+030 and 040/060 lines, and shown on both in emulation). Diagnose a driver on a box without `syslogd`
+from the console, not from the ring.
+
+### 80. The kernel namelist is `/stand/unix`, not `/unix` ✅ {#80-namelist-stand-unix}
+
+`netstat`, `ifconfig` (`no namelist /stand/unix` when it is missing) and `crash` compile in
+**`/stand/unix`** as their symbol file; `ps` reads no kernel file; nothing reads `/unix`; there is no
+`/dev/ksyms` ✅. They look up addresses by name in that file and read them through `/dev/kmem`, so if
+`/stand/unix` is not the kernel that is running — a relinked kernel booted from elsewhere, or a hard
+link left pointing at the stock kernel — they read the wrong addresses silently ✅. Keep `/stand/unix`
+the booted kernel's bound image.
+
 ## Driver-authoring quirks
 
 ### 15. An un-enumerated board silently never runs ✅
@@ -953,6 +1007,11 @@ The Z3660 SCSI driver does exactly this since 2026-10-02 (raw `dd` of a CD unit 
 A4000T) ✅. Kernels without the fix still hang on a raw read of a Z3660 CD unit; mount it with `cdfs`
 instead.
 
+The same 512-byte assumption shows on an **ATAPI** unit behind the Gayle IDE driver: stock `dd.c` puts
+its 512-byte block numbers into `READ(10)`, so `dd bs=2048` of a CD asks for LBA 4N and keeps the first
+2 KiB of each 8 KiB — every fourth block ✅ (emulation). Check a CD's contents with `mount -F cdfs`,
+not with `dd`.
+
 ### 65. Stock `autocon()` can never match a board whose manufacturer id is ≥ `0x8000` ✅ {#65-autocon-signed-manufacturer}
 
 A driver asks `autocon()` for its board by a 32-bit id, manufacturer in the high half and product in
@@ -1007,6 +1066,31 @@ to its length byte, so `fssm_Device` for `foo.device` has length 11 with the NUL
 loader or mount tool that walks `eb_MountList` and matches `fssm_Device` against a driver's
 `ln_Name` over the counted length reads one byte past that name's NUL, so it must stop at the first
 NUL instead. Layout, offsets and ROM evidence: [boot process](boot-process.md#fssm-device-nul).
+
+### 83. Kickstart leaves the CIA-A timer running ✅ {#83-cia-a-timer-left-running}
+
+Kickstart's `timer.device` leaves a CIA-A timer running when Amix takes the machine, and no Amix code
+stops it ✅. Under Amix it raises an interrupt about every 92 ms that nothing handles, until some driver
+reprograms the timer ✅. A driver that uses that timer (the Paula audio driver does) must stop and
+reprogram it at first open; one that refuses to open because the timer "is already running, so someone
+owns it" refuses every time ✅ (both kernel lines, emulation). Chained level-2 handlers cannot see the
+CIA-A interrupt-control bits for this timer 🟡.
+
+### 84. The stock `/dev/audio` open waits for the sound chip with interrupts blocked and no timeout ✅ {#84-audio-open-no-timeout}
+
+The stock audio driver's open starts the sound chip and then spins **at level 4, with no timeout**,
+for an interrupt from it ✅ (disassembly; Commodore's own comment there says a timeout should be added).
+On a machine where that interrupt never comes — an emulator with its sound output off, or a faulty
+chip — the first `/dev/audio` open freezes the box: network, console and all ✅ (emulation). On real
+hardware the chip answers 🟡. Give emulators sound output when you test audio.
+
+### 85. The 1992 console programs only OCS/ECS display registers ✅ {#85-console-ocs-ecs-only}
+
+The Amix console sets up the display through the OCS/ECS registers only ✅. Whatever ran before the
+kernel and left AGA state behind — fetch mode in `FMODE`, `BPLCON3`/`BPLCON4`, a copper list — leaves
+the Amix console garbled on an AGA machine (an A4000 with a boot loader that opened an Intuition
+screen, for one) ✅ (emulation; A4091 + 68060 row). A boot loader must restore a null copper list and
+those registers' power-on values before it starts the kernel. Related: [§61](#61-vposr-low-nibble).
 
 ## Emulation & bench quirks
 
@@ -1207,6 +1291,40 @@ of computing a negative remainder. With it, 600/640/900/992/1024 MB roots all au
 whole-disk read past the end returns `I/O error` instead of sleeping. Until a kernel carries the fix,
 keep an on-box-authored root at or below 1 234 567 blocks.
 
+### 76. Stock `diff` has no unified format; the stock `patch` reads one ✅ {#76-stock-diff-no-u}
+
+`/usr/bin/diff -u a b` answers `diff: invalid option -u` — the 1992 `diff` has context diffs (`-c`)
+only ✅. The stock `public` package's `/usr/public/bin/patch` (Larry Wall's, patch level 12u4) applies a
+unified diff correctly: a four-hunk diff of a 2000-line file reproduced the target byte for byte ✅
+(both on an emulated stock 2.1c). To produce unified diffs on the box, install a GNU diffutils.
+
+### 79. `bcheckrc` always reboots after repairing the root ✅ {#79-bcheckrc-reboots}
+
+The stock `/etc/bcheckrc` runs `fsck -y` on a dirty root and, whenever `fsck` repaired anything,
+**always** reboots (`*** REBOOTING SYSTEM ***`) ✅ (stock script, and emulation). A root that keeps
+coming up dirty therefore reboots in a loop, and anything that counts boots — a "boot the new kernel
+once, fall back if it does not reach multi-user" scheme — sees each repair as a failed boot unless it
+is told otherwise.
+
+### 81. The 2.1 shell's `read` keeps its buffer across `exec <file` ✅ {#81-sh-read-buffer}
+
+On the Amix 2.1 (1991) Bourne shell, `read` keeps its own input buffer, and a later `exec <file` does
+not reset it: a second `exec <file` followed by `read` continues where the first pass stopped instead
+of at the top of the file ✅. `IFS` and `set -f` make no difference ✅. `while read …; done < file` and
+`read line < file` behave correctly ✅. A script that reads a file twice through `exec <` and rewrites it
+from what it read can empty it — `inittab` included. Separately, a `while read` loop strips trailing
+blanks from each line ✅ (both on the real 2.1 `sh`). Rule: one redirection per pass. See also
+[§12](#12-binsh-is-pre-posix).
+
+### 86. Swap is not optional, and its node must exist ✅ {#86-swap-not-optional}
+
+With no swap device added, the stock kernel's anonymous-memory reservation refuses every request and
+**the first `fork` panics** ✅. With the default swap name configured and the node missing from `/dev`,
+the stock `swapconf` panics at boot (`swapconf lookupname failed - error 2`) ✅. A medium that roots on a
+RAM disk and has no swap slice points swap at `/dev/fakeswap` — block major 19, minor 0, the stock
+dummy disk, on which every I/O fails and nothing is paged — and the installer adds a real slice later
+with `swap -a` ✅ (emulation, both kernel lines).
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -1387,3 +1505,4 @@ keep an on-box-authored root at or below 1 234 567 blocks.
 - The **stock `installf` crash on the 68060** (2026-10-03) 🟡 — an installer acceptance cell in an emulator run of the 68060 kernel: `installf -f core` → `User BUS ERROR at 4AFC0002`, a core in `/`, the entry left with `?` fields; `/usr/apkg/bin/installf -f core` on the same system → exit 0 and the kernel's true checksum; the installer's first-boot step switched to APKG's `installf`, run from `/tmp` (first-party record, 2026-10-03). The engine builds (1.12.3 shipped in 1.0; the July 2026 1.12.0 build killed by 64-bit divides on a 68060 kernel before 1.0) are from the amigaux 1.0 release notes ([amix-installng](https://github.com/jusii/amix-installng) `docs/release-notes-amigaux-1.0.md`, "The package engine: 1.12.3 replaces 1.12.0 on the 68060") ✅.
 - The **A4091 driver's real-hardware scope** — the [amix-a4091](https://github.com/jusii/amix-a4091) README's status table: the A4092 on the 68060 line (A4000D + Z3660) with its root filesystem ✅, the A4091 board and the 68030 line still pending on real hardware 🟡 (quirk 3).
 - The **`AF_UNIX` memory-pressure corruption and the Amiberry `MOVES` page-boundary defect** 🟡 — third-party reports from [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) (`docs/findings.md`; the reproducer `test/sockstress.c`), not reproduced here; the Amiberry fix is upstream commit [`845af02`](https://github.com/BlitterStudio/amiberry/commit/845af02) (quirks 72, 73).
+- Quirks 76–86 (first-party record, 2026-10-25 to 2026-10-29) ✅: the kernel-module campaign's emulator rows on both kernel lines and the stock-script and disassembly reads behind them — the `syslogd`/`m4` row, the `putbuf`/`conslogging` read of the kernels' print code, the stock `bcheckrc`, the namelist probe, the 2.1 `sh` construct probes on the miniroot shell, the ufs/s5 page-size rows, the Paula timer and `/dev/audio` diagnosis, the AGA console row, the `swapconf` and `fakeswap` rows ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/CHANGELOG.md`, 2026-10-25 to 2026-10-28); the diffutils 2.8.1 port's rows on an emulated stock 2.1c (`diff -u`, `patch`); the Gayle IDE driver's ATAPI `dd` row (`amix-gayle-ide` CHANGELOG, 1.1.0-2).
