@@ -82,6 +82,19 @@ OWN RISK") and requires `uid=0(root)`. The mechanics of that self-extracting flo
 script, the `070701` cpio archive, the bundled `lha` and `apply`) are documented in detail on
 [the patch floppy anatomy page](../boot-disks/anatomy-patch-adf.md).
 
+**2.1c has no vendor kernel bytes** ✅. The patch disk ships no kernel; 2.1c is relinked on the
+machine when the patches are applied, so every 2.1c `stand/unix` is one machine's link, and two
+correct 2.1c kernels can differ. The two stock kernels the amigaux build uses, by hash ✅:
+
+| Kernel | sha256 | Size | Note |
+|---|---|---|---|
+| retail 2.1 `stand/unix` | `97ae253aa85799cdc95dcba9c777d5fa3e07d8765f00677d38f45346bfc16e2d` | 1,475,108 B | as shipped |
+| 2.1c `stand/unix` | `80a1204f4ec422f3c785fe646f3dc48be4fcb72c9c4b552018b6236be52aa098` | 1,475,144 B, ELF relocatable | one installed system's link; the one the amigaux build and the 68040/68060 port's patch offsets use |
+
+The port's upstream pins a different, equally valid 2.1c link (`7d26cb6f…`) 🟡. Both kernels, the
+installed `usr/` tree and the three 2.1 floppies are listed by sha256 in `amigaux/amix`
+`system/MANIFEST.sha256`, for the planned public `amigaux/amix-system` repository ✅.
+
 **Why the version check matters for this matrix:** the `^2\.1` pattern is positive evidence that the
 *patched* system still reports a `2.1`-prefixed version string — consistent with "2.1c" being a 2.1
 sub-revision, and with there being **no separate 2.2** to match against. ✅
@@ -158,3 +171,4 @@ you are realistically going to meet today.
   installers on [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
 - The disputed "2.1c, 1994" listing originates from the Gunkies wiki; the "2.2" string has no primary
   source (brief §1, §13).
+- The stock kernel hashes (sha256 of the files, 2026-10-29; the project's system-files inventory, first-party record) ✅; [`amigaux/amix`](https://github.com/amigaux/amix) `system/README.md` and `system/MANIFEST.sha256` ✅.

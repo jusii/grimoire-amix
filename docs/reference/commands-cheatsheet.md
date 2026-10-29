@@ -285,6 +285,12 @@ you're on:
 uname -svrm     # e.g. m68k release/version fields used by the patch's uname -v check
 ```
 
+**Diffs and patches ✅.** Stock `/usr/bin/diff` has **no unified format**: `diff -u a b` answers
+`diff: invalid option -u`; it has `-c` (context) only ✅. The stock `public` package's
+`/usr/public/bin/patch` (Larry Wall's patch, patch level 12u4) **does apply unified diffs** and
+reproduced a 2000-line target byte for byte from a four-hunk unified diff ✅. To *make* unified diffs
+on the box, install an add-on GNU diffutils.
+
 **Non-standard tape drives 🟡/✅.** The kernel only supports specific tapes (A3070 QIC-150 and
 similar). `viper_kludge` (Frank "Crash" Edwards), shipped on `root.adf` ✅, patches kernel memory
 so an **Archive Viper 2150S** works — but its README **warns it is incompatible with
@@ -332,3 +338,4 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 - The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
 - The **amix-packagemanager** repo tooling (`tools/repo/publish.sh`, `gen-catalog.py`) — the HTTP package-repo `pkgs/`-segment URL layout, verified live 2026-07-22 ✅.
+- The diff/patch rows: measured on an emulated stock 2.1c 68030 during the amix-packages diffutils 2.8.1 port, 2026-10-29 (first-party record) ✅.

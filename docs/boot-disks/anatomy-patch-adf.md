@@ -177,9 +177,29 @@ The mechanism, in order ✅/🟡:
 4. **`changes`** records what each step does (changelog), so the patch is auditable ✅ (name).
 
 Because the patch can both add new files and *delete* existing ones, and because it carries its own
-decompressor, it is effectively a tiny package format layered on top of cpio. The
-[2.1c kernel](../reference/versions.md) and the inet/NFS fixes arrive through `archive.lha` this
-way ✅.
+decompressor, it is effectively a tiny package format layered on top of cpio. The inet/NFS fixes
+and the replaced `/usr/sys` kernel objects arrive through `archive.lha` this way ✅. **The disk holds no
+kernel:** the [2.1c kernel](../reference/versions.md#21-patch-2a-and-kernel-21c) is relinked on the
+machine from the patched `/usr/sys` when the patches are applied, so every 2.1c `stand/unix` is one
+machine's link ✅.
+
+### What patch 2a changes in `/usr/include` and `/usr/ccs` ✅ {#what-patch-2a-changes-in-usrinclude-and-usrccs}
+
+The lists are small: `replace.list` names 103 files, `modify.list` 13, `delete.list` 16 ✅. Outside
+`/usr/sys`, the ones a developer meets are ✅:
+
+| File | List | `changes` says | What differs |
+|---|---|---|---|
+| `usr/include/sys/types.h` | replace | "added missing close-comment" | a `Patchlevel: types.h_1.2` comment; the comment after the `#endif` of the `_KERNEL \|\| !_POSIX_SOURCE` block is now closed |
+| `usr/include/sys/socket.h` | replace | — | the comment on the `AF_OSI` line is now closed |
+| `usr/include/patchlevel.h` | modify | "new, records current patchlevel" | new; defines `PATCHLEVEL 2a` |
+| `usr/ccs/bin/make` | replace | "correction concerning long filenames" | 42,720 bytes after the patch, 60,848 before |
+
+Nothing else under `usr/include` differs between a pre-patch and a cleanly installed 2.1c system ✅.
+In `/usr/sys` the patch replaces 15 files and deletes three objects (`amiga/driver/aen/aen.o`,
+`amiga/driver/aen/exp`, `master.d/kernel.o`), which the on-box relink then rebuilds ✅. So a cross
+sysroot is "2.1c" only if its headers are too — see [the toolchain's sysroot
+note](../drivers/toolchain.md#the-sysroot-patch-level-matters).
 
 ## Why this disk is the model for custom add-on disks
 
@@ -245,5 +265,6 @@ dd if=amix_21_patch.adf bs=1k skip=1 2>/dev/null | cpio -itv
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the 103-member `archive.cpio` inside the patch disk's `archive.lha` carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - `amix_21_patch.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) and a `newc`-cpio header walk (offsets, modes, sizes reproduced locally), plus `lha l` of `archive.lha` and `cpio -it` of the `archive.cpio` inside it (one LHA member, 103 cpio members) — SHA-256 `674f3ac6…0060fdfe` in `sources/CHECKSUMS.txt`.
 - Master research brief, [§10 "Boot / root / patch disk anatomy"](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) and §1 version matrix (`^2\.1.* 08004..$` gate, 2.1p2a / kernel 2.1c).
+- The patch disk's own `replace.list`, `modify.list`, `delete.list` and `changes`, unpacked read-only, compared file by file with `/usr` read from a cleanly installed 2.1c system and with a pre-patch header set (the project's system-files inventory, first-party record, 2026-10-29) ✅; amix `system/README.md` (the patch disk holds no kernel) ✅.
 - Verbatim 1 KB header script captured from the image (`dd … bs=1 count=1024 | strings`).
 - amigaunix.com patch-disk page and the [archive.org Amix collection](https://archive.org/details/commodore-amiga-operating-systems-amix) (image provenance; not redistributed here).
