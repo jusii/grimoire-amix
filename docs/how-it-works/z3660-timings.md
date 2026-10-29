@@ -101,13 +101,50 @@ and the validation must be redone from scratch.
 ## A measured clock envelope: one A4000D card, 80 MHz the only stable rung 🟡
 
 The firmware prints its realised clock tree on every boot. Read the values off that printout, not
-the preset label 🟡. The `cpufreq` presets 50 and 80 MHz realise the same 25.00 MHz bus clock; the
-presets in between dip below it, to values like 17.50 and 15.00 MHz 🟡. On a measured card,
+the preset label 🟡. On that card's **customised** clock table the `cpufreq` presets 50 and 80 MHz
+realised the same 25.00 MHz bus clock and the presets in between dipped below it, to values like
+17.50 and 15.00 MHz 🟡. The **stock** table gives other bus clocks for the same presets — 12.50 MHz at
+50 and 20.00 MHz at 80 ✅ (the firmware's printout, campaign below) — so a preset number says nothing
+about the bus clock without the table it indexes. On a measured card,
 stability followed the realised bus clock rather than the nominal CPU MHz, and 50 MHz still failed
 for a different reason: hitting 25.00 MHz exactly is necessary, not sufficient — the
 [motherboard-25 MHz edge](#the-derived-clock-law-and-the-one-hard-edge) seen from the failure side 🟡.
 The same printout gives the ARM part's maximum as 866.667 MHz, against an in-spec default of
 666.667 MHz 🟡. Clock rows are per-unit: **re-measure on yours** before quoting any envelope.
+
+## Campaign 1: two cards measured row by row (2026-10-22/23) ✅ {#campaign-1}
+
+Both cards (one in an A4000D with a 68LC060, one in an A4000T with a full 68060) were scanned row by
+row from the **stock** `default_timings.txt`, phase by phase, under emulation and on the real CPU ✅:
+
+- **The two cards share no usable set of rows.** Row 80's CPU-clock window is centred at 257° on one
+  card and 182° on the other. The real 68060 found windows at rows 55–90 and 100 on the first card (none
+  at 50 or 95), and only rows 50, 70, 75 and 80 usable on the second (55–65, 95 and 100 run away).
+- **Shipped values sit close to a window edge** — within 0–10° on several rows.
+- **Under an OS, a clean scan is not enough.** On the first card a tuned row 80 ran an hour of AmigaOS
+  and an hour of Amix; row 85 hung both, although every memory path and the register path scanned
+  clean 🔴 (cause open). Switching between rows 80 and 70 twenty times under a running AmigaOS worked ✅.
+
+Method laws that hold for any such scan ✅:
+
+1. **A failing step can leave the board faulty, and the fault looks like timing**: motherboard-RAM
+   errors persist until an Amiga reset, a run that ends on a failing step poisons the next one, and the
+   AutoConfig path can stay broken until a power cycle. Reset after **every** failing step.
+2. **The 360° trap**: under emulation, a phase whose sum with the emulation extra is exactly 360 fails
+   repeatably; the real 68060 accepts 0. Never write a phase that sums to 360.
+3. **The 90° CPU-clock → CLK90 offset is a convention**, not a requirement: on one card 60–270° all
+   passed, and the conventional 90° sat 30° from the edge.
+4. **ARM speed did not move the windows**: 667 and 1000 MHz gave identical windows, emulated and real.
+   (That is a statement about timing windows only; the read-path corruption below was seen at 1100.)
+5. **No temperature shift was measurable**, and the only sensor, the Zynq die, reaches about 45 °C
+   within 90 s of power-on, so it is no board thermometer.
+6. **Gary never turns an unanswered motherboard read into a bus error**, whichever timeout bits are
+   written: it ends the cycle with its timeout and wrong data.
+7. **An ARM bus request parks the 68060 safely** while the clocks change (20 of 20 on both cards).
+
+Two oddities, seen on both machines 🟡: the first power-on after a 25–30 min off-hold stalls in memory
+sizing, and one more power cycle cures it; and about one boot in five stalls at `Done processing
+hunks.` before the hand-off to the 68060.
 
 ## An out-of-spec ARM clock corrupts the 060 to Zynq kernel read path ✅ {#arm-overclock-read-path}
 
@@ -230,3 +267,4 @@ timings file without a named unit is an unlabelled key.**
   that localises the fault to Kickstart's early chipset init; and the single-variable ARM-module swap.
   Card identities, image names and checksums are project bookkeeping and are deliberately not
   reproduced here.
+- The timing campaign on two cards (first-party record, 2026-10-22 to 2026-10-25) ✅: per-row scans from the stock `default_timings.txt` under emulation and on the real 68060, the firmware's realised clock printouts (bus 12.50 MHz at preset 50, 20.00 MHz at 80), the method findings, the OS hours on the tuned file, the bus-parking rows. Card serials, hosts and session logs are project bookkeeping and are not reproduced here.

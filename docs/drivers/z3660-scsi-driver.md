@@ -121,6 +121,43 @@ instruction.
 > bracketed at **spl6** (`908f40a`). This is the generalized **Amix HBA completion contract** — see
 > [the driver model](driver-model.md#the-amix-hbadma-driver-contract-real-hardware). ✅
 
+### The FPGA address-capture race: arm every register write {#address-capture-race}
+
+When the 68060 issues **two accesses to the Z3660's register window back to back**, the card can
+deliver the second one at the address **(previous address AND this address)** 🟡. For this mailbox
+that turns ordinary sequences into different commands ✅ (read from the register map against the
+driver's access pairs):
+
+- `P_DRVNUMX` (`0x90`) then `P_WRITE_ADDR1` (`0x240`) lands on `0x000` — the **WRITE doorbell**, with
+  the block number never written, so the data goes to the **previous request's block**;
+- `P_READ_ADDR3` (`0x28`) then `P_READ` (`0x04`) lands on `0x000` too: a **READ becomes a WRITE**
+  doorbell, and it reports GOOD.
+
+The evidence is a firmware build with a **tripwire** that counts and logs every register write the 68k
+cannot have meant (unknown or read-only registers, out-of-range values, unhandled mailbox offsets)
+together with the previous address and the AND signature: such phantom writes appear in the firmware
+logs of two A4000-class machines, and the long silences once blamed on the mailbox each begin within
+seconds of a phantom command write 🟡. A proving boot with the tripwire did not reproduce the race 🔴,
+and the FPGA-level mechanism is not confirmed 🟡. The AmigaOS `z3660_scsi.device` issues the same
+access pairs 🟡.
+
+**The driver-side rule** ✅: precede **every** register write with a read of an offset that covers it,
+in one `asm` block at IPL 7 (so no interrupt handler's access can fall between them); read each
+descriptor cell back before ringing the doorbell (one rewrite on a mismatch, then `EIO` with no
+doorbell). It costs round trips (a READ goes from 6 to 15 accesses, a WRITE from 5 to 13) and is
+cheap next to the transfer. Firmware that serves the mailbox must keep the covering reads free of side
+effects. The same rule applies to the [ethernet driver](z3660-ethernet-driver.md#known-issues-open-questions).
+
+**A second, separate race** ✅ (firmware source): the ARM could read a mailbox register from DDR before
+the FPGA's write of it had landed — rare (one recorded event, a 2 KiB write at the previous request's
+block). The project's firmware fork re-reads until two reads agree.
+
+**On a real 68060 the driver must push the data cache** ✅ (real hardware, A4000T): with the 68060's
+copyback cache on, a dirty line can be written back over data the ARM has just placed in the staging
+window. The static 040/060 kernels set the driver's cache arm at boot; a driver loaded as a module must
+set it itself from the CPU type, or it fails in ways that look like filesystem damage (`swapconf`
+`ENOTDIR`).
+
 ### The firmware's staging window ✅ {#the-mandatory-bounce-buffer}
 
 The 64 KB window at `board_base + 0x80000` (`BOUNCE_OFFSET`) is the **firmware's own staging area**
@@ -414,6 +451,8 @@ digest tool built with the box's own `cc` ✅.
 | Firmware serial-breadcrumb lever | 🟡 asserted (no firmware citation / standalone repro) |
 | Unmapped-unit divide in stock firmware, and the driver's block-size-first guard | ✅ read in the stock firmware and driver sources; the divide's on-metal effect 🟡 unmeasured |
 | The pre-fix "hang" | ✅ proven to be a firmware-emulator bug, **not** the driver |
+| Every mailbox write armed against the address-capture race; descriptors read back | ✅ driver source and host harness (2026-10-26); the race itself 🟡 |
+| Root-class loadable module (1.1, both lines) with the 060 cache arm set at load | ✅ real hardware, 68060 line (2026-10-27) |
 | Disk **and** CD units over the mailbox, exercised without the physical board | ✅ on a **downstream** Amiberry fork's Z3660 emulation (2026-07-26): ~261 MB / 40 digest comparisons / 0 mismatches on disk; 6/6 CD files digest-identical on two cold boots. Not upstream Amiberry |
 
 ## See also
@@ -498,3 +537,4 @@ digest tool built with the box's own `cc` ✅.
 - The **A4000T `$DD0000` reading** (amix-kerntools; first-party record, 2026-09-24): the shipped 060 kernel's unstripped `autocon()` disassembly plus the stock `support.c`/`sd.c`/`a3091.c` — the load-address phantom at `0xDD0000` sorting as card 0, the lazy first-I/O initialisation, the no-timeout busy-wait; on an A4000T that window is the onboard NCR 53C710. The stall was then measured 🟡 (one machine): amix-a4091 `docs/A4000T-ONBOARD-710.md` §2 (<https://github.com/jusii/amix-a4091>) — on an A4000T with a Z3660, a kernel without the chipset gate stalled during boot on 2 of 2 cold boots (2026-09-28), and reads of the uninitialised 710 window hang under the Z3660 (2026-10-02).
 - The **RTG driver's first metal boot** (amix-z3660rtg `DESIGN.md`, "Metal correction",
   2026-09-18; <https://github.com/jusii/amix-z3660rtg>): with `autoconfig_rtg NO` the hard-mapped combo entered the board list at its real base `0x10000000` because it advertises itself for SCSI boot 🟡.
+- The address-capture race, the tripwire firmware and the module form (first-party record, 2026-10-26/27) ✅/🟡: `amix-z3660scsi` CHANGELOG entries ZS-05 (the armed writes, the host harness with an AND-capture model) and ZS-06 (the cache arm at load); the register-value race and its re-read stopgap in the project's Z3660 firmware fork (an inventory of the fork against upstream, 2026-10-17).

@@ -469,11 +469,19 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
   drops, i.e. the FS unmounted) before power-cycling.
 - 🟡 **Auto-bring-up race** — mitigated by the hardened `S99zen`, not yet stress-tested across many
   cold boots.
-- ✅ **Interrupt-driven RX is future work.** RX is polled today. A true ISR path (`z3660ethintr()`
-  wired into `int2_tbl[]`) needs a level-6 hook the firmware's INT6 model doesn't safely give Amix; it
-  is gated on a board-mod. The polled callout is correct and measured to work; interrupt RX would
-  mainly help latency/CPU. Since the October 2026 fixes it is also the throughput lever: the
-  60 Hz poll is what holds the push at about half the pull 🟡.
+- ✅ **Interrupt-driven RX exists in the 1.1 module form.** The static driver polls. The loadable
+  module (1.1, in development) can attach an INT6 receive path through the module core's interrupt
+  service: the level-6 handler only acknowledges and flags, and the drain runs at level 2. On real
+  hardware (A4000D, 68LC060) it held 3 × 2000 pings at 5 ms with 0 % loss and a 1.2–1.4 ms round trip,
+  against 11.6 ms polled, and pushed 418–489 KiB/s ✅ (2026-10-26). Polled stays the default.
+- ✅ **Arm every register access against the address-capture race.** The
+  Z3660 can deliver the second of two back-to-back accesses at (previous AND this address) 🟡 — see
+  [the SCSI driver page](z3660-scsi-driver.md#address-capture-race). In this driver the pairs lost the
+  INT6 acknowledge (a write that lands on `MODE` `0x100`, logged by the firmware as
+  `[RTG] Error mode: 255`), lost the receive strobe (one way into a receive-ring wedge), lost the
+  transmit trigger, and read the wrong half of the station MAC at attach ✅ (from the register map and
+  the firmware log). Every register access is now one `asm` block at IPL 7 with a covering read before
+  it ✅.
 - ✅ **Cache maintenance off by default** (`z3660eth_cache = 0`; the 040/060 line can turn it on at
   run time); revisit only if a future board, firmware or kernel changes the cacheability of the eth
   windows.
@@ -558,3 +566,4 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 - Magic numbers (✅): cdevsw major **51** (48 until 2026-07-30); board autocon `0x144B0001`; fixed combo base `0x10000000`;
   iface `zen0` @ `192.0.2.39`; build box `192.0.2.38`; TFTP `192.0.2.29`; station MAC
   `00:80:51:01:02:03`.
+- The INT6 receive rows and the address-capture arming (first-party record, 2026-10-26) ✅: `amix-z3660net` CHANGELOG 1.0.0-5 (every board register access armed); the A4000D module rows (polled and INT6 pings, the M-THR1 transfers).

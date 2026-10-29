@@ -99,6 +99,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 84 | **The stock `/dev/audio` open spins at level 4 with no timeout** waiting for the sound chip's interrupt — a silent chip (an emulator with sound output off) freezes the whole box | ✅ | [Quirks §84](#84-audio-open-no-timeout) |
 | 85 | **The 1992 console programs only OCS/ECS display registers** — AGA state left behind by whatever ran before the kernel (`FMODE`, `BPLCON3`, `BPLCON4`, the copper list) garbles the Amix console on an AGA machine | ✅ | [Quirks §85](#85-console-ocs-ecs-only), [Boot process](boot-process.md#what-the-strap-checks) |
 | 86 | **Swap is not optional in the stock kernel** — with no swap device the first `fork` panics, and `swapconf` panics (`lookupname failed - error 2`) when the configured swap node does not exist; a RAM-rooted medium points swap at `/dev/fakeswap` (block 19,0, the stock dummy disk) | ✅ | [Quirks §86](#86-swap-not-optional) |
+| 87 | **On the Z3660, the second of two back-to-back register accesses can land at (previous address AND this address)** — a mailbox write becomes a different command (a WRITE doorbell to the previous block; a READ turned WRITE that reports GOOD), an interrupt acknowledge is lost. Precede every register write with a covering read, in one block at IPL 7 | 🟡 | [Quirks §87](#87-z3660-address-capture), [Z3660 SCSI driver](../drivers/z3660-scsi-driver.md#address-capture-race) |
 
 The rest of this page expands each item.
 
@@ -363,6 +364,18 @@ registers through the same data port and read the first back, so an open bus (wh
 to the *last* write) cannot pass ✅. Full source and rationale on
 [Zorro autoconfig](../drivers/zorro-autoconfig.md); the anti-alias readback is the reference design
 for [any board probe](../drivers/kernel-composition.md). Decode the chipset id by its low nibble ([§61](#61-vposr-low-nibble)).
+
+
+### 87. Z3660: back-to-back register accesses can land at (previous AND this address) 🟡 {#87-z3660-address-capture}
+
+When the 68060 makes two accesses to the Z3660's register window back to back, the card can deliver
+the second at the bitwise AND of the two addresses 🟡 (phantom writes with exactly that signature,
+counted by a tripwire firmware build on two A4000-class machines; the FPGA mechanism is not confirmed,
+and a proving boot did not reproduce it 🔴). For the piscsi mailbox and the ethernet registers this
+turns ordinary access pairs into other commands ✅ (read from the register map). The defensive rule
+costs little: read an offset that covers the target immediately before each write, in one `asm`
+block at IPL 7, and read descriptors back before a doorbell ✅. Details and the affected pairs: [the
+Z3660 SCSI driver](../drivers/z3660-scsi-driver.md#address-capture-race).
 
 ## Networking quirks
 
