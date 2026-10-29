@@ -44,6 +44,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 - [The Amix Device-Driver Model](docs/drivers/driver-model.md): major/minor, cdevsw/bdevsw switch tables.
 - [Building & Installing a Kernel](docs/drivers/kernel-build.md): /usr/sys, kernel.c, make, make bootpart.
 - [Composing Multi-Driver Kernels](docs/drivers/kernel-composition.md): why one kernel per root-storage family beats a universal all-drivers image — SDCARDS=2, the card-0 address sort vs the compiled-in rootdev, probe safety, the driver admission checklist, and the whole-kernel-package delivery path.
+- [Loadable Kernel Modules (amigaux 1.1, in development)](docs/drivers/loadable-modules.md): the module system being built for 1.1 in amigaux/amix (own boot loader, MIT DLM core, kbootset generations, the ABI kit and kabi rule, root/boot/demand classes, the static floor, safe mode), the kernel facts every driver author needs (no spl masks level 6, STREAMS opens at level 4, the kmem budget per line, board windows, DMA calls), and what is proven where as of 2026-10-29.
 - [Reverse-engineering the prebuilt kernel](docs/drivers/kernel-reverse-engineering.md): disassembling the source-free /usr/sys/*/exp objects + reading globals from a savestate; worked on the mount(2)/vfssw fstype path (an errno-22 from `mount -F <fs>` = fstype not live in the booted kernel).
 - [Writing a Character Driver](docs/drivers/writing-a-char-driver.md): the Ditto par.c walkthrough.
 - [Writing a STREAMS/DLPI Driver](docs/drivers/writing-a-streams-driver.md): network drivers via hydra.
@@ -72,7 +73,7 @@ For the full corpus in one file, see [llms-full.txt](llms-full.txt).
 ## Reference
 - [Version Matrix](docs/reference/versions.md)
 - [Device & Card Reference](docs/reference/device-list.md)
-- [Major-Number Registry](docs/reference/major-number-registry.md): every known cdevsw/bdevsw/vfssw/AutoConfig claim across the community trees — the two live collisions, the free ranges (51–67, 69), and the conventions for adding a driver.
+- [Major-Number Registry](docs/reference/major-number-registry.md): every known cdevsw/bdevsw/vfssw/AutoConfig claim across the community trees — the two live collisions, the free ranges (55–67, 69; 52–54 went to the 1.1 module line), and the conventions for adding a driver.
 - [Command Cheat Sheet](docs/reference/commands-cheatsheet.md)
 - [Bibliography & Sources](docs/reference/bibliography.md)
 

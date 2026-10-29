@@ -23,10 +23,18 @@ This is the same picture the [Ditto driver paper](../reference/bibliography.md) 
 ### Loadable modules: none in stock Amix {#loadable-modules}
 
 Stock Amix 2.1 and every kernel the 1.0 release ships are monolithic: nothing can be loaded into a
-running kernel, and every page on this site that adds a driver assumes that model ✅. A third-party
-kit has since built a loadable-module facility (a subset of the UnixWare module format) into its own
-kernels; it runs under emulation only, is GPL-2 licensed and is not part of any shipped Amix kernel 🟡
-(third-party report, 2026-10, not reproduced here).
+running kernel, and every page on this site that adds a driver assumes that model ✅.
+
+Two loadable-module efforts exist outside the stock system:
+
+- The **ashnazag** project (kdedon; one SVR4 kernel for 68k Mac, Atari and Amiga) built a
+  loadable-module core (DLM) into its own kernels 🟡. Its earlier commits are GPL-2.0; from
+  2026-10-14 the DLM core is MIT-licensed ✅ (`amigaux/amix` `kernel/dlm/core/upstream.pin`).
+- The **amigaux 1.1** release is building loadable modules for Amix itself, on both CPU lines, with
+  its own boot loader and a patch queue on that MIT core. It runs in emulation and on real 68060
+  hardware but is not released (2026-10-29) ✅. See [loadable kernel modules](../drivers/loadable-modules.md).
+
+Until 1.1 ships, the static model on this page and on the driver pages is the one that applies.
 
 ## The kernel as object libraries in /usr/sys
 
@@ -90,6 +98,7 @@ The layout of the kernel heap allocator was recovered by full disassembly of `km
 - `kmem_alloc` returns **≥ 16-aligned** pointers. A "returned" pointer that is `0 mod 2048` but not `8 mod 16` relative to its wrapper cannot have come from the allocator — a handy alignment argument when a theory needs disproving. ✅
 - **`kmem_free` writes `[next][prev]` freelist links into a freed chunk's first 8 bytes**, so use-after-free / wild-free corruption characteristically shows **pointer-shaped values at a block's head**. ✅
 - **The DMA hazard (the important one):** a `> 4096`-byte allocation is virtually contiguous but **physically scattered** — `segkmem_alloc` pops arbitrary frames off `page_freelist` and maps them at consecutive virtual addresses with no physical adjacency. So `vtop()` on such a buffer is valid for **exactly one page** (`NBPP = 2048` on the stock 030 kernel; 4096 on the 040/060 kernels), and any single DMA transfer that crosses a page boundary lands its tail in a **different, unrelated physical frame**. This is the mechanism behind the cdfs wild-write corruption; the driver-side rule (page-align every DMA target, guard `(va & (NBPP-1)) + nbyte > NBPP`) is on [the driver model → DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary). ✅
+- **How much a large request can get.** Requests above a page come out of the fixed 4 MiB kernel map that `page[]` and the u-areas share, so a box with more RAM has *less* room: after multi-user the largest single `KM_NOSLEEP` request was 256 KiB on a 128 MB 040/060 kernel and 512 KiB on a 64 MB 030 kernel, and a `KM_SLEEP` request above that never returns ✅ (emulator). The full table is on [loadable kernel modules → kernel memory](../drivers/loadable-modules.md#kernel-memory-what-a-module-can-get).
 
 ## SVR4 networking: STREAMS, TLI, sockets
 
@@ -131,3 +140,4 @@ One userland gotcha worth flagging at the kernel/system level: Amix's `/bin/sh` 
 - AT&T SVR4 *DDI/DKI Reference Manual* and *STREAMS Programmer's Guide* (the standard SVR4 substrate cited by the Ditto paper).
 - The 040/060 scope of the CPU, FPU and page-size facts: [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `include-modelb/sys/immu.h` (`NBPP` 4096, `PNUMSHFT` 12) ✅; the [040/060 status page](68040-68060-status.md) (the port, the 68LC060 software-FPU lane) ✅; the [amigaux.org downloads](https://amigaux.org/downloads/) page (the 1.0 68060 media for an A3000, A4000 or A4000T with a Z3660) ✅.
 - The kmem-allocator map (buddy pools / `sptalloc` whole-page scatter; `vtop()` valid for one page; freelist links in a freed chunk's first 8 bytes) — full disassembly of `kmem_alloc`/`kmem_free`/`kmem_allocbpool`/`sptalloc`/`segkmem_alloc`/`page_get` in the shipped kernel, and the DMA-scatter corruption reproduced on a real A4000 + Z3660, from the **amix-cdfs** port @ `31e8c3b` (`NBPP = 2048` per `sys/immu.h`). ✅ See [the driver model DMA-alignment contract](../drivers/driver-model.md#the-dma-alignment-contract-a-vtopd-buffer-must-not-cross-a-page-boundary).
+- The loadable-module facts (2026-10-29): [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/README.md`, `kernel/dlm/core/upstream.pin` (kdedon's DLM core, MIT from upstream `b736c59`, 2026-10-14; earlier commits GPL-2.0) ✅; the ashnazag project itself, <https://github.com/kdedon/ashnazag> 🟡 (not reproduced here).

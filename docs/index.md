@@ -82,6 +82,7 @@ is plain Markdown with stable headings, exact commands, and inline source-confid
 [Driver model](drivers/driver-model.md) ·
 [Kernel build](drivers/kernel-build.md) ·
 [Multi-driver kernels](drivers/kernel-composition.md) ·
+[Loadable modules (1.1)](drivers/loadable-modules.md) ·
 [Reverse-engineering the kernel](drivers/kernel-reverse-engineering.md) ·
 [Char driver](drivers/writing-a-char-driver.md) ·
 [STREAMS driver](drivers/writing-a-streams-driver.md) ·

@@ -40,6 +40,7 @@ order=(
   docs/drivers/driver-model.md
   docs/drivers/kernel-build.md
   docs/drivers/kernel-composition.md
+  docs/drivers/loadable-modules.md
   docs/drivers/kernel-reverse-engineering.md
   docs/drivers/writing-a-char-driver.md
   docs/drivers/writing-a-streams-driver.md

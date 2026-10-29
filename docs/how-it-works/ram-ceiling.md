@@ -148,6 +148,16 @@ On real hardware, on a kernel whose arena had been moved (except where the row s
 | **≈151 MB** | **End stop** — a further page-table extent bound in the root map; nothing beyond it was reached | ✅ |
 | **528 MB** | Fatal, in exactly the way described above | ✅ |
 
+**On the 1.1 module kernels (emulation, 2026-10-26)** ✅: the stock bind code puts a 68030 kernel
+into the largest non-chip region with no address limit, and a k30 kernel whose bind region exceeds
+about 64 MB never starts (a 128 MB bank fails, 64 MB works); the project's new boot loader therefore
+caps a k30 kernel at 64 MiB. A kernel of either line bound at or above `0x40000000` (Zorro III
+expansion RAM) never starts either: the kernels identity-map only the low 1 GiB and keep `syssegs` and
+the `sptalloc` arena at virtual `0x40040000`–`0x40440000`, so the stock bind code's lack of an address
+limit is a trap on any box with Zorro III RAM, and the new loader binds only below it. The k46 (68040/68060) kernel
+passes at 128 MB. What is left of the arena for drivers once the box runs is on [loadable kernel
+modules → kernel memory](../drivers/loadable-modules.md#kernel-memory-what-a-module-can-get).
+
 The 88 MB row is what supersedes the old text. This page used to say **"nothing between 32 MB and
 512 MB has ever been booted"** and that the boundary had never been bisected. On a **stock** kernel
 that remains true. On a kernel with the arena moved it is not: 88 MB is a durable, networked
@@ -294,6 +304,7 @@ offset**, and validated each step by booting a real A4000 rather than an emulato
 
 ## Sources
 
+- The 1.1 module-kernel bind rows (emulation, 2026-10-26) ✅: [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/CHANGELOG.md`, entries "boot2: a k30 kernel gets at most 64 MiB of fast memory; Z3 RAM is never kernel memory" and "boot2 binds the kernel only below 0x40000000"; the kmem figures in `kernel/dlm/docs/measurements/2026-10-26-u1.md` and `2026-10-26-u4.md`.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)).
 - `sources/research-brief.md` §2 (hardware envelope: 4–16 MB Fast RAM) and §4 (kernel HAT/MMU, RAM
   ceiling) — grounding for the 16 MB figure, now tagged 🟡 and retracted as a ceiling (2026-09-15).

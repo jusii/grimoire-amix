@@ -42,7 +42,7 @@ The cross-tree claim map outgrew this page. **[The Major-Number Registry](major-
 now carries every known `cdevsw[]`/`bdevsw[]`/`vfssw[]`/AutoConfig claim across the community trees —
 including the live collision (stock `mx` vs `hydra` at char 47; the `z3660eth`-vs-unpublished-`random`
 collision at char 48 was **resolved** when `z3660eth` moved to 51 on 2026-07-30), the free ranges
-(52–67, 69; `CDEVSIZE` = 70 so nothing above 69 exists), and the
+(55–67, 69, after the 1.1 module registry took 52–54; `CDEVSIZE` = 70 so nothing above 69 exists), and the
 conventions for adding a driver ✅. Pick your slot there.
 
 ### Minor-number encoding for the SCSI disk (major 18)
