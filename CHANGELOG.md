@@ -2,6 +2,15 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-29 — toolchains and system files (0f1fbfd, 41f0bb6)
+
+toolchain.md: a gcc14-cross-amix section (userland only; m68k-elf; AMIX's return convention; -malign-int as ABI; specs
+and link line; the m68020-60 runtime; -mno-strict-align; check-68060-safe.py; known defects), which compiler for which
+code, the sysroot's patch level, vfork/sigaltstack/help2man/sdiff -o, gcc-cross-amix #7 merged 2026-10-19.
+anatomy-patch-adf.md: the patch disk holds no kernel; the four files outside /usr/sys patch 2a changes. versions.md: 2.1c
+has no vendor kernel bytes; sha256 of the retail 2.1 and 2.1c stand/unix. commands-cheatsheet.md: stock diff has no -u,
+/usr/public/bin/patch applies unified diffs.
+
 ## 2026-10-29 — loadable modules page (3e2a9eb, 456e254)
 
 New page drivers/loadable-modules.md from amigaux/amix kernel/dlm and kernel/modules @ 95bf2f3: status (emulator on both
