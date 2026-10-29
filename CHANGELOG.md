@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-29 — quirks 88–89 and porting notes (e4b4f07, 8e9ed98)
+
+Quirk 88: stock sed drops a final line with no newline. Quirk 89: libc.so.1's TZ parser writes into the TZ string in place,
+so putenv() of a string literal crashes the next time conversion. toolchain.md: a porting section (absent functions,
+exported-but-undeclared ones, static-only members, -include in CFLAGS breaks autoconf probes).
+
 ## 2026-10-29 — RAM per CPU line (c407def, 12db4bf)
 
 The ≈128 MB describable-RAM limit is a property of the 4 KiB-page 040/060 kernel line, not of the 68060: the 68040 and
