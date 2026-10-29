@@ -2,6 +2,14 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-29 — boot, quirks 76–86, the gcc14 runtime correction (69641df, f669feb)
+
+boot-process.md: what the Kickstart strap checks, the AN_BootError reset loop, loader-writer notes, CD boot through an
+A4091/A4092 ROM. Quirks 76–86: stock diff without -u, syslogd needs m4, putbuf, bcheckrc reboots after a root repair,
+/stand/unix namelist users, sh read buffer across exec, 4 KiB pages vs small-block filesystems, the running CIA-A timer,
+/dev/audio open without timeout, OCS/ECS-only console, swap not optional. Quirk 63: ATAPI dd bs=2048. toolchain.md:
+upstream gcc14 at 58130fe builds a 68060-only runtime (not 68881-safe); the m68020-60 runtime is the project's build.
+
 ## 2026-10-29 — toolchains and system files (0f1fbfd, 41f0bb6)
 
 toolchain.md: a gcc14-cross-amix section (userland only; m68k-elf; AMIX's return convention; -malign-int as ABI; specs
