@@ -988,7 +988,8 @@ Two independent walls, either one sufficient:
   `0d8af1c0…`; the same MMU-off code is the first of the two reasons the stock hard-disk loader
   cannot load an 040 kernel). The port's own loader, `unix_boot040`, runs from AmigaOS instead.
 - **The full root filesystem does not fit.** s5 is unsupported on the 040/060 kernels (the port's
-  open list above 🟡; the problem is structural under their 4 KiB pages), so an install miniroot for
+  open list above 🟡; the problem is structural under their 4 KiB pages: an s5 root bus-errors in
+  ordinary commands ✅, [quirk 82](quirks.md#82-4k-page-small-blocks)), so an install miniroot for
   them must be UFS. A UFS miniroot carrying the full install toolset needs 957,440 bytes (≈935 KiB)
   under stock `mkfs_ufs` geometry — **56,320 bytes over** an 880 KiB (901,120-byte) DD disk. Leaving
   out six tools the 040/060 install path never runs (three s5 tools, two tape-installer helpers and
@@ -999,7 +1000,9 @@ Both walls belong to the stock media, not to the CPU: a floppy route needs a loa
 68030 MMU code and a trimmed miniroot. The project has built one — a 68060 boot floppy paired with
 that trimmed 880-block UFS root floppy, which booted, installed from CD and cold-booted the result
 in the emulator install matrix (2026-10-03) ✅ — but it is not part of the amigaux 1.0 kit, which
-lists the floppy (Gotek) route on the 68060 line as planned for 1.1. The 1.0 kit installs a Z3660
+lists the floppy (Gotek) route on the 68060 line as planned for 1.1. The 1.1 work boots a floppy
+pair on both lines with the project's own loader, in emulation so far ✅
+([loadable kernel modules](../drivers/loadable-modules.md)). The 1.0 kit installs a Z3660
 with a real 68060 from a ready-made card or from CD ([below](#if-you-have-an-040060-machine-today));
 otherwise an 040/060 install starts from a prepared hard-disk image or RDB slice.
 
@@ -1118,6 +1121,7 @@ through `/usr/apkg/bin/…` and treat the stock `pkgadd`/`pkgrm`/`installf`/`rem
   `CHANGELOG.md` (2026-10-02: no 68060-trapping 64-bit multiplies left in the kernel object, scan
   40 → 0) and `platform/amix-kernel/README.md` ("No 32x32->64 multiply in the object"); the mount
   stress on a real 68060 behind an A4092 (first-party record, 2026-10-11) 🟡.
+- The 1.1 floppy pair and the k46 s5 row: [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/CHANGELOG.md` (2026-10-25 "L11" floppy-change entries; 2026-10-27 s5 on the 4 KiB-page line) ✅.
 
 
 ================================================================================
@@ -1167,6 +1171,59 @@ The bootstrap's responsibilities:
 - Identify and read the boot volume (string `Load boot volume %d` ✅).
 - Locate the compressed kernel image (string `unix.` ✅).
 - Verify the kernel's checksum, decompress it into RAM, and transfer control.
+
+### What the Kickstart strap actually checks ✅ {#what-the-strap-checks}
+
+Measured with bootblocks that each differ from a good one in a single field, on Kickstart 3.1 and
+3.2.x, from DF0 and from an RDB `UNI\0` partition behind four controllers (A3000 WD, Gayle IDE, an
+A4091 on a 68030 and on a 68060) — the same result in every column ✅ (emulation; 96 cells):
+
+| Bootblock change | Strap |
+|---|---|
+| magic `DOS\1` (any fourth byte) | accepts — only the three bytes `DOS` are checked |
+| magic `UNI\0` (the Amix partition's own DosType) or `BAD\0` | refuses: treated as **no bootblock** |
+| checksum off by one | refuses |
+| third longword 0 | accepts — not checked |
+| last longword (the trailer) 0 | accepts — not checked by the strap (the A3000 SuperKickstart path reads it) |
+
+On refusal, a **disk partition** gets Kickstart's insert-disk screen; **DF0** is skipped and the next
+boot node is tried ✅. Holding **both mouse buttons** from reset opens Kickstart's early-startup boot
+menu; a lone left button does nothing in the stock chain ✅. The Z3660's own boot ROM has not been
+measured this way yet 🔴.
+
+**A bootblock that returns failure.** Behind the Z3660 boot ROM chain, Kickstart raises
+`AN_BootError` and resets the machine about every 14 s instead of trying the next node ✅ (emulation).
+A reset loop like that is unkind to a real 68060 (warm resets are not clean-state resets: [quirk 49](quirks.md#49-power-cycle-law)) 🟡, so a loader should
+stop and print rather than return to the strap.
+
+**Notes for loader writers** ✅ (emulation):
+- After a floppy change, `trackdisk.device` serves its **cached track** of the previous disk unless
+  the reader issues `CMD_CLEAR` and waits for `TD_CHANGENUM` to move: a naive re-read of block 0 sees
+  "volume 1" for ever.
+- Code running from chip RAM on a 25 MHz 68030 competes with the display for the chip bus: an
+  inflate loop ran about 7× slower and CRC-32 about 25× slower than the same code in fast RAM 🟡
+  (emulator chip-bus timing is approximate). For scale, the stock 1.0 LZW boot floppy took 31 s from
+  reset to the kernel's first prompt on a cycle-exact 25 MHz A3000 model ✅.
+- The 1992 console programs only OCS/ECS display registers. A loader that opened an AGA screen must
+  put `FMODE`, `BPLCON3`, `BPLCON4` and the copper list back to their power-on state before the kernel
+  starts, or the Amix console comes up garbled on an AGA machine ✅ ([quirk 85](quirks.md#85-console-ocs-ecs-only)).
+
+### Booting from CD through an A4091/A4092 boot ROM ✅ {#cd-boot-a4091-rom}
+
+An A4091/A4092 boot ROM that carries a CD filesystem (the project's ROM builds include ODFileSystem;
+whether a given release ROM has one must be checked) gives an **ISO9660 data disc** a boot node of
+priority 2 when its System Identifier is `AMIGA BOOT` or `CDTV`, otherwise −1 ✅ (ROM mounter source).
+That node has **no boot blocks** (`de_BootBlocks` 0) and the CD filesystem's DosType (`CD01`/`CDVD`),
+so Kickstart boots **AmigaDOS from the disc** and runs its `S/Startup-Sequence`; no bootblock ever runs
+✅. The ROM takes its RDB path only for a disc with no ISO9660 descriptor ✅. The ROM's filesystem
+prefers Rock Ridge names, then Joliet, then plain ISO9660, and a file without an owner-execute mode
+gets no execute bit, so AmigaDOS refuses to run it ✅. An installed disk at boot priority 2 ties with
+the disc and wins; pick the CD from the early-startup menu ✅ (emulation).
+
+That is how the amigaux 1.1 install CD boots Amix: the startup-sequence runs the project's second-stage
+loader built as an AmigaDOS program, which loads the kernel and a compressed miniroot as plain files and
+takes the machine over; AmigaOS is the carrier for about two seconds ✅ (emulation; see [loadable kernel
+modules](../drivers/loadable-modules.md)). A machine without such a ROM boots the floppy pair instead.
 
 ## Kernel decompression and checksum verification
 
@@ -1483,6 +1540,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 
 ## See also
 
+- [Loadable kernel modules](../drivers/loadable-modules.md) — the 1.1 loader that reads generations, and its CD and floppy paths.
 - [Anatomy of the boot ADF](../boot-disks/anatomy-boot-adf.md) — byte-level dissection of `amix_21_boot.adf`.
 - [Filesystems and disks](filesystems-and-disks.md) — RDB, s5 vs UFS, swap, and the full partition story.
 - [Kernel architecture](kernel-architecture.md) — the monolithic SVR4 kernel, HAT/MMU layer, switch tables.
@@ -1521,6 +1579,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 autoboot ROM + SCRIPTS assembler).
 - The **RAM-ceiling measurements** (first-party record, 2026-08-12/14) ✅ — root-filesystem selection is by probe, not by configuration: the Amiga port ships `rootfstype` **empty** (AT&T generic says `s5`), `vfs_mountroot` walks `vfssw[]`, `s5mountroot` returns `EINVAL` politely so the walk continues, and `ufs` sits at `vfssw[2]` in every kernel including the install kernels. Same source for the `cdfs` errno de-laundering that makes the old `errno 5` probe stale; the 🟡 no-media `errno 25` value is a single live probe (first-party record, 2026-08-14/15), carried unchanged. Cross-checked against the `vfs_mountroot` disassembly recorded on [building a kernel](../drivers/kernel-build.md).
 - The **Installer-NG** install work (first-party record, 2026-07-22/24; [amix-installng](https://github.com/jusii/amix-installng)) — a blank-disk→bootable-install effort that root-caused these platform behaviours on the Amiberry bench and the real A4000+Z3660 (acceptance-run captures, s5/UFS state reads, and the on-metal digest attestation) ✅ (🟡 where tagged).
+- The bootblock-strap measurement and the loader's failure path: [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/docs/measurements/2026-10-26-m-ld1-m-ld3.md` (96 emulated cells, Kickstart 3.1 and 3.2.x) ✅; the CD-boot node facts: `kernel/dlm/docs/spec/10-boot-loader.md` §4.4, read from the A4091 ROM's mounter source (`3rdparty/mounter/mounter.c` in the a4091-software tree) ✅; the trackdisk cache, the chip-RAM timings, the 31 s LZW reference, the AGA display state and the AN_BootError loop: `kernel/dlm/CHANGELOG.md` 2026-10-25 entries and the kernel-module campaign (first-party record, 2026-10-25) ✅.
 
 
 ================================================================================
@@ -2392,6 +2451,14 @@ new `/etc/rc2.d/S05syslogpid` holding `rm -f /etc/syslog.pid` — or change the 
 the process by name rather than trusting `kill -0`. If you edit `/etc/init.d/syslogd` itself, the
 `cp`-in-place rule above applies.
 
+### Running, yet nothing filed: `syslogd` needs `m4` ✅ {#syslogd-needs-m4}
+
+A third, independent cause: `syslogd` runs `/etc/syslog.conf` through `/usr/ccs/bin/m4`, which only the
+stock C development set ships. Without it the daemon runs, every file action is `UNUSED`, and
+`/var/log` stays empty ✅ ([quirk 77](quirks.md#77-syslogd-needs-m4)). And while no `syslogd` is
+registered as the console logger, kernel messages after boot are not kept in the message buffer
+either ([quirk 78](quirks.md#78-putbuf-needs-conslog)).
+
 ### The operational rule for anything that drives an Amix box ✅
 
 The throttle only ever fires on **automation**. Any harness that opens a fresh telnet (or FTP)
@@ -2519,6 +2586,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   The contrary behaviour is real on other image lineages 🟡 and the two must not be generalised across
   each other. Same session: `/etc/net/{ticlts,ticots,ticotsord}/hosts` confirmed as a manual rename
   step that no first-boot script performs.
+- The `syslogd`/`m4` and console-logger rows (first-party record, 2026-10-26; emulation on both kernel lines) ✅ — see [quirks 77 and 78](quirks.md#77-syslogd-needs-m4).
 
 
 ================================================================================
@@ -3379,6 +3447,17 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 73 | **Amiberry builds before upstream commit `845af02` corrupt Amix data in the 68030 MMU's "more compatible" mode** (`cpu_compatible=true`) — a misaligned `MOVES` was not split across a page boundary, and Amix copies between kernel and user space with `MOVES`. On an older build set `cpu_compatible=false`. Third-party report, not reproduced here | 🟡 | [Quirks §73](#73-amiberry-moves-page-boundary), [Amix on Amiberry](../getting-started/emulation-amiberry.md) |
 | 74 | **Without an FPU the stock 68030 kernel boots, then panics at the first signal** — the boot probe prints `no fpu detected` and carries on, but `sendsig` is the one caller of the FP-state routines that never checks `fpu_present`: its FRESTORE (kernel text `0x12A`) takes a Line-F fault in supervisor mode, in `init`, seconds after boot. Triage rule: *`no fpu detected`, then a kernel fault in pid 1 at load base + `0x12A`, vector `0xB`* = the card has no FPU — not the disk driver, Kickstart or RAM | ✅ | [Quirks §74](#74-no-fpu-signal-panic), [Hardware](hardware.md#cpu-mmu-fpu-all-three-mandatory) |
 | 75 | **Inbound TCP bursts lose every segment past the third, and nothing counts it** — the stock kernel's `ipintr` frees a datagram when TCP's lower read queue is full, and that queue's high-water mark is 4096 bytes, so the 4th full segment of any batch IP processes in one pass is dropped. Signature: push ≪ pull, hundreds of sender retransmissions, `netstat -s` IP total a few hundred above TCP total, every error counter 0. Fix: `tcpm_info[3].mi_hiwat` `0x1000` → `0x4000` (one long word) | ✅ | [Quirks §75](#75-tcp-lower-read-queue-4k), [Networking](networking.md#tcp-lower-read-queue) |
+| 76 | **Stock `diff` has no unified format** — `/usr/bin/diff -u` answers `diff: invalid option -u`; only `-c` exists. The stock `public` package's `/usr/public/bin/patch` (patch level 12u4) *does* apply unified diffs | ✅ | [Quirks §76](#76-stock-diff-no-u), [Cheat sheet](../reference/commands-cheatsheet.md) |
+| 77 | **`syslogd` pipes `/etc/syslog.conf` through `/usr/ccs/bin/m4`, which only the C development set ships** — without it every file action is `UNUSED` and nothing is logged, while the log driver works. Install the development set (or m4 alone) before trusting an empty log | ✅ | [Quirks §77](#77-syslogd-needs-m4), [Networking](networking.md) |
+| 78 | **After boot, kernel `printf` lines are kept in the message buffer only when a console logger is registered** (`syslogd`'s `I_CONSLOG`) — otherwise they go to the console device and are kept nowhere | ✅ | [Quirks §78](#78-putbuf-needs-conslog) |
+| 79 | **Stock `bcheckrc` always reboots after `fsck` repairs the root** (`*** REBOOTING SYSTEM ***`) — a root that never stays clean reboots for ever; boot counters and "try once" logic must allow for it | ✅ | [Quirks §79](#79-bcheckrc-reboots) |
+| 80 | **`netstat`, `ifconfig` and `crash` read kernel symbols from `/stand/unix`, never from `/unix`**, and there is no `/dev/ksyms` — a box whose `/stand/unix` is not the running kernel prints wrong addresses or `no namelist` | ✅ | [Quirks §80](#80-namelist-stand-unix) |
+| 81 | **The 2.1 Bourne shell's `read` keeps its own buffer across `exec <file`** — a second `exec <file; read` continues where the first stopped; and a `while read` loop strips trailing blanks. Use one redirection per pass (`while read …; done < file`) | ✅ | [Quirks §81](#81-sh-read-buffer) |
+| 82 | **The 4 KiB-page (68040/68060) kernels and small-block filesystems**: stock `mkfs` refuses ufs blocks under 4 KiB on both lines, a crafted 2 KiB-block ufs panics the 040/060 kernel at first file access (`ufs_getapage bad bsize`; the 030 kernel handles it), and s5 is broken on 4 KiB pages (bus errors in `ls`) | ✅ | [Quirks §82](#82-4k-page-small-blocks) |
+| 83 | **Kickstart leaves the CIA-A timer running when Amix starts** and nothing in Amix stops it: it raises an ignored interrupt about every 92 ms, and a driver that wants that timer must stop and reprogram it rather than treat "running" as "owned" | ✅ | [Quirks §83](#83-cia-a-timer-left-running) |
+| 84 | **The stock `/dev/audio` open spins at level 4 with no timeout** waiting for the sound chip's interrupt — a silent chip (an emulator with sound output off) freezes the whole box | ✅ | [Quirks §84](#84-audio-open-no-timeout) |
+| 85 | **The 1992 console programs only OCS/ECS display registers** — AGA state left behind by whatever ran before the kernel (`FMODE`, `BPLCON3`, `BPLCON4`, the copper list) garbles the Amix console on an AGA machine | ✅ | [Quirks §85](#85-console-ocs-ecs-only), [Boot process](boot-process.md#what-the-strap-checks) |
+| 86 | **Swap is not optional in the stock kernel** — with no swap device the first `fork` panics, and `swapconf` panics (`lookupname failed - error 2`) when the configured swap node does not exist; a RAM-rooted medium points swap at `/dev/fakeswap` (block 19,0, the stock dummy disk) | ✅ | [Quirks §86](#86-swap-not-optional) |
 
 The rest of this page expands each item.
 
@@ -3901,6 +3980,19 @@ problem as [§53](#53-unimplemented-integer-vector) is a plausible family, not a
 tools from a scratch directory such as `/tmp`, so a crash cannot leave a core file in `/`. See
 [package management](package-management.md).
 
+### 82. 4 KiB pages and small-block filesystems ✅ {#82-4k-page-small-blocks}
+
+The 68040/68060 kernels use 4 KiB pages; the stock 68030 kernel 2 KiB ✅. Three consequences:
+
+- **Stock `mkfs` refuses ufs block sizes under 4 KiB** on both lines ✅, so a normal ufs is safe on
+  either kernel.
+- A ufs with **2 KiB blocks** (only a modified `mkfs` can make one) mounts on the 040/060 kernel and
+  **panics it at the first file access** (`ufs_getapage bad bsize`) ✅; the 030 kernel handles the same
+  disk fully. The panic is inherited (a 060 kernel with ufs built in does the same), not caused by any
+  later change ✅ (emulation). A mount-time refusal is being added to the 040/060 kernel 🔴.
+- **s5 is broken on 4 KiB pages**: an s5 root on the 040/060 kernel bus-errors in ordinary commands
+  (`ls -l`) ✅ (emulation). Use ufs on the 040/060 line.
+
 ## Diagnostics & logging quirks
 
 ### 24. `syslogd` is present, correct, and deliberately switched off ✅
@@ -4147,6 +4239,36 @@ only that the low addresses echo.
 
 Withdrawn 2026-10-04 (bench evidence practice, not an Amix fact).
 
+### 77. `syslogd` needs `m4`, which only the development set ships ✅ {#77-syslogd-needs-m4}
+
+The stock `syslogd` runs `/etc/syslog.conf` through `/usr/ccs/bin/m4` before parsing it ✅. On an
+installation without `m4` the daemon starts, `sh: /usr/ccs/bin/m4: not found` goes by, and **every
+file action in the configuration is `UNUSED`**: the log driver delivers messages and nothing is
+written ✅. `m4` is part of the stock C development set (Cdev) and nothing else ships it ✅; a minimal
+installation without that set has the same hole 🟡. Together with the vendor `exit`
+([§24](#24-syslogd-is-present-correct-and-deliberately-switched-off)) and the stale pid file
+([networking](networking.md#syslogd-stale-pid)), that is three independent reasons for an empty
+`/var/log`.
+
+### 78. Kernel messages after boot reach the message buffer only through a console logger ✅ {#78-putbuf-needs-conslog}
+
+Once the kernel finishes booting it sets its print destination to the buffer path (`prt_where`
+0x2). From then on a kernel `printf` line is stored in the message ring (`putbuf`) **only through the
+console logger** — the log driver's copy for a process that registered with `I_CONSLOG`, which is what
+`syslogd` does ✅. With no logger registered (`conslogging` 0), every run-time kernel line goes to the
+console device by `putchar` and is kept nowhere ✅ (read from the kernels' print code, identical on the
+030 and 040/060 lines, and shown on both in emulation). Diagnose a driver on a box without `syslogd`
+from the console, not from the ring.
+
+### 80. The kernel namelist is `/stand/unix`, not `/unix` ✅ {#80-namelist-stand-unix}
+
+`netstat`, `ifconfig` (`no namelist /stand/unix` when it is missing) and `crash` compile in
+**`/stand/unix`** as their symbol file; `ps` reads no kernel file; nothing reads `/unix`; there is no
+`/dev/ksyms` ✅. They look up addresses by name in that file and read them through `/dev/kmem`, so if
+`/stand/unix` is not the kernel that is running — a relinked kernel booted from elsewhere, or a hard
+link left pointing at the stock kernel — they read the wrong addresses silently ✅. Keep `/stand/unix`
+the booted kernel's bound image.
+
 ## Driver-authoring quirks
 
 ### 15. An un-enumerated board silently never runs ✅
@@ -4244,6 +4366,11 @@ The Z3660 SCSI driver does exactly this since 2026-10-02 (raw `dd` of a CD unit 
 A4000T) ✅. Kernels without the fix still hang on a raw read of a Z3660 CD unit; mount it with `cdfs`
 instead.
 
+The same 512-byte assumption shows on an **ATAPI** unit behind the Gayle IDE driver: stock `dd.c` puts
+its 512-byte block numbers into `READ(10)`, so `dd bs=2048` of a CD asks for LBA 4N and keeps the first
+2 KiB of each 8 KiB — every fourth block ✅ (emulation). Check a CD's contents with `mount -F cdfs`,
+not with `dd`.
+
 ### 65. Stock `autocon()` can never match a board whose manufacturer id is ≥ `0x8000` ✅ {#65-autocon-signed-manufacturer}
 
 A driver asks `autocon()` for its board by a 32-bit id, manufacturer in the high half and product in
@@ -4298,6 +4425,31 @@ to its length byte, so `fssm_Device` for `foo.device` has length 11 with the NUL
 loader or mount tool that walks `eb_MountList` and matches `fssm_Device` against a driver's
 `ln_Name` over the counted length reads one byte past that name's NUL, so it must stop at the first
 NUL instead. Layout, offsets and ROM evidence: [boot process](boot-process.md#fssm-device-nul).
+
+### 83. Kickstart leaves the CIA-A timer running ✅ {#83-cia-a-timer-left-running}
+
+Kickstart's `timer.device` leaves a CIA-A timer running when Amix takes the machine, and no Amix code
+stops it ✅. Under Amix it raises an interrupt about every 92 ms that nothing handles, until some driver
+reprograms the timer ✅. A driver that uses that timer (the Paula audio driver does) must stop and
+reprogram it at first open; one that refuses to open because the timer "is already running, so someone
+owns it" refuses every time ✅ (both kernel lines, emulation). Chained level-2 handlers cannot see the
+CIA-A interrupt-control bits for this timer 🟡.
+
+### 84. The stock `/dev/audio` open waits for the sound chip with interrupts blocked and no timeout ✅ {#84-audio-open-no-timeout}
+
+The stock audio driver's open starts the sound chip and then spins **at level 4, with no timeout**,
+for an interrupt from it ✅ (disassembly; Commodore's own comment there says a timeout should be added).
+On a machine where that interrupt never comes — an emulator with its sound output off, or a faulty
+chip — the first `/dev/audio` open freezes the box: network, console and all ✅ (emulation). On real
+hardware the chip answers 🟡. Give emulators sound output when you test audio.
+
+### 85. The 1992 console programs only OCS/ECS display registers ✅ {#85-console-ocs-ecs-only}
+
+The Amix console sets up the display through the OCS/ECS registers only ✅. Whatever ran before the
+kernel and left AGA state behind — fetch mode in `FMODE`, `BPLCON3`/`BPLCON4`, a copper list — leaves
+the Amix console garbled on an AGA machine (an A4000 with a boot loader that opened an Intuition
+screen, for one) ✅ (emulation; A4091 + 68060 row). A boot loader must restore a null copper list and
+those registers' power-on values before it starts the kernel. Related: [§61](#61-vposr-low-nibble).
 
 ## Emulation & bench quirks
 
@@ -4498,6 +4650,40 @@ of computing a negative remainder. With it, 600/640/900/992/1024 MB roots all au
 whole-disk read past the end returns `I/O error` instead of sleeping. Until a kernel carries the fix,
 keep an on-box-authored root at or below 1 234 567 blocks.
 
+### 76. Stock `diff` has no unified format; the stock `patch` reads one ✅ {#76-stock-diff-no-u}
+
+`/usr/bin/diff -u a b` answers `diff: invalid option -u` — the 1992 `diff` has context diffs (`-c`)
+only ✅. The stock `public` package's `/usr/public/bin/patch` (Larry Wall's, patch level 12u4) applies a
+unified diff correctly: a four-hunk diff of a 2000-line file reproduced the target byte for byte ✅
+(both on an emulated stock 2.1c). To produce unified diffs on the box, install a GNU diffutils.
+
+### 79. `bcheckrc` always reboots after repairing the root ✅ {#79-bcheckrc-reboots}
+
+The stock `/etc/bcheckrc` runs `fsck -y` on a dirty root and, whenever `fsck` repaired anything,
+**always** reboots (`*** REBOOTING SYSTEM ***`) ✅ (stock script, and emulation). A root that keeps
+coming up dirty therefore reboots in a loop, and anything that counts boots — a "boot the new kernel
+once, fall back if it does not reach multi-user" scheme — sees each repair as a failed boot unless it
+is told otherwise.
+
+### 81. The 2.1 shell's `read` keeps its buffer across `exec <file` ✅ {#81-sh-read-buffer}
+
+On the Amix 2.1 (1991) Bourne shell, `read` keeps its own input buffer, and a later `exec <file` does
+not reset it: a second `exec <file` followed by `read` continues where the first pass stopped instead
+of at the top of the file ✅. `IFS` and `set -f` make no difference ✅. `while read …; done < file` and
+`read line < file` behave correctly ✅. A script that reads a file twice through `exec <` and rewrites it
+from what it read can empty it — `inittab` included. Separately, a `while read` loop strips trailing
+blanks from each line ✅ (both on the real 2.1 `sh`). Rule: one redirection per pass. See also
+[§12](#12-binsh-is-pre-posix).
+
+### 86. Swap is not optional, and its node must exist ✅ {#86-swap-not-optional}
+
+With no swap device added, the stock kernel's anonymous-memory reservation refuses every request and
+**the first `fork` panics** ✅. With the default swap name configured and the node missing from `/dev`,
+the stock `swapconf` panics at boot (`swapconf lookupname failed - error 2`) ✅. A medium that roots on a
+RAM disk and has no swap slice points swap at `/dev/fakeswap` — block major 19, minor 0, the stock
+dummy disk, on which every I/O fails and nothing is paged — and the installer adds a real slice later
+with `swap -a` ✅ (emulation, both kernel lines).
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -4678,6 +4864,7 @@ keep an on-box-authored root at or below 1 234 567 blocks.
 - The **stock `installf` crash on the 68060** (2026-10-03) 🟡 — an installer acceptance cell in an emulator run of the 68060 kernel: `installf -f core` → `User BUS ERROR at 4AFC0002`, a core in `/`, the entry left with `?` fields; `/usr/apkg/bin/installf -f core` on the same system → exit 0 and the kernel's true checksum; the installer's first-boot step switched to APKG's `installf`, run from `/tmp` (first-party record, 2026-10-03). The engine builds (1.12.3 shipped in 1.0; the July 2026 1.12.0 build killed by 64-bit divides on a 68060 kernel before 1.0) are from the amigaux 1.0 release notes ([amix-installng](https://github.com/jusii/amix-installng) `docs/release-notes-amigaux-1.0.md`, "The package engine: 1.12.3 replaces 1.12.0 on the 68060") ✅.
 - The **A4091 driver's real-hardware scope** — the [amix-a4091](https://github.com/jusii/amix-a4091) README's status table: the A4092 on the 68060 line (A4000D + Z3660) with its root filesystem ✅, the A4091 board and the 68030 line still pending on real hardware 🟡 (quirk 3).
 - The **`AF_UNIX` memory-pressure corruption and the Amiberry `MOVES` page-boundary defect** 🟡 — third-party reports from [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) (`docs/findings.md`; the reproducer `test/sockstress.c`), not reproduced here; the Amiberry fix is upstream commit [`845af02`](https://github.com/BlitterStudio/amiberry/commit/845af02) (quirks 72, 73).
+- Quirks 76–86 (first-party record, 2026-10-25 to 2026-10-29) ✅: the kernel-module campaign's emulator rows on both kernel lines and the stock-script and disassembly reads behind them — the `syslogd`/`m4` row, the `putbuf`/`conslogging` read of the kernels' print code, the stock `bcheckrc`, the namelist probe, the 2.1 `sh` construct probes on the miniroot shell, the ufs/s5 page-size rows, the Paula timer and `/dev/audio` diagnosis, the AGA console row, the `swapconf` and `fakeswap` rows ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/CHANGELOG.md`, 2026-10-25 to 2026-10-28); the diffutils 2.8.1 port's rows on an emulated stock 2.1c (`diff -u`, `patch`); the Gayle IDE driver's ATAPI `dd` row (`amix-gayle-ide` CHANGELOG, 1.1.0-2).
 
 
 ================================================================================
@@ -11022,13 +11209,20 @@ nothing or kills the process ✅. The toolchain's specs add `-malign-int` to eve
   with static members (`data.o` owns `__iob`), not the shared `libc.so.1` ✅. libgcc, libstdc++ and
   libamixc99 are static ✅. Sockets link dynamically by bare name; an X client needs
   `-lX11 -lsocket -lnsl` ✅.
-- **CPU:** the runtime is built `--with-cpu=m68020-60` (the `m` matters): plain `68060` made libgcc use
-  the 68040/68060-only FPU forms (`fdmove`, `fsadd`, …), which die with SIGSYS on a 68881/68882 ✅.
-  `-m68060` remains available for code that only ever runs on a 68060.
-- **`-mno-strict-align`** is upstream's default from `e8b6997` (2026-10-27): on a 68LC060 at 80 MHz it
-  measured Dhrystone 1.60× the strict build and 1.43× GCC 2.7.2.3 ✅ (first-party record); on a 68040 it
-  needs a port kernel that handles misaligned accesses across a page boundary, not yet measured on
-  68040 metal 🔴.
+- **CPU of the runtime — which build you have matters.** Upstream `main` (as of `58130fe`,
+  2026-10-29) builds libgcc and libstdc++ `--with-cpu=68060`, which keeps them off the 64-bit integer
+  forms the 68060 lacks but makes them use the **68040/68060-only FPU forms** (`fsmove`, `fdmove`,
+  `fsadd`, …): 491 such instructions in that `libgcc.a` and 123 in `libstdc++.a`, so code that reaches
+  them (`__floatundidf`, `unordered_map` rehashing) dies with **SIGSYS on a 68030 with a 68881/68882**
+  ✅ (measured on an upstream build, 2026-10-29). **Upstream `main` is therefore not 68881-safe.** The
+  amigaux project builds the runtime `--with-cpu=m68020-60` instead (the `m` matters: the 68020 set
+  and the 68881 FPU, tuned for the range), which is safe on both; that build is not public yet
+  (2026-10-29) ✅. `-m68060` remains available for code that only ever runs on a 68060.
+- **`-mno-strict-align`** is upstream's default from `e8b6997` (2026-10-27); the build the amigaux
+  packages use predates it and passes the flag explicitly ✅. On a 68LC060 at 80 MHz it measured
+  Dhrystone 1.60× the strict build and 1.43× GCC 2.7.2.3 ✅ (first-party record); on a 68040 it needs
+  a port kernel that handles misaligned accesses across a page boundary, not yet measured on 68040
+  metal 🔴.
 - **Predefines:** `-D__amix__ -D__amix -Damix`; implicit *function* declarations stay errors (only
   implicit `int` is relaxed) ✅. Defining `SVR4` as well sends some autoconf code (make's
   `getloadavg`) down a kmem route; the project's package line leaves it out ✅.
@@ -11038,9 +11232,10 @@ nothing or kills the process ✅. The toolchain's specs add `-malign-int` to eve
 The 68060 dropped the 64-bit `mul`/`div` forms, and libgcc's 64-bit divide compiled for a 68020 uses
 them; without an integer-support handler in the kernel, any 64-bit division *by a variable* kills the
 process ✅. `tools/check-68060-safe.py` decodes instruction **encodings** (objdump names `divul`/`divull`
-backwards), flags the 64-bit forms, with `--68881` also the 040/060-only FPU forms, reads ELF files,
-archives and listings, and reports a disassembly that lost sync at a label as untrustworthy (exit 3)
-rather than clean ✅. `cas2` traps on the 68060 at any alignment; GCC 14 does not emit it ✅.
+backwards) and flags the 64-bit forms; it reads ELF files, archives and listings, and reports a
+disassembly that lost sync at a label as untrustworthy rather than clean ✅. The project's build adds a
+`--68881` mode that also flags the 040/060-only FPU forms, which upstream's checker does not look for
+(as of `58130fe`) ✅ — so a runtime upstream's checker passes can still trap on a 68030 + 68881. `cas2` traps on the 68060 at any alignment; GCC 14 does not emit it ✅.
 
 ### Known defects and workarounds
 
@@ -11239,6 +11434,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The project's system-files inventory (first-party record, 2026-10-29) ✅: the patch disk's `replace.list`/`modify.list`/`changes`, compared with `/usr` read from a cleanly installed 2.1c system and with the kernel-work sysroot; the kit rebuilt both ways on both lines.
 - The amix-packages diffutils 2.8.1 port (first-party record, 2026-10-29) ✅: `recipes/diffutils/build.sh` and `recipes/make/build.sh` (the `vfork` pin), the emulated 68030 rows (the `sdiff -o` exit, the empty help2man pages), `nm` and header reads of the sysroot (`sigaltstack`).
 - [isoriano1968/gcc-cross-amix #7](https://github.com/isoriano1968/gcc-cross-amix/pull/7) (the wrapper fixes, opened 2026-10-13, merged 2026-10-19 as `959c17f`; state read with `gh` on 2026-10-29) ✅.
+- The upstream-runtime FPU check (first-party record, 2026-10-29) ✅: an upstream `58130fe` build checked with the project's `check-68060-safe.py --68881` (68060-safe for integer forms; 614 FPU instructions in 040/060-only forms across libgcc and libstdc++); upstream's `README.md` ("defaults to `--with-cpu=68060`") and `toolchain/build-cross.sh` at that commit.
 
 
 ================================================================================
