@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-29 — RAM per CPU line (c407def, 12db4bf)
+
+The ≈128 MB describable-RAM limit is a property of the 4 KiB-page 040/060 kernel line, not of the 68060: the 68040 and
+68060 MMUs have no 2 KiB page. Measured at 128 MB on a 68060 ✅, not yet on a 68040 🟡; the stock 68030 kernel with
+2 KiB pages ≈64 MB. ram-ceiling, hardware, quirks, 68040-68060-status, install-walkthrough, research brief, llms.txt.
+
 ## 2026-10-29 — repositories and grounding (3de1f8a, c624138)
 
 bibliography.md: the amigaux project's repositories (amigaux/amix, the port fork and pin, amix-system planned, the
