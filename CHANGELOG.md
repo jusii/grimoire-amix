@@ -2,6 +2,13 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-29 — repositories and grounding (3de1f8a, c624138)
+
+bibliography.md: the amigaux project's repositories (amigaux/amix, the port fork and pin, amix-system planned, the
+toolchain forks, Z3660-amix, the collaborators' repos). versions.md: amigaux release numbers are not Commodore's; the
+k30/k46 line names. 68040-68060-status.md: the org fork and pin. kernel-composition.md: a 1.1 module note.
+research-brief.md §22 indexes every fact of the 2026-10-29 currency sweep with its page, tag and source.
+
 ## 2026-10-29 — hardware (f57108e, 16422ed)
 
 a4091-53c710-driver.md: the Zynq side of Z3 DMA (ACP coherence, arbiter priority), A4092 CPLD 1.4.21 gates the bus grant
