@@ -100,6 +100,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 85 | **The 1992 console programs only OCS/ECS display registers** — AGA state left behind by whatever ran before the kernel (`FMODE`, `BPLCON3`, `BPLCON4`, the copper list) garbles the Amix console on an AGA machine | ✅ | [Quirks §85](#85-console-ocs-ecs-only), [Boot process](boot-process.md#what-the-strap-checks) |
 | 86 | **Swap is not optional in the stock kernel** — with no swap device the first `fork` panics, and `swapconf` panics (`lookupname failed - error 2`) when the configured swap node does not exist; a RAM-rooted medium points swap at `/dev/fakeswap` (block 19,0, the stock dummy disk) | ✅ | [Quirks §86](#86-swap-not-optional) |
 | 87 | **On the Z3660, the second of two back-to-back register accesses can land at (previous address AND this address)** — a mailbox write becomes a different command (a WRITE doorbell to the previous block; a READ turned WRITE that reports GOOD), an interrupt acknowledge is lost. Precede every register write with a covering read, in one block at IPL 7 | 🟡 | [Quirks §87](#87-z3660-address-capture), [Z3660 SCSI driver](../drivers/z3660-scsi-driver.md#address-capture-race) |
+| 88 | **Stock `sed` silently drops a final input line that has no newline** — `printf 'a b c ' \| sed 's/ $//'` prints nothing at all. Terminated lines are fine. Make sure the input ends with a newline (`{ …; echo; } \| sed …`) | ✅ | [Quirks §88](#88-sed-drops-unterminated-line) |
+| 89 | **`libc.so.1`'s `TZ` parser writes into the `TZ` environment string in place** — a program that `putenv()`s a string literal (read-only under modern compilers) dies with SIGSEGV at its next time conversion; `date -u` of a GCC 14 build did, every run. `putenv()` writable storage | ✅ | [Quirks §89](#89-tz-parsed-in-place), [Toolchain](../drivers/toolchain.md#the-porting-surface-libc-and-library-gaps-modern-c-assumes) |
 
 The rest of this page expands each item.
 
@@ -1208,6 +1210,20 @@ here the danger is setting the clock *forward*, not past 1999.)
 
 The A3000's WD33C93 is not an AutoConfig board. Stock 2.1c `autocon()` registers it through a guess (`.text 0x19222`): `if (index==0 && end > (char *)0x07000000 && pc==0x0202F003) *bp = 0xdd0000` — where `end` is the kernel's own end symbol, i.e. **where boot2 placed the kernel**. With the classic 16 MB motherboard bank at 0x07000000 the kernel loads there and the guess fires (card 0, root on c6d0s1). With 64 MB at 0x04000000 (or any layout that loads the kernel below the line: accelerator fast RAM elsewhere) the guess is skipped, no card 0 exists, `sdopen` answers ENXIO and the boot ends in `s5mountroot VOP_OPEN error 6` / `vfs_mountroot errno 89`. The seven 1-byte reads at 0xfffffffa/c/e that follow are the panic's own `backtrace` decoding its terminal frame, not a memory probe. Measured on the bench 2026-09-29 and symbolised on the stock kernel. The "16 MB ceiling" folklore is this guess's only working placement. Fixes: the A4091 project's `support.c.patch` (chipset gate + a real WD33C93 probe) on the 030 line, and an equivalent probe in the 040/060 port. See §41 for the A4000T's $DD0000 case.
 
+
+### 89. The `TZ` string is parsed in place — `putenv()` a literal and the next time call crashes ✅ {#89-tz-parsed-in-place}
+
+The stock shared libc's timezone parser (the static `getzname`, reached from `tzset()` and
+`localtime()`) **writes into the `TZ` environment string**: it stores a NUL to cut the zone name
+and restores the byte afterwards ✅ (the crash's PC in `getzname` at a `clrb (%a2)`, with the fault
+address and `%a2` at the `0` of `"TZ=UTC0"`). Harmless for a `TZ` the shell set, which lives in
+writable memory; fatal for a program that `putenv()`s a **string literal**, which modern compilers
+(GCC 14) place in read-only `.rodata`: the next time conversion dies with SIGSEGV ✅. GNU coreutils
+5.2.1's `date -u` (`putenv("TZ=UTC0")`) crashed on every run this way, while `env TZ=UTC0 date` and
+`-d` parsing with UTC/GMT/`+0000` zones worked ✅ (emulated stock 2.1c, 2026-10-29). Fix: `putenv()` a
+writable buffer (`static char tz[] = "TZ=UTC0";`). Whether period-compiler builds escaped it through
+writable literals is unchecked 🟡. Related: the colon-less `TZ` crash in [§21](#21-a-colon-less-zoneinfo-tz-crashes-every-tzset-caller).
+
 ## X11 & desktop quirks
 
 ### 9. The X keymap is wrong 🟡
@@ -1263,6 +1279,17 @@ Five more that specifically bite installer/automation scripts, each bench-proven
 - **The console tty truncates canonical input at ~256 characters** — long one-liners are silently cut. Push a script file and run it rather than typing a long command.
 
 And the toolbox is thin: an install **miniroot ships no `basename`/`sed`/`touch`/`date`/`wc`**. The portable substitutes are `expr` (for `basename`-style path/field work), `: > file` (for `touch`), and `set …/*; echo $#` (to count matches).
+
+### 88. Stock `sed` drops a final line that has no newline ✅ {#88-sed-drops-unterminated-line}
+
+Amix's stock `sed` **silently discards a last input line that is not newline-terminated** ✅: `echo
+abc | tr '\012' ' '` produces the four bytes `a b c ␠` (no newline), and piping that into
+`sed 's/ $//'` prints **nothing** — no output, no error, exit 0 (emulated stock 2.1c, 2026-10-29).
+Terminated lines and `;`-separated command lists behave normally ✅. Shell scripts that build a string
+with `tr '\012' ' '` and trim it with `sed` lose the whole value; upstream bzip2 1.0.8's `bzgrep`
+printed empty `file:` prefixes on multi-file searches this way ✅. Workaround: make sure `sed`'s input
+ends with a newline, e.g. `{ …; echo; } | sed …`. See also [§12](#12-binsh-is-pre-posix) and
+[§81](#81-sh-read-buffer).
 
 ### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
 
@@ -1519,3 +1546,4 @@ with `swap -a` ✅ (emulation, both kernel lines).
 - The **A4091 driver's real-hardware scope** — the [amix-a4091](https://github.com/jusii/amix-a4091) README's status table: the A4092 on the 68060 line (A4000D + Z3660) with its root filesystem ✅, the A4091 board and the 68030 line still pending on real hardware 🟡 (quirk 3).
 - The **`AF_UNIX` memory-pressure corruption and the Amiberry `MOVES` page-boundary defect** 🟡 — third-party reports from [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) (`docs/findings.md`; the reproducer `test/sockstress.c`), not reproduced here; the Amiberry fix is upstream commit [`845af02`](https://github.com/BlitterStudio/amiberry/commit/845af02) (quirks 72, 73).
 - Quirks 76–86 (first-party record, 2026-10-25 to 2026-10-29) ✅: the kernel-module campaign's emulator rows on both kernel lines and the stock-script and disassembly reads behind them — the `syslogd`/`m4` row, the `putbuf`/`conslogging` read of the kernels' print code, the stock `bcheckrc`, the namelist probe, the 2.1 `sh` construct probes on the miniroot shell, the ufs/s5 page-size rows, the Paula timer and `/dev/audio` diagnosis, the AGA console row, the `swapconf` and `fakeswap` rows ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/CHANGELOG.md`, 2026-10-25 to 2026-10-28); the diffutils 2.8.1 port's rows on an emulated stock 2.1c (`diff -u`, `patch`); the Gayle IDE driver's ATAPI `dd` row (`amix-gayle-ide` CHANGELOG, 1.1.0-2).
+- Quirks 88–89 (first-party record, 2026-10-29) ✅: the amix-packages bzip2 1.0.8 and coreutils 5.2.1 ports — probes on an emulated stock 2.1c 68030 (the `tr`/`sed` steps; `date` with and without `TZ` from the shell), the core file's `NT_PRSTATUS` note for the crash PC and registers; the ports' patches (`recipes/bzip2/patches/02-bzgrep-bourne.patch`, `recipes/coreutils/patches/07`).

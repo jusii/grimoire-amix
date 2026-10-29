@@ -482,6 +482,20 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
   `ac_cv_func_vfork=no` and use `fork`, which is proven on the box ✅; whether that static `vfork` has
   true `vfork` semantics on Amix is untested 🔴.
 
+### More gaps and traps from the 2026-10 ports ✅
+
+- **`putenv()` a writable buffer, never a literal:** the shared libc parses `TZ` in place, so a
+  literal (read-only under GCC 14) crashes the next time conversion ([quirk 89](../how-it-works/quirks.md#89-tz-parsed-in-place)).
+- **Absent:** `settimeofday` (only `stime`), `dirfd()`, the `S_ISLNK` macro (`S_IFLNK` is defined),
+  `mkstemp`, `asprintf`, `statfs` (use `statvfs`; its `f_basetype` names the filesystem type).
+- **Exported by `libc.so.1` but declared by no header:** `fchmod`, `getrlimit`/`setrlimit` —
+  declare them yourself, or the implicit declaration applies.
+- **Static only:** `getmntent` and `getutxent` exist only as members of the `usr/ccs/lib/libc.so`
+  archive, not in `libc.so.1`.
+- **Cross `configure`:** putting `-include <decls.h>` into `CFLAGS` breaks autoconf's `char f();`
+  function probes, so functions that exist read as absent. Keep such includes on the `make` line only.
+- Shell scripts: stock `sed` drops an unterminated last line ([quirk 88](../how-it-works/quirks.md#88-sed-drops-unterminated-line)).
+
 ### Cross-build traps that are not Amix's fault ✅
 
 - **help2man pages come out empty.** Patch a source file that a man page is generated from and `make`
@@ -598,3 +612,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The amix-packages diffutils 2.8.1 port (first-party record, 2026-10-29) ✅: `recipes/diffutils/build.sh` and `recipes/make/build.sh` (the `vfork` pin), the emulated 68030 rows (the `sdiff -o` exit, the empty help2man pages), `nm` and header reads of the sysroot (`sigaltstack`).
 - [isoriano1968/gcc-cross-amix #7](https://github.com/isoriano1968/gcc-cross-amix/pull/7) (the wrapper fixes, opened 2026-10-13, merged 2026-10-19 as `959c17f`; state read with `gh` on 2026-10-29) ✅.
 - The upstream-runtime FPU check (first-party record, 2026-10-29) ✅: an upstream `58130fe` build checked with the project's `check-68060-safe.py --68881` (68060-safe for integer forms; 614 FPU instructions in 040/060-only forms across libgcc and libstdc++); upstream's `README.md` ("defaults to `--with-cpu=68060`") and `toolchain/build-cross.sh` at that commit.
+- The bzip2 1.0.8 and coreutils 5.2.1 ports (first-party record, 2026-10-29) ✅: sysroot reads (`nm` of `libc.so.1` and the `libc.so` archive, the headers) and the emulated 68030 runs behind the gaps list, the `TZ` crash and the `configure` trap.
