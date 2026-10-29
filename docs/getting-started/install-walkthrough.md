@@ -56,7 +56,7 @@ install will not complete.
 - **Fast RAM:** 4 MB minimum; on an A3000, **16 MB** of motherboard RAM for the stock install
   kernel — a bigger bank loads the kernel below `0x07000000`, where the stock kernel never registers
   the internal SCSI and cannot mount root ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)) ✅. The 040/060 kernels run
-  **128 MB** ✅. (The old "16 MB maximum" rule had the mechanism wrong, not the advice.) The real limit is total *describable* RAM, which fails silently —
+  **128 MB** ✅ (measured on a 68060; the 68040 uses the same 4 KiB-page kernel, not yet measured 🟡). (The old "16 MB maximum" rule had the mechanism wrong, not the advice.) The real limit is total *describable* RAM, which fails silently —
   [the RAM ceiling](../how-it-works/ram-ceiling.md).
 - **Disk image size:** roughly 450–900 MB is the usual range for the ID 6 hardfile 🟡; keep individual
   partitions ≲ 1 GB 🟡.

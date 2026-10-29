@@ -446,3 +446,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
 - **Repositories** → `docs/reference/bibliography.md`, `docs/reference/versions.md`: the `amigaux`
   organisation, `amigaux/amix` (work in progress), `amigaux/amix-040-060-port` ✅ (GitHub API,
   2026-10-29); amigaux 1.1 ≠ Commodore Amix 1.1 ✅.
+- **RAM per CPU line (owner correction, 2026-10-29)**: the ≈128 MB describable-RAM limit belongs to the
+  4 KiB-page 040/060 kernel line, not to the 68060 — the 68040 and 68060 MMUs have no 2 KiB page, so
+  the kernel uses 4 KiB pages on both (port `k46-module` @ `587c18a`: `NBPP == 4096` asserted) ✅;
+  measured at 128 MB on a 68060 ✅, the 68040 not yet measured 🟡; the stock 68030 kernel (2 KiB pages)
+  ≈64 MB ✅ → `docs/how-it-works/ram-ceiling.md`, `hardware.md`, `68040-68060-status.md`, `quirks.md`.

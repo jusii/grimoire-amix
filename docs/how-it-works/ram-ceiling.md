@@ -17,7 +17,7 @@ Two limits live on this page, and they are **not the same limit**:
 | Limit | Value | What goes wrong past it | Tag |
 |---|---|---|---|
 | ~~Fast RAM configuration ceiling~~ **16 MB: a layout requirement of the stock kernel, not a RAM ceiling** (corrected 2026-09-29) | 16 MB A3000 motherboard bank | Stock kernel only: a bigger bank loads the kernel below `0x07000000`, the A3000 SCSI guess skips, no card 0, root not mounted (`VOP_OPEN error 6`) — [quirks §57](quirks.md#57-loader-placement-a3000-scsi). Probing kernels run 64 MB; 040/060 kernels 128 MB (metal) | ✅ |
-| **Total describable RAM** | **≈64 MB** on a stock 68030 kernel (a 4 KB-page 68060 kernel reaches ≈128 MB) | `page_init()` wild-writes from address 0 — total silence | ✅ |
+| **Total describable RAM** | **≈64 MB** on a stock 68030 kernel (2 KiB pages); **≈128 MB** on the 4 KiB-page 68040/68060 kernels (measured on a 68060; the 68040 runs the same kernel, not yet measured) | `page_init()` wild-writes from address 0 — total silence | ✅ |
 
 Present the RAM your kernel can describe (below) and the second limit cannot bite you; the first was folklore. The rest of this page is for when something has already handed the guest more
 memory than you meant to — a debug/DDR window, a Zorro III RAM board, an accelerator's onboard
@@ -28,7 +28,9 @@ memory — and you are staring at a machine that produces nothing.
 - **The "16 MB ceiling" had the wrong mechanism** (corrected 2026-09-29): it is not a RAM limit but the stock kernel's A3000-SCSI guess, which fires only when the loader placed the kernel above `0x07000000` — on a motherboard-RAM-only A3000, the 16 MB bank ([quirks §57](quirks.md#57-loader-placement-a3000-scsi)) ✅. Kernels that probe for the controller run **64 MB** and the 040/060 kernels **128 MB** on real silicon ✅. (The 2026-09-15 retraction cited 32 MB and ≥ 80 MB boots on stock kernels without recording their RAM layout; they are withdrawn as evidence 🔴.) See [hardware](hardware.md#fast-ram-4-mb-minimum-and-the-retracted-16-mb-hard-ceiling).
 - **528 MB is proven fatal**, in exactly the way described below. ✅
 - **The ceiling is a fixed 4 MiB kernel arena, not an arithmetic accident** — ≈64 MB on the stock
-  68030 kernel, ≈128 MB on a 4 KB-page 68060 kernel, and it moves only if the arena moves. ✅
+  68030 kernel, ≈128 MB on the 4 KB-page 68040/68060 kernels, and it moves only if the arena moves. ✅
+  (The 128 MB figure is measured on a 68060; the 68040 has the same limit by the same page size, not
+  yet measured on 68040 hardware 🟡.)
 - **On a kernel whose arena *was* moved, 88 MB boots durably and networks on real hardware**, 128 MB
   banners and then hangs, and ≈151 MB is the end stop ✅ — but no boot of a **stock** kernel above
   16 MB has its RAM layout recorded (an earlier 32 MB report is withdrawn as evidence 🔴).
@@ -103,11 +105,14 @@ The two headline figures follow from the arena and the page size:
 | Kernel | Page size (`NBPP`) | What the arena describes | Total RAM | Tag |
 |---|---|---|---|---|
 | **Stock 68030** | 2048 B | ~4 MiB ÷ 60 B per frame, less the arena's other tenants | **≈64 MB** | ✅ |
-| **4 KB-page 68060** | 4096 B | the *same* frame count | **≈128 MB** | ✅ |
+| **4 KB-page 68040/68060** | 4096 B | the *same* frame count | **≈128 MB** | ✅ 68060 (measured) / 🟡 68040 (same kernel, not yet measured) |
 
-The 060 does not get a bigger arena — it gets **twice the RAM per frame**, so the same number of
-60-byte records covers twice the memory ✅. The 128 MB figure is a page-size result, not a headroom
-result.
+The 040/060 kernels do not get a bigger arena — they get **twice the RAM per frame**, so the same
+number of 60-byte records covers twice the memory ✅. The 128 MB figure is a page-size result, not a
+headroom result, and it is a property of the **kernel line, not of the 68060**: the 68040 and 68060
+MMUs have no 2 KiB page size, so the 040/060 kernels use 4 KiB pages on both CPUs ✅ (the port asserts
+`NBPP == 4096`), and the 68040 has the same ≈128 MB limit 🟡 (no 68040 boot at 128 MB is recorded
+yet). The 68030 line is the different one: its 2 KiB pages give ≈64 MB.
 
 The break-even arithmetic this page used to do — one free-list entry of 2048 pages × 2048 bytes,
 ÷ 60 ≈ 69,900 frames ≈ 136 MB — is that same arena seen from the outside at the moment it ran out.
@@ -327,7 +332,7 @@ offset**, and validated each step by booting a real A4000 rather than an emulato
 - The **RAM-ceiling measurements** (first-party record, 2026-08-12/14):
   the fixed 4 MiB kernel arena `[syssegs 0x40040000, kvsegmap 0x40440000)`, the 60 B/frame `page[]`
   cost and its `sptmap` sharing with `sptalloc()` and u-areas, the ≈64 MB stock-030 / ≈128 MB
-  4 KB-page-060 figures, the `seed ≤ page-table extent ≤ arena` coupling law and the `segkmap`
+  4 KB-page 040/060 figures, the `seed ≤ page-table extent ≤ arena` coupling law and the `segkmap`
   sized-from-physmem neighbour, and the metal results at 88 MB (durable, networked), 128 MB (full
   banner then a post-banner hang, cause open) and ≈151 MB (end stop) ✅. The individual patch sites
   are deliberately held back — see the note under *Lifting it*.
@@ -338,3 +343,4 @@ offset**, and validated each step by booting a real A4000 rather than an emulato
 - The **`z3660eth` >80 MB investigation** (first-party record, 2026-08-12/14) — the ">80 MB board not found" failure
   root-caused to `sptmap` exhaustion rather than a firmware map clash (banks byte-identical at every
   window, host DDR empty), and the direct-map fix taking the driver from 65 `sptmap` pages to 0 ✅.
+- The 040/060 page size (2026-10-29): [`amigaux/amix-040-060-port`](https://github.com/amigaux/amix-040-060-port) branch `k46-module` @ `587c18a` — `src/modelb_geom_probe.c` (a compile-time assertion `NBPP == 4096`), `docs/boot-path-map.md` (2 KB pages are impossible on the 040/060 MMU), `STATUS.md` (one region up to 128 MiB; the 68040 has the same limit, not yet measured) ✅.
