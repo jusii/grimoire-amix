@@ -2,6 +2,14 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-29 — loadable modules page (3e2a9eb, 456e254)
+
+New page drivers/loadable-modules.md from amigaux/amix kernel/dlm and kernel/modules @ 95bf2f3: status (emulator on both
+lines, metal on the 060 line, nothing released), the parts, the k30/k46 lines and the kabi rule, root/boot/demand classes,
+the static floor and safe mode, a short module guide and kernel facts for driver authors. Major registry: c 52 monsw,
+53 kinfo, 54 paula, b 20 ramdisk; free 55–67/69. kernel-architecture: the DLM core is MIT from 2026-10-14. ram-ceiling:
+the k30 bind cap at 64 MiB; no kernel binds at or above 0x40000000. mkdocs build --strict clean; llms-full 58 pages.
+
 ## 2026-10-26 — stale /etc/syslog.pid; Z3660 ethernet page and quirk 75 (502f80b, 4d1dc1b)
 
 Stale /etc/syslog.pid (4d1dc1b): the stock syslogd start script trusts kill -0 on the previous boot's pid, which nothing
