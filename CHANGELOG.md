@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 90 exposure measured; %lld in run-time formats (9b024ff)
+
+On stock 2.1c, dd seek= without conv=notrunc, cp --sparse=always ending in a hole and tar -b 1 --delete all panic;
+tar's default -b 20 is safe. Porting rule: ftruncate is weak in the static libc, so link a strong aligned-cut
+replacement. Toolchain: %lld also hides in formats built at run time from PRIdMAX (coreutils stat, od).
+
 ## 2026-10-30 — quirk 90 covers both kernel lines (a3ef7c7, 96df1ae)
 
 The ftruncate shrink panic hits the 040/060 line too: past the 12 direct blocks, an unaligned EOF in the old last block
