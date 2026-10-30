@@ -2,6 +2,14 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — quirk 92 root cause and 68030 fix; quirk 93 rescoped (b2c2e62)
+
+A failed STREAMS open is undone by qdetach(q, 0), whose short path frees an already-enabled queue still on qhead;
+queuerun then calls qi_srvp through freed memory (trigger: prngd exhausting a 10 MB swap reservation). Fixed on the
+68030 line by a freeq guard (amix kernel/k30 f4aef26). Quirk 93: the bench image boots a 2.1c kernel with drivers
+added that is not its /stand/unix, so the netstat failure is most likely quirk 80's namelist mismatch (🟡); kernel
+measurements on that image now say "2.1c bench image" rather than "stock 2.1c".
+
 ## 2026-10-30 — quirk 93: netstat -rn fails on stock 2.1c (d713caf)
 
 On the stock 2.1c image (emulated A3000) `netstat -rn` prints "read error on routehash" and exits 1, and
