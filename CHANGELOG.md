@@ -2,6 +2,11 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — quirk 92: prngd package test on three kernels (802b9b6)
+
+The prngd package's smoke test panics the 2.1c bench image before any load (same signature); a 2.1c kernel with only
+the freeq guard and the project's 68030 test kernel pass the smoke test and three loads (🟡, emulation, one boot each).
+
 ## 2026-10-31 — quirk 92 root cause and 68030 fix; quirk 93 rescoped (b2c2e62)
 
 A failed STREAMS open is undone by qdetach(q, 0), whose short path frees an already-enabled queue still on qhead;
