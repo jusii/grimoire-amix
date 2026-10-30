@@ -102,7 +102,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 87 | **On the Z3660, the second of two back-to-back register accesses can land at (previous address AND this address)** — a mailbox write becomes a different command (a WRITE doorbell to the previous block; a READ turned WRITE that reports GOOD), an interrupt acknowledge is lost. Precede every register write with a covering read, in one block at IPL 7 | 🟡 | [Quirks §87](#87-z3660-address-capture), [Z3660 SCSI driver](../drivers/z3660-scsi-driver.md#address-capture-race) |
 | 88 | **Stock `sed` silently drops a final input line that has no newline** — `printf 'a b c ' \| sed 's/ $//'` prints nothing at all. Terminated lines are fine. Make sure the input ends with a newline (`{ …; echo; } \| sed …`) | ✅ | [Quirks §88](#88-sed-drops-unterminated-line) |
 | 89 | **`libc.so.1`'s `TZ` parser writes into the `TZ` environment string in place** — a program that `putenv()`s a string literal (read-only under modern compilers) dies with SIGSEGV at its next time conversion; `date -u` of a GCC 14 build did, every run. `putenv()` writable storage | ✅ | [Quirks §89](#89-tz-parsed-in-place), [Toolchain](../drivers/toolchain.md#the-porting-surface-libc-and-library-gaps-modern-c-assumes) |
-| 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back. The 040/060 port fixes it in `kzero` (emulation-verified; hardware pending) | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
+| 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back. The 040/060 port fixes it in `kzero` (verified in emulation and on a real 68060) | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
 | 91 | **A shrink to an earlier block, then a sparse regrow, reads the old bytes back — from disk** — on stock 2.1c and both kernel lines, `F_FREESP` from N to an unaligned M in an earlier 8 KiB block (both past the direct blocks) returns cleanly, but after writing one byte at N−1, `[roundup(M, PAGESIZE), roundup(M, 8192))` holds the file's old data: `pvn_vptrunc` zeroes the block only in the page cache and then discards the pages past M's own (why its write never lands is open). No crash. Write real zeros through the gap, or cut block-aligned | ✅ | [Quirks §91](#91-shrink-regrow-stale-data) |
 
 The rest of this page expands each item.
@@ -1340,12 +1340,15 @@ The 040/060 backtrace stops at the trap frame, so the chain above `bzero` there 
 geometry 🟡. Why the fault on that page cannot be resolved (`segmap_fault` → `ufs_getpage` past
 `roundup(i_size, PAGESIZE)`) is not proven 🟡.
 
-**Fixed on the 040/060 line, in emulation ✅ (hardware pending 🟡):** the port gives `kzero` the fault
+**Fixed on the 040/060 line — in emulation and on a real 68060 ✅:** the port gives `kzero` the fault
 catch SVR4 defines for it (`ISSUE-107`): it arms the stock per-process no-fault pad around the stock
 `bzero`, returns −1 on an unresolvable fault, and accepts a landing only from its own `bzero` frame.
 On a test kernel (an emulated A4000 with a 68LC060, two boots) nine shrink cases, including
 110017 → 110000 and 477017 → 477000, all return 0 with the size right and `[0, M)` intact, and after
-regrowing the file the bytes past M read zero; the box stays up. The fault is taken at the first page
+regrowing the file the bytes past M read zero; the box stays up. The same nine cases pass on metal
+(an A4000T with a Z3660 running a real 68060, 128 MB, ufs root behind the onboard 53C710), with
+three caught faults (one per former panic shape) and no foreign landing on the no-fault pad ✅; no
+unfixed control was run on metal, so the 040/060 panic itself is measured in emulation only 🟡. The fault is taken at the first page
 past the old EOF, and the zeroing runs upward, so everything readable has been zeroed by then ✅. The
 fix uses 68000 instructions only and assembles byte-identically for the 68030, but the 68030 line
 does not carry it yet, so stock 2.1c and the 68030 port still panic 🟡. Until both lines carry it,
@@ -1710,7 +1713,8 @@ with `swap -a` ✅ (emulation, both kernel lines).
   ([`amigaux/amix-040-060-port`](https://github.com/amigaux/amix-040-060-port) `k46-module`: `src/kzero_nofault.s`
   at `b65b43d`, the write-up at `ab53ccc`) and its emulator rows: nine shrink cases on two boots, the
   fix's own fault, landing and foreign-landing counters (three faults, all at the first page past the
-  old EOF, none foreign). Not yet run on hardware.
+  old EOF, none foreign). The metal rows (first-party record, 2026-10-30) ✅: the same nine cases and
+  counters on an A4000T with a Z3660 at 68060, plus a `cp`/`cmp` and odd-size `dd` smoke test.
 - Quirk 91 (first-party record, 2026-10-30) ✅: the k30 kernel work — the port's two-phase shrink
   probe (write N, `F_FREESP` to M, check size and `[0, M)`, write one byte at N−1, check `[M, N−1)`
   reads zero) on two 68030 kernels of the project's 68030 line, an emulated A4000 with the Z3660 in

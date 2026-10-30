@@ -459,7 +459,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   fault catch ✅, why the page fault is unresolvable 🟡, the 040/060 chain above `bzero` 🟡, exposure
   measured: `dd seek=`, `cp --sparse=always`, tar `-b 1 --delete` panic ✅, `mv`/`install`/tar
   incremental snapshots and `shred` 🟡 (quirk 90; 040/060 rows from the port's emulator probe, 2026-10-30; fixed on the 040/060 line by a
-  fault-catching `kzero`, port `ISSUE-107` @ `b65b43d`, emulation ✅, hardware 🟡, the 030 line not yet); hosts-only
+  fault-catching `kzero`, port `ISSUE-107` @ `b65b43d`, emulation ✅, a real 68060 on an A4000T ✅, the 030 line not yet); hosts-only
   `gethostbyname()` rejects dotted quads ✅ (`libsockdns` 🔴); `/usr/bin/rsh` is the BSD remote shell,
   `nobody` is 60001 with no `nogroup` ✅; `ftruncate` is weak in the static libc ✅; `%lld` in formats
   assembled at run time from `PRIdMAX` (coreutils `stat`, `od`) ✅.
