@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 90 fixed on the 040/060 line (4caab45)
+
+The 040/060 port fixes the ftruncate shrink panic with a fault-catching kzero (port ISSUE-107, b65b43d). Verified in
+emulation; hardware pending; the 68030 line not yet fixed. The aligned-cut workaround stays the advice until both
+lines carry the fix.
+
 ## 2026-10-30 — the stock root floppy's miniroot is s5 (148aadb)
 
 Corrected from UFS to s5 in the research brief, install walkthrough, glossary, bibliography and WinUAE page, and the
