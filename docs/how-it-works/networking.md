@@ -174,12 +174,14 @@ yourself with `inet_addr()` before calling `gethostbyname()`; the rsync port pat
 ### Unix-domain sockets: the path is a mode-000 FIFO, and `chmod` breaks it ✅ {#af-unix-socket-path}
 
 `bind()` on an `AF_UNIX` stream socket creates its path as a **FIFO with no permission bits**
-(`st_mode` `010000`: `S_ISFIFO` true, no `S_IFSOCK`) ✅. `connect()` to it works with any of the
+(`st_mode` `010000`, `ls -l` shows `p---------`: `S_ISFIFO` true, no `S_IFSOCK`) under any umask
+(000, 022 and 077 measured) ✅. `connect()` to it works with any of the
 usual address lengths (`sizeof(struct sockaddr_un)` = 110, `strlen(path) + 2`, `+ 3`) ✅. After a
 `chmod(path, 0777)` (mode `010777`), every `connect()` fails with `ENOTSOCK` (errno 95) at all
-three lengths ✅. Measured on the stock 2.1c 68030 in emulation with a GCC 14 test program, run as
-root. With mode 000, only root can be expected to connect 🟡 (a non-root client was not tried).
-**Porting rule:** never `chmod` a bound `AF_UNIX` path on Amix. Daemons that do (`prngd` chmods
+three lengths ✅. The mode bits are not checked: a non-root client (uid 2, `bin`) connects to the
+mode-000 path and gets the server's data, just as root does ✅. So it is the `chmod` itself that
+breaks the socket, not the mode it sets, and a mode-000 socket is no access control. Measured on the
+stock 2.1c 68030 in emulation with GCC 14 test programs. **Porting rule:** never `chmod` a bound `AF_UNIX` path on Amix. Daemons that do (`prngd` chmods
 its socket, so its own `--kill` and `prngd-ctl` could never reach it) need that call removed; `prngd`'s
 UnixWare `DONT_CHMOD_SOCKET` define was meant for exactly this but nothing in 0.9.29 read it.
 
@@ -582,7 +584,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
-- The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated stock 2.1c 68030 (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
+- The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated stock 2.1c 68030 (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 
 - The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync
   3.1.3 port, a `truss` of the failing connect on an emulated stock 2.1c (`/etc/hosts` opened and

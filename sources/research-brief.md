@@ -500,7 +500,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   kernel work's emulator runs.
 - **`AF_UNIX` paths and the `queuerun` panic (2026-10-30)** → `networking.md#af-unix-socket-path`,
   `toolchain.md`, `quirks.md` §92: `bind()` makes the path a mode-000 FIFO, `connect()` works at
-  three lengths, `chmod` makes every `connect()` fail `ENOTSOCK` ✅; only root connects 🟡. `prngd`
+  three lengths, `chmod` makes every `connect()` fail `ENOTSOCK` ✅; mode 000 under any umask, and a
+  non-root client connects anyway (mode bits unchecked) ✅. `prngd`
   0.9.29 plus `prngd-ctl` traffic panics stock 2.1c (illegal instruction, pc in kernel data) ✅ 3/3,
   backtrace `ureturn` → `queuerun` ✅, a deferred put through a garbage `qi_putp` 🟡, no repro without
   `prngd` 🟡, 040/060 and hardware 🔴. Source: amix-packages `prngd` runs and `cc61d24`.
