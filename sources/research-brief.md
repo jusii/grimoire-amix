@@ -530,3 +530,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   2.1c kernel with cdfs and A3091/A4091 drivers that is not its `/stand/unix` ✅, so §93's `netstat`
   failure is most likely §80's namelist mismatch 🟡 (was 🔴); measurements on that image now say
   "bench image" where they concern the kernel. Source: the k30 kernel work's emulator cells.
+- 2026-10-31 — quirk 92: the `prngd` package's smoke test panics the 2.1c bench image (vector `0x4`,
+  pc `0x403C4F00`) before any load 🟡; a 2.1c kernel with only the `freeq` guard and the project's
+  68030 test kernel pass the smoke test and three loads 🟡 (one boot each; on the guard-only kernel the
+  loads ran while `prngd` was still gathering; swap-reservation path not re-run). Source: the
+  amix-packages `prngd` runs, `recipes/prngd` README `fd96cc7`.
