@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — pkg* man pages exist in /usr/catman/1m (362d72e)
+
+pkgadd(1M), pkgask(1M), pkgchk(1M) and pkgrm(1M) are installed, formatted only, in /usr/catman/1m; there is no page for
+pkginfo, pkgmk, pkgtrans or pkgproto, and no contents(4). This corrects the "no pkg* man pages" claim, which had looked
+only at the source tree.
+
 ## 2026-10-30 — how stock man(1) works; "pre-formatted only" corrected (8f77de1)
 
 MANPATH is one directory, lookup goes through whatis, there is no -M, a man1/ layout is not found, and MANPATH without
