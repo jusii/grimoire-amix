@@ -2,6 +2,11 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 90: the kzero fix passes on a real 68060 (7e27e2b)
+
+The 040/060 kzero fix passes on a real 68060 (A4000T + Z3660, 128 MB): nine shrink cases intact, three caught faults,
+none foreign. The 040/060 panic itself is measured only in emulation (no unfixed metal control).
+
 ## 2026-10-30 — quirk 91: the old bytes survive a reboot on the 040/060 line (bcbfff5)
 
 On the 040/060 line the stale bytes survive a sync, clean shutdown and fresh start: the same 4096 bytes as a same-boot
