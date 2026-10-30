@@ -105,6 +105,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back. The 040/060 port fixes it in `kzero` (verified in emulation and on a real 68060); the 68030 line has the same fix, verified in emulation | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
 | 91 | **A shrink to an earlier block, then a sparse regrow, reads the old bytes back — from disk** — on stock 2.1c and both kernel lines, `F_FREESP` from N to an unaligned M in an earlier 8 KiB block (both past the direct blocks) returns cleanly, but after writing one byte at N−1 the file holds its old data in `[roundup(M, PAGESIZE), roundup(M, 8192))`, or in all of `[M, roundup(M, 8192))` if the file was not cached. No crash. Fixed on both lines in emulation. Write real zeros through the gap, or cut block-aligned | ✅ | [Quirks §91](#91-shrink-regrow-stale-data) |
 | 92 | **Heavy local socket traffic next to a busy STREAMS user can panic stock 2.1c in `queuerun`** — `KERNEL FAULT … vector=0x4 (Illegal Instruction)` with the pc in kernel *data*, reached from `ureturn` → `queuerun`, i.e. a deferred STREAMS put through a bad `qi_putp`. Reproduced 3 of 3 with the `prngd` entropy daemon serving `prngd-ctl` requests while it gathers; not reproduced without `prngd` | ✅/🟡 | [Quirks §92](#92-queuerun-panic) |
+| 93 | **`netstat -rn` fails on the stock 2.1c image: `read error on routehash`, exit 1** — and `netstat -in` prints only its header, although `aen0` is up and `/stand/unix` is the booted kernel. Cause unknown. Don't script against `netstat -r`: set routes with `route` and record them yourself | ✅/🔴 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 
 The rest of this page expands each item.
 
@@ -744,7 +745,8 @@ Recorded so nobody re-chases them, and so nobody plans a capture around them:
 - **`netstat -a` prints `corrupt control block chain`** — on a **fully healthy** box. A control run
   during a known-good session prints the identical message, so it is an Amix `netstat` limitation,
   **not** evidence of anything ✅. (`netstat -m` likewise answers
-  `Memory information not currently supported`.) `netstat -in` and `netstat -rn` *do* work.
+  `Memory information not currently supported`.) `netstat -in` and `netstat -rn` worked on the boxes
+  of that soak, but not on the stock 2.1c image: see [§93](#93-netstat-rn-routehash).
 - **`sar -v` fails** with `sadc: Not enough space` ✅.
 - **`ipcs -a` fails** with `read error: No such device or address` ✅.
 
@@ -1524,6 +1526,18 @@ therefore narrower than "a socket server that forks". Any EGD-style entropy daem
 kernel, and any client that reads entropy from it, is exposed until the cause is known 🟡. Not yet
 tried on the 040/060 line or on hardware 🔴.
 
+### 93. `netstat -rn` fails on the stock 2.1c image with `read error on routehash` ✅/🔴 {#93-netstat-rn-routehash}
+
+On the stock 2.1c image (an emulated A3000 with a 68030, `aen0` up and addressed, the booted kernel
+byte-identical to `/stand/unix`, no `/unix`), `netstat -rn` prints `read error on routehash` and exits
+1 ✅ — four times over three boots. `netstat -in` exits 0 but prints only its header line, with no
+interface rows ✅. The cause is unproven 🔴. `netstat` finds `routehash` in its namelist,
+`/stand/unix` ([§80](#80-namelist-stand-unix)), and reads it through `/dev/kmem`, so a namelist that
+does not match the running kernel would fail exactly like this; but on this box it matched. Other
+boxes have run both commands ([§26](#26-three-diagnostic-tools-that-lie-or-do-not-work)), so the
+difference is still to be found. Until it is, don't build a script on `netstat -r`: set routes with
+`route add` and keep your own record of them ([networking](networking.md#static-ip-configuration-no-dhcp)).
+
 ### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
 
 A `/etc/TIMEZONE` that sets `TZ=US/Eastern` **without a leading colon** makes every SVR4 program that calls `localtime()`/`tzset()` die with `User BUS ERROR at 474D5400` ✅ — and `0x474D5400` is ASCII `"GMT\0"`, the GMT-fallback timezone abbreviation being dereferenced *as a pointer* after the POSIX-rule parser chokes on the `/` in the zone name. The fix is the **colon** form, `TZ=:US/Eastern`, which tells SVR4 to load `/usr/lib/locale/TZ/US/Eastern` as a tzfile path instead of parsing it as a rule (a valid POSIX rule string such as `EST5EDT` or `GMT0` also works — for a zone file always use the colon form, e.g. `TZ=:EET`). The crash set is exactly the localtime callers — `date`, `who -r`, `cron`, `sac`, `ls -l` — while console `login` survives (it needs `getpwnam`, not localtime), which is the tell that distinguishes this from the passwd-side defect. Second-order symptom: a crashed `who -r` empties the positional parameters in the `/etc/rc2.d/S*` scripts that begin `set \`who -r\``, so those degenerate into `test: unknown operator S` at boot. Note this is a **constant** fault address at cold boot — do not confuse it with the emulator's variable-address MMU-frame bus errors ([emulation fidelity](emulation-fidelity.md)).
@@ -1612,6 +1626,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in
   the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
   (first-party record); detail and citations on [networking](networking.md#sources).
+- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🔴 — quirk 93: see the matching Sources entry on [the networking page](networking.md#static-ip-configuration-no-dhcp).
 - The **`queuerun` panic** (first-party record, 2026-10-30) ✅/🟡 — quirk 92: the amix-packages `prngd` 0.9.29 port's runs on the emulated stock 2.1c 68030 (three panics captured on the console with their backtraces, symbolised against the stock kernel by the k30 kernel work; the survived loads and the two `prngd`-free reproducers); the recipe in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 - The **wider SIGSYS set on an FPU-less 68030** (first-party record, 2026-10-30) 🟡 — quirk 31: the k30 kernel work's runs on an Amiberry 68030 with MMU and `fpu_model=0` under the signal-gated 68030 kernel: stock `mkfs -F ufs` and the gcc14-built GNU `cp` and `gtar` exit 140 with `Bad System Call`; `dd`, `cmp`, `sh`, `sleep` and stock `cp` run.
 - The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).

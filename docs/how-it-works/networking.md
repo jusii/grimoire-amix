@@ -81,6 +81,17 @@ route add default 192.168.0.1 1
 
 The trailing `1` is the metric/hopcount, not an option flag. This is the single most common networking gotcha on Amix and is listed in [the quirks checklist](quirks.md).
 
+**Reading the routing table back — `netstat -rn` can fail ✅/🔴.** On the stock 2.1c image (an
+emulated A3000 with a 68030, `aen0` up and addressed, the booted kernel byte-identical to
+`/stand/unix`), `netstat -rn` prints `read error on routehash` and exits 1, the same on four runs over
+three boots ✅. On the same box `netstat -in` exits 0 but prints only its header line, with no
+interface rows, while the box is being driven over `aen0` ✅. Why is unknown 🔴: `netstat` reads
+`routehash` through `/dev/kmem` at the address its namelist gives ([quirk 80](quirks.md#80-namelist-stand-unix)),
+so a namelist that does not match the running kernel would fail this way, but here it matched.
+Other boxes have shown both commands working ([quirk 26](quirks.md#26-three-diagnostic-tools-that-lie-or-do-not-work)).
+**Practical rule:** a script should not depend on `netstat -r` to read the routes; set them with
+`route` and keep its own record of what it set ([quirk 93](quirks.md#93-netstat-rn-routehash)).
+
 ## DNS is off by default — turning it on
 
 By default the C library resolves names from **`/etc/hosts` only**; **DNS lookups are disabled** ✅. This is deliberate in the shipped configuration — the stock `libsocket.so` does not call a name server. Enabling DNS means swapping in the DNS-capable library on **two** resolution paths and providing a resolver config. This procedure is now **first-hand verified** on a running Amix 2.1 ✅:
@@ -584,6 +595,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
+- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🔴 — the amix base station's runs on the emulated stock 2.1c A3000 image over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`; the booted kernel checked equal to `/stand/unix`. Cause untested.
 - The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated stock 2.1c 68030 (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 
 - The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync

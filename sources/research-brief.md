@@ -516,3 +516,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   Follow-up: `pkgadd`/`pkgask`/`pkgchk`/`pkgrm` pages in `/usr/catman/1m`, no `pkginfo`/`pkgmk`/
   `pkgtrans`/`pkgproto` page, no `contents(4)` ✅ (corrects "no `pkg*` man pages" in
   `package-management.md` and the cheat sheet); `/usr/ucb/eqn` and `neqn` present ✅.
+- **`netstat -rn` on stock 2.1c (2026-10-30)** → `networking.md`, `quirks.md` §93, the cheat sheet:
+  `read error on routehash`, exit 1, four runs over three boots of the stock image; `netstat -in`
+  header only, exit 0 ✅; the booted kernel equal to `/stand/unix` ✅; cause 🔴 (namelist lead,
+  untested). Source: the amix base station's emulator runs.
