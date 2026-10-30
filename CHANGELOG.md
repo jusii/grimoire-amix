@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 91 on both kernel lines; the extent rule (c664b12)
+
+An F_FREESP shrink to an unaligned M in an earlier 8 KiB block past the direct blocks, followed by a sparse regrow,
+reads old bytes in [roundup(M, PAGESIZE), roundup(M, 8192)) on both lines, so the 4 KiB-page line needs M in the block's
+lower half. A block-aligned M is clean, so the quirk-90 aligned cut covers it. Mechanism inferred, not read.
+
 ## 2026-10-30 — quirk 91: shrink then regrow reads old bytes (3ca4438, 2c76ccb)
 
 On the 68030 kernel line, an F_FREESP shrink to an earlier 8 KiB block past the direct blocks, followed by a sparse
