@@ -481,5 +481,6 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   regrow across the gap, reads the old bytes in `[roundup(M, PAGESIZE), roundup(M, 8192))` ✅
   (emulation; on disk, survives a remount ✅); block-aligned M, M in the last page, and an in-block
   regrow clean ✅; cause read from the stock objects — `pvn_vptrunc` zeroes the block in the page
-  cache, async put, then aborts every page ≥ M ✅, why the put is dropped 🟡; non-determinism 🟡;
+  cache, async put, then aborts every page ≥ M ✅, `ufs_putpage`'s early return is only a pid 0/2
+  guard ✅, why the zeros never reach the disk 🔴; non-determinism 🟡;
   hardware 🔴. Source: the k30 kernel work's and the 040/060 port's emulator cells and disassembly.
