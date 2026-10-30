@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 91: shrink then regrow reads old bytes (3ca4438, 2c76ccb)
+
+On the 68030 kernel line, an F_FREESP shrink to an earlier 8 KiB block past the direct blocks, followed by a sparse
+regrow, reads the file's old bytes from roundup(M, 2048) to the end of M's block (no crash). Stock 2.1c, 040/060 and the
+cause are untested. Workaround: regrow by writing zeros. Quirk 90's 030 survivor rows point to it.
+
 ## 2026-10-30 — stock libm: sqrt and FPCR (c10fd4a)
 
 A direct sqrt() in GCC 14 code is an inline fsqrt (correctly rounded, hardware on the 040/060); libm's own sqrt,
