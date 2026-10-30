@@ -496,8 +496,15 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
   function probes, so functions that exist read as absent. Keep such includes on the `make` line only.
 - Shell scripts: stock `sed` drops an unterminated last line ([quirk 88](../how-it-works/quirks.md#88-sed-drops-unterminated-line)).
 - **`ftruncate` exists but can panic the box** (030 and 040/060 kernels): shrinking a big file to an unaligned EOF in its old
-  last block takes a kernel bus error. Truncate to the block boundary, then write the tail back
-  ([quirk 90](../how-it-works/quirks.md#90-ftruncate-shrink-panics)).
+  last block takes a kernel bus error. Truncate to the block boundary, then write the tail back;
+  `ftruncate` is a weak symbol in the static libc, so a strong replacement in the program overrides
+  it for every caller (coreutils `dd`/`cp`, GNU tar `--delete`) ([quirk 90](../how-it-works/quirks.md#90-ftruncate-shrink-panics)).
+- **`%lld` also hides in formats built at run time** ✅: coreutils `stat -c %s` and the `stat -f`
+  counts printed 0 because `stat.c` assembles its format with `strcat(…, PRIdMAX)`, which is `"lld"`
+  when `intmax_t` is `long long`, and libc's printf reads `%lld` as 32 bits (the printf `ll` defect
+  above). `od -t d8/u8/x8` builds formats the same way. A check that scans string literals for `ll`
+  cannot see these; grep the sources for `PRIdMAX`/`PRIuMAX`/`PRIxMAX` too, and use `%ld`/`%lu` where
+  the values fit a long.
 - **`gethostbyname()` does not take a dotted quad:** parse IPv4 literals with `inet_addr()` first
   ([networking](../how-it-works/networking.md#gethostbyname-no-dotted-quad)).
 - **`/usr/bin/rsh` is the BSD remote shell** (setuid root, 15452 bytes), not the restricted shell ✅.
@@ -622,3 +629,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The upstream-runtime FPU check (first-party record, 2026-10-29) ✅: an upstream `58130fe` build checked with the project's `check-68060-safe.py --68881` (68060-safe for integer forms; 614 FPU instructions in 040/060-only forms across libgcc and libstdc++); upstream's `README.md` ("defaults to `--with-cpu=68060`") and `toolchain/build-cross.sh` at that commit.
 - The bzip2 1.0.8 and coreutils 5.2.1 ports (first-party record, 2026-10-29) ✅: sysroot reads (`nm` of `libc.so.1` and the `libc.so` archive, the headers) and the emulated 68030 runs behind the gaps list, the `TZ` crash and the `configure` trap.
 - The rsync 3.1.3 port (first-party record, 2026-10-30) ✅: the `ftruncate` probe rows and the `truss` of `gethostbyname()` on an emulated stock 2.1c (details in quirk 90 and on the networking page); `ls -l` of `/usr/bin/rsh` and the `nobody` entries of `/etc/passwd` and `/etc/group` read on the box; [amix-packages](https://github.com/jusii/amix-packages) `e7ac916` (`recipes/rsync/`).
+- The coreutils 5.2.1-3 and gtar 1.14-7 rebuilds (first-party record, 2026-10-30) ✅: the `stat -c %s` and `stat -f` rows on the box, `stat.c`'s run-time format assembly, `nm` of `truncate.o` in the static libc archive (`_ftruncate` T, `ftruncate` W); [amix-packages](https://github.com/jusii/amix-packages) `97bbcf1` (patch 09, the `ftruncate` replacement), `cad15e4`, `cbd8c25`.

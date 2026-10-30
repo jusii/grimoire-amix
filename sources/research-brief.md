@@ -456,8 +456,10 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   `TZ` parser writes in place ✅ (quirk 89); `ftruncate` shrinking a file past its 12 direct
   blocks to an unaligned EOF in the old last block panics stock 2.1c and the 040/060 line when that
   block ends past the old EOF's page (`roundup(N, PAGESIZE) < roundup(N, 8192)`) ✅, `kzero` with no
-  fault catch ✅, why the page fault is unresolvable 🟡, the 040/060 chain above `bzero` 🟡, other
-  exposed programs 🔴 (quirk 90; 040/060 rows from the port's emulator probe, 2026-10-30); hosts-only
+  fault catch ✅, why the page fault is unresolvable 🟡, the 040/060 chain above `bzero` 🟡, exposure
+  measured: `dd seek=`, `cp --sparse=always`, tar `-b 1 --delete` panic ✅, `mv`/`install`/tar
+  incremental snapshots and `shred` 🟡 (quirk 90; 040/060 rows from the port's emulator probe, 2026-10-30); hosts-only
   `gethostbyname()` rejects dotted quads ✅ (`libsockdns` 🔴); `/usr/bin/rsh` is the BSD remote shell,
-  `nobody` is 60001 with no `nogroup` ✅. Source: the amix-packages bzip2, coreutils and rsync ports
+  `nobody` is 60001 with no `nogroup` ✅; `ftruncate` is weak in the static libc ✅; `%lld` in formats
+  assembled at run time from `PRIdMAX` (coreutils `stat`, `od`) ✅. Source: the amix-packages bzip2, coreutils and rsync ports
   (emulated stock 2.1c 68030, `truss`, core notes, symbolised stock kernel).

@@ -4747,9 +4747,31 @@ geometry 🟡. Why the fault on that page cannot be resolved (`segmap_fault` →
 **Workaround (proven ✅ on both lines):** truncate to the block boundary at or below the new EOF —
 aligned, so there is no partial tail to zero — then write the bytes from that boundary up to the new
 EOF back. The rsync 3.1.3 port does this in `do_ftruncate`; its `--inplace` shrink 110011 → 110000
-comes out byte-exact ✅, and the aligned cut 110017 → 106496 survives on the 040/060 line ✅. Exposed: any program that shrinks a big file in place — rsync `--inplace` (patched);
-probably also `dd of=… seek=…` without `conv=notrunc` and tar rewriting an archive in place
-(`--delete`, via gnulib's `ftruncate`), both untested 🔴. `shred`'s truncation to 0 is safe ✅.
+comes out byte-exact ✅, and the aligned cut 110017 → 106496 survives on the 040/060 line ✅. 
+
+**Exposed programs** (any program that shrinks a big file in place; measured on the emulated stock
+2.1c 68030, one boot per panicking case, 2026-10-30):
+
+- **rsync `--inplace`** — panics unpatched ✅; the rsync 3.1.3 port carries the aligned cut.
+- **coreutils `dd … seek=N`** without `conv=notrunc` — `dd if=/dev/null of=<480017-byte file>
+  bs=1000 seek=477` panics ✅; an aligned seek (`bs=8192 seek=50`) survives ✅.
+- **coreutils `cp --sparse=always`** — a sparse copy that ends in a hole writes one byte past the end
+  and truncates back by one byte, a shrink inside the last block: a 110017-byte file ending in 3521
+  zero bytes panics ✅, a 53000-byte one survives ✅. `mv` across filesystems and `install` use the same
+  copy code, not run 🟡.
+- **GNU tar 1.14 `--delete`** — with `-b 1`, deleting a small member from a 215040-byte archive (new
+  EOF 214016, the same 8 KiB block) panics ✅, and survives when the new EOF happens to be aligned
+  (214016 → 212992) ✅. With the default `-b 20` the archive shrinks by whole 10240-byte records, so
+  the new EOF always lands in an earlier block, which is safe ✅. tar also truncates when it rewrites a
+  `--listed-incremental` snapshot — the same path, not run 🟡.
+- **`shred`** truncates to 0 only, which is safe (read from the source) 🟡.
+
+**Porting rule:** never call `ftruncate()` or `F_FREESP` to an unaligned shorter length on Amix. The
+static libc archive defines `ftruncate` as a weak alias of `_ftruncate` (`truncate.o`), so a strong
+`ftruncate` linked into the program replaces it: cut at the block boundary, then rewrite the tail.
+It needs a readable descriptor (coreutils `dd` opens its output `O_RDWR` when `seek=` is given) ✅.
+The project's coreutils and GNU tar packages carry such a replacement, and its `cp` writes the
+final hole's NUL by seeking back rather than by truncating (upstream's own non-`ftruncate` branch) ✅.
 
 ### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
 
@@ -5017,6 +5039,11 @@ with `swap -a` ✅ (emulation, both kernel lines).
   an emulated A4000 with a 68060 and ufs loaded as a module, one panic case per boot with the console
   captured; the kernel read behind the rule (`ufs_itrunc`, `pvn_vptrunc`, `kzero`/`bzero`, compared
   with the stock 2.1c code) and the SVR4 `vm_pvn.c` design note on `kzero`.
+  The exposure rows (first-party record, 2026-10-30) ✅: amix-packages probes of coreutils 5.2.1 `dd`
+  and `cp`, and GNU tar 1.14 `--delete`, on the emulated stock 2.1c 68030, the console captured at
+  each panic; the fixes in [amix-packages](https://github.com/jusii/amix-packages)
+  `recipes/common/amix-ftruncate.c` (`cad15e4`), coreutils 5.2.1-3 (`97bbcf1`) and gtar 1.14-7
+  (`cbd8c25`), passing on the bench.
 
 
 ================================================================================
@@ -11528,8 +11555,15 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
   function probes, so functions that exist read as absent. Keep such includes on the `make` line only.
 - Shell scripts: stock `sed` drops an unterminated last line ([quirk 88](../how-it-works/quirks.md#88-sed-drops-unterminated-line)).
 - **`ftruncate` exists but can panic the box** (030 and 040/060 kernels): shrinking a big file to an unaligned EOF in its old
-  last block takes a kernel bus error. Truncate to the block boundary, then write the tail back
-  ([quirk 90](../how-it-works/quirks.md#90-ftruncate-shrink-panics)).
+  last block takes a kernel bus error. Truncate to the block boundary, then write the tail back;
+  `ftruncate` is a weak symbol in the static libc, so a strong replacement in the program overrides
+  it for every caller (coreutils `dd`/`cp`, GNU tar `--delete`) ([quirk 90](../how-it-works/quirks.md#90-ftruncate-shrink-panics)).
+- **`%lld` also hides in formats built at run time** ✅: coreutils `stat -c %s` and the `stat -f`
+  counts printed 0 because `stat.c` assembles its format with `strcat(…, PRIdMAX)`, which is `"lld"`
+  when `intmax_t` is `long long`, and libc's printf reads `%lld` as 32 bits (the printf `ll` defect
+  above). `od -t d8/u8/x8` builds formats the same way. A check that scans string literals for `ll`
+  cannot see these; grep the sources for `PRIdMAX`/`PRIuMAX`/`PRIxMAX` too, and use `%ld`/`%lu` where
+  the values fit a long.
 - **`gethostbyname()` does not take a dotted quad:** parse IPv4 literals with `inet_addr()` first
   ([networking](../how-it-works/networking.md#gethostbyname-no-dotted-quad)).
 - **`/usr/bin/rsh` is the BSD remote shell** (setuid root, 15452 bytes), not the restricted shell ✅.
@@ -11654,6 +11688,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The upstream-runtime FPU check (first-party record, 2026-10-29) ✅: an upstream `58130fe` build checked with the project's `check-68060-safe.py --68881` (68060-safe for integer forms; 614 FPU instructions in 040/060-only forms across libgcc and libstdc++); upstream's `README.md` ("defaults to `--with-cpu=68060`") and `toolchain/build-cross.sh` at that commit.
 - The bzip2 1.0.8 and coreutils 5.2.1 ports (first-party record, 2026-10-29) ✅: sysroot reads (`nm` of `libc.so.1` and the `libc.so` archive, the headers) and the emulated 68030 runs behind the gaps list, the `TZ` crash and the `configure` trap.
 - The rsync 3.1.3 port (first-party record, 2026-10-30) ✅: the `ftruncate` probe rows and the `truss` of `gethostbyname()` on an emulated stock 2.1c (details in quirk 90 and on the networking page); `ls -l` of `/usr/bin/rsh` and the `nobody` entries of `/etc/passwd` and `/etc/group` read on the box; [amix-packages](https://github.com/jusii/amix-packages) `e7ac916` (`recipes/rsync/`).
+- The coreutils 5.2.1-3 and gtar 1.14-7 rebuilds (first-party record, 2026-10-30) ✅: the `stat -c %s` and `stat -f` rows on the box, `stat.c`'s run-time format assembly, `nm` of `truncate.o` in the static libc archive (`_ftruncate` T, `ftruncate` W); [amix-packages](https://github.com/jusii/amix-packages) `97bbcf1` (patch 09, the `ftruncate` replacement), `cad15e4`, `cbd8c25`.
 
 
 ================================================================================
