@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 31 on an FPU-less 68030 (8fe8cfe)
+
+With the signal-gated 68030 kernel, an FPU-less 68030 also gets SIGSYS (exit 140) from stock mkfs -F ufs, so no new
+ufs can be made, and from gcc14-built GNU cp and gtar; dd, cmp, sh, sleep and stock cp run. Emulation only; which FP
+instruction each program reaches is untraced. The real-hardware FPU row notes the mkfs limit.
+
 ## 2026-10-30 — quirk 74 fixed on the 68030 line in emulation (dfa7b22)
 
 k30 2a3e894 gates sendsig's fpu_setup call with fpu_setup_gated, so an FPU-less 68030 boots and survives signals; a
