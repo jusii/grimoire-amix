@@ -467,5 +467,9 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   (`objdump`, re-read); per-function trap map ✅; bit-identical through the 040 FPSP (emulated) ✅, no
   060 libm run 🟡; within 1 ulp, `pow(2, 0.5)` one ulp low ✅; SVID errors (`EDOM`, `matherr` line,
   `-HUGE`/0 returns) ✅; musl 1.2.5 math wrong under 68881 extended precision 🟡; the LC060 FPE merged
-  but not accepted by the port ✅. Source: amix-packages libm probes; port `STATUS.md` @ `baf3ddf`. Source: the amix-packages bzip2, coreutils and rsync ports
+  but not accepted by the port ✅. Source: amix-packages libm probes; port `STATUS.md` @ `baf3ddf`.
+- **The payload-licence gate after the 2026-10-30 ruling** → `docs/how-it-works/package-repository.md`:
+  embedded stock SVR4 libm is recorded, no longer refused; Kickstart ROM images are refused by content
+  (89 of 105 images caught, the 16 misses all split halves, 0 of 29 expansion ROMs) ✅. Source:
+  amix-packagemanager `dccd3b1`, `e656915` (`tools/repo/payload-licence-gate.py`). Source: the amix-packages bzip2, coreutils and rsync ports
   (emulated stock 2.1c 68030, `truss`, core notes, symbolised stock kernel).
