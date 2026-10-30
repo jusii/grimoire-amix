@@ -2,10 +2,11 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
-## 2026-10-31 — quirk 92: prngd package test on three kernels (802b9b6)
+## 2026-10-31 — quirk 92: prngd package test on three kernels (802b9b6, 3a8145b)
 
-The prngd package's smoke test panics the 2.1c bench image before any load (same signature); a 2.1c kernel with only
-the freeq guard and the project's 68030 test kernel pass the smoke test and three loads (🟡, emulation, one boot each).
+The prngd package's smoke test panics the 2.1c bench image before any load (heap pc, vector 0x4; consistent with quirk
+92, not confirmed, since the booted kernel has no symbols). A 2.1c kernel with only the freeq guard and the project's
+68030 test kernel pass the smoke test and three loads (🟡, emulation, one boot each).
 
 ## 2026-10-31 — quirk 92 root cause and 68030 fix; quirk 93 rescoped (b2c2e62)
 
