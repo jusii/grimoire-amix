@@ -478,9 +478,11 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   (emulated stock 2.1c 68030, `truss`, core notes, symbolised stock kernel).
 - **Stale data after a shrink (2026-10-30)** → `quirks.md` §91: on stock 2.1c and both kernel lines,
   an `F_FREESP` shrink to an unaligned M in an earlier 8 KiB block past the direct blocks, then a
-  regrow across the gap, reads the old bytes in `[roundup(M, PAGESIZE), roundup(M, 8192))` ✅
-  (emulation; on disk: survives a remount on the 68030 line and a reboot on the 040/060 line ✅); block-aligned M, M in the last page, and an in-block
-  regrow clean ✅; cause read from the stock objects — `pvn_vptrunc` zeroes the block in the page
-  cache, async put, then aborts every page ≥ M ✅, `ufs_putpage`'s early return is only a pid 0/2
-  guard ✅, why the zeros never reach the disk 🔴; non-determinism 🟡;
-  hardware 🔴. Source: the k30 kernel work's and the 040/060 port's emulator cells and disassembly.
+  regrow across the gap, reads the old bytes in `[roundup(M, PAGESIZE), roundup(M, 8192))` (warm
+  cache) or `[M, roundup(M, 8192))` (cold) ✅ (emulation; on disk: survives a remount on the 68030
+  line and a reboot on the 040/060 line ✅); cause read from the stock objects — `pvn_vptrunc` zeroes
+  the block in the page cache, async put, aborts every page ≥ M; with no cached pages it zeroes
+  nothing ✅; the putpage guard and the dirty-scan explanation ruled out ✅; the async write losing to
+  the abort, by elimination 🟡; non-determinism 🟡; hardware 🔴. Fixed on the 68030 line in emulation
+  (synchronous tail zeroing, `kernel/k30` `1be27f8`) ✅, hardware 🟡, 040/060 not yet. Source: the k30
+  kernel work's and the 040/060 port's emulator cells and disassembly.
