@@ -466,7 +466,9 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
 - **Stock `libm.a` (2026-10-30)** → `docs/drivers/toolchain.md#stock-libm`, `68040-68060-status.md`:
   archive only; software math on basic 6888x arithmetic, 21 `fmovecr` and 16 `fintrz` sites ✅
   (`objdump`, re-read); per-function trap map ✅; bit-identical through the 040 FPSP (emulated) ✅, no
-  060 libm run 🟡; within 1 ulp, `pow(2, 0.5)` one ulp low ✅; SVID errors (`EDOM`, `matherr` line,
+  060 libm run 🟡; within 1 ulp, `pow(2, 0.5)` one ulp low ✅; libm's
+  `sqrt` not correctly rounded (0.56–0.63 ulp) while a direct `sqrt()` is GCC's inline `fsqrt` ✅;
+  `FPCR` 0 at process start ✅; SVID errors (`EDOM`, `matherr` line,
   `-HUGE`/0 returns) ✅; musl 1.2.5 math wrong under 68881 extended precision 🟡; the LC060 FPE merged
   but not accepted by the port ✅. Source: amix-packages libm probes; port `STATUS.md` @ `baf3ddf`.
 - **The payload-licence gate after the 2026-10-30 ruling** → `docs/how-it-works/package-repository.md`:

@@ -515,7 +515,8 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
 
 Stock Amix ships its math library **only as an archive**, `/usr/ccs/lib/libm.a` (40 members, plus a
 profiled copy in `libp/`); there is no shared `libm`. GCC 14 code links it and gets correct `double`
-returns ✅ (measured: 357 results over 19 functions on an emulated stock 2.1c 68030, 2026-10-30).
+returns ✅ (measured: 357 results over 19 functions on an emulated stock 2.1c 68030, 2026-10-30; the
+probe's positive `sqrt` rows turned out to be GCC's inline `fsqrt`, not libm — see below).
 
 **It is software math on basic 6888x arithmetic** ✅ (`objdump` of every member): no `fsin`, `fcos`,
 `fetox`, `flogn`, `fatan` or `ftan` anywhere. It does use two instructions the 040/060 FPUs lack in
@@ -544,6 +545,18 @@ libm-level run on a 68060 yet 🟡. On FPU-less parts there is no usable floatin
 `atan2` 0.745, `tan` 0.721, `tanh` 0.717, `sin` 0.63, `cosh` 0.625, `pow` 0.565 ulp; `floor`, `ceil`
 and `fmod` exact. Not always correctly rounded: `pow(2, 0.5)` is `0x3ff6a09e667f3bcc`, one ulp below
 `sqrt(2)`'s `…bcd` ✅.
+
+**`sqrt`: libm's or the FPU's ✅.** A GCC 14 program that calls `sqrt()` directly does not call libm:
+GCC emits one 68881 `fsqrt`, which is correctly rounded and implemented in hardware on the 040/060
+too (no FPSP trap). A call through a function pointer (as perl makes it) reaches libm's `sqrt`, which
+is within 1 ulp but **not correctly rounded**: `sqrt(2)` = `0x3ff6a09e667f3bcc` (0.56 ulp; correctly
+rounded is `…bcd`), `sqrt(10)` 0.57 ulp, `sqrt(0.7)` 0.63 ulp — deterministic, the same bits whatever
+`%fp0`/`%fp1` and the stack held beforehand. So the two routes can differ in the last bit. `sin`,
+`log`, `exp` and `atan` are likewise independent of leftover FP registers ✅.
+
+**FP state at start ✅:** `FPCR` is `0x00000000` when a process starts (round to nearest, extended
+precision, no exception traps enabled), and the stock `fpsetmask(0)` that perl calls at startup
+rewrites only the exception-enable byte.
 
 **Errors are SVID, not IEEE** ✅: domain errors set `errno` to `EDOM` (33), the default `matherr()`
 prints one line to stderr (`log: DOMAIN error`, `log: SING error`, `pow: DOMAIN error`, …), and the
@@ -675,5 +688,5 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The upstream-runtime FPU check (first-party record, 2026-10-29) ✅: an upstream `58130fe` build checked with the project's `check-68060-safe.py --68881` (68060-safe for integer forms; 614 FPU instructions in 040/060-only forms across libgcc and libstdc++); upstream's `README.md` ("defaults to `--with-cpu=68060`") and `toolchain/build-cross.sh` at that commit.
 - The bzip2 1.0.8 and coreutils 5.2.1 ports (first-party record, 2026-10-29) ✅: sysroot reads (`nm` of `libc.so.1` and the `libc.so` archive, the headers) and the emulated 68030 runs behind the gaps list, the `TZ` crash and the `configure` trap.
 - The rsync 3.1.3 port (first-party record, 2026-10-30) ✅: the `ftruncate` probe rows and the `truss` of `gethostbyname()` on an emulated stock 2.1c (details in quirk 90 and on the networking page); `ls -l` of `/usr/bin/rsh` and the `nobody` entries of `/etc/passwd` and `/etc/group` read on the box; [amix-packages](https://github.com/jusii/amix-packages) `e7ac916` (`recipes/rsync/`).
-- The stock `libm.a` measurements (first-party record, 2026-10-30) ✅: `ar t` and `objdump -d` of the sysroot's `/usr/ccs/lib/libm.a` (21 `fmovecr`, 16 `fintrz`, no transcendental instructions; counts re-read for this page), link maps of one-call programs, and a GCC 14 test program (19 functions, raw IEEE bits) run on an emulated stock 2.1c 68030 and an emulated 68040 on the 040/060 kernel line with unimplemented-instruction trapping on, the outputs equal; ulps against `mpmath` at 200 bits; a musl 1.2.5 `src/math` build of the same program (amix-packages).
+- The stock `libm.a` measurements (first-party record, 2026-10-30) ✅ — the `sqrt` correction from follow-up probes calling libm's `sqrt` through a function pointer with `%fp0`/`%fp1` and the stack preloaded, `objdump` of the first probe's `main` (one inline `fsqrt`, re-read for this page), and an `FPCR`/`fpsetmask` read; ulps recomputed for this page: `ar t` and `objdump -d` of the sysroot's `/usr/ccs/lib/libm.a` (21 `fmovecr`, 16 `fintrz`, no transcendental instructions; counts re-read for this page), link maps of one-call programs, and a GCC 14 test program (19 functions, raw IEEE bits) run on an emulated stock 2.1c 68030 and an emulated 68040 on the 040/060 kernel line with unimplemented-instruction trapping on, the outputs equal; ulps against `mpmath` at 200 bits; a musl 1.2.5 `src/math` build of the same program (amix-packages).
 - The coreutils 5.2.1-3 and gtar 1.14-7 rebuilds (first-party record, 2026-10-30) ✅: the `stat -c %s` and `stat -f` rows on the box, `stat.c`'s run-time format assembly, `nm` of `truncate.o` in the static libc archive (`_ftruncate` T, `ftruncate` W); [amix-packages](https://github.com/jusii/amix-packages) `97bbcf1` (patch 09, the `ftruncate` replacement), `cad15e4`, `cbd8c25`.
