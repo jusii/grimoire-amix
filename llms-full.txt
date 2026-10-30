@@ -106,7 +106,7 @@ The releases, with confidence tags carried straight from the research brief:
 | SVR3.x precursors | 1988–89 | A2500UX demos (68020 → 68030); proprietary windowing, not yet SVR4 | 🟡 |
 | 1.1 | 1991 | First widely-referenced SVR4 release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | Color X via the A2410; archive.org carries 2.01 and 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** 🟡 | **Last retail release** ✅ (month community-reported). Ships pre-formatted man pages only (nroff sources dropped) | ✅ |
+| **2.1** | **Feb 1992** 🟡 | **Last retail release** ✅ (month community-reported). Ships pre-formatted SVR4 man pages (no nroff source; the Amiga sections are source) | ✅ |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | Unofficial but considered definitive; inet / NFS fixes (no Y2K content — [quirks §7](quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)) | ✅ |
 
 **Notes on the matrix:**
@@ -8217,7 +8217,7 @@ ps -ef              # SVR4-style full process list
 
 - `uname -v` matching `^2\.1.* 08004..$` is exactly the test the patch disk runs before applying ✅ — if your string matches, you're on a patchable 2.1.
 - The kernel accepts any year, but the stock date tooling does not ✅ (corrected 2026-09-29): the 2-digit `date` form reads `yy` as `19yy`, `amixadm` accepts only ≤ 1999, and the stock `setclk` cannot set a year ≥ 2000 from the battery clock (`date: bad conversion` at boot). Set the date by hand with the 4-digit form `date MMDDhhmmCCYY`, or install the community-patched `setclk` — see [quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap).
-- Man pages on 2.1 are **pre-formatted only** (the nroff sources were dropped) ✅ — `man` works, but you can't reformat.
+- The SVR4 base man pages ship **pre-formatted only** (in `/usr/catman`) ✅; the Amiga-specific sections (`1A`, `1X`, `3A`, …) ship as `nroff` source and `man` formats them on first view with `/usr/ucb/nroff` ✅. `MANPATH` takes one directory, and lookup goes through its `whatis` file — see [man pages](../reference/commands-cheatsheet.md#man-pages).
 
 When you're ready to do real work, the next stops are the [commands cheat-sheet](../reference/commands-cheatsheet.md) and, if you want to build kernels or drivers, the [driver model](../drivers/driver-model.md) and [kernel build](../drivers/kernel-build.md) pages.
 
@@ -16432,7 +16432,7 @@ exactly this **2.1p2a / kernel 2.1c** combination.
 | SVR3.x precursors | 1988–89 | AT&T System V **Release 3** | A2500UX demos; CPU stepped 68020 → 68030; proprietary windowing (pre-X) | 🟡 |
 | 1.1 | 1991 | SVR4 | First widely-referenced **SVR4** release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | SVR4 | Color X via the A2410 graphics card; archive.org carries the 2.01 and 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** 🟡 | SVR4 | **Last retail release.** Ships **pre-formatted man pages only** — the `nroff` man sources were dropped | ✅ (installer exists locally; month 🟡) |
+| **2.1** | **Feb 1992** 🟡 | SVR4 | **Last retail release.** Ships **pre-formatted SVR4 man pages** (no `nroff` source; the Amiga sections are source) | ✅ (installer exists locally; month 🟡) |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | SVR4 patch on 2.1 | Unofficial but treated as definitive; inet/NFS fixes (often credited with a Y2K fix, but it carries none — [quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)). Our `patch.adf` *is* this patch | ✅ (the patch ADF exists locally) |
 | "2.2" | — | — | **Does not exist** in any primary source; almost certainly confusion with 2.1c | 🔴 |
 | "2.1c, 1994" (gunkies) | — | — | The **1994 date is almost certainly wrong** — support ended in 1993 | 🔴 |
@@ -16467,8 +16467,10 @@ AT&T's **3B2 (WE32x00) SVR4** source 🟡 (community-reported; amigaunix.com hed
 **Amix 2.1 is the last release Commodore sold** ✅ — February 1992, though the *month* is community-reported 🟡. It is the version every current
 guide assumes, because its install media (boot / root / patch floppies) are the set that survived and
 gets emulated. One concrete, frequently-tripped-over change in 2.1: the distribution carries
-**pre-formatted man pages only** — the `nroff`/`troff` man *sources* were removed to save space ✅, so
-you cannot regenerate or easily edit the manuals on a stock 2.1 system.
+**pre-formatted SVR4 man pages** — the base pages are in `/usr/catman` as formatted cat pages, with
+no `nroff` source ✅, so you cannot regenerate or easily edit those manuals on a stock 2.1 system. The
+Amiga-specific sections are the exception: they ship as `nroff` source and are formatted on first
+view, with `/usr/ucb/nroff` on the box ✅ ([man pages](commands-cheatsheet.md#man-pages)).
 
 Our local boot/root/patch floppies are the **2.1** install set (`amix_21_boot.adf`,
 `amix_21_root.adf`, `amix_21_patch.adf`). They are Commodore material — this repo does not redistribute
@@ -17466,6 +17468,39 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 
 ---
 
+## Man pages: how stock `man` finds a page ✅ {#man-pages}
+
+Measured on the stock 2.1c install (emulated 68030), 2026-10-30.
+
+- **One binary, four names:** `/usr/bin/man` (13968 bytes, ELF) is hard-linked as `/bin/man`,
+  `/usr/bin/catman` and `/usr/bin/whatis`. Usage: `man [section] name ...`, `man -k keyword`,
+  `man -f file`. There is **no `-M`** (`man: illegal option -- M`).
+- **Two trees.** Sources live in `$MANPATH`, default `/usr/share/man` (`/usr/man` is a symlink to it).
+  Formatted pages live in `$CATPATH`, default `/usr/catman`. The SVR4 base pages ship **formatted
+  only**, as compressed cat pages in `/usr/catman/<section>/<name>.Z` (sections `1`, `1m`, `2`, `3`,
+  `4`, `5`, `7`, `8` and their letter variants). The Amiga-specific sections (`1A`, `1X`, `1l`, `3A`,
+  `3X`, `5A`, `5l`, `6`, `7A`, `8l`) ship as compressed `nroff` **source** in
+  `/usr/share/man/<section>/<name>.Z`. Directories are named by section alone, with no `man` prefix.
+- **Formatting happens on first view:** `zcat | tbl | eqn | /usr/ucb/nroff -man -T37 | col` into the
+  cat tree (`Reformatting page 1A/a2024...`). `nroff` and `tbl` are in `/usr/ucb`; `compress`,
+  `uncompress` and `zcat` are one binary in `/usr/bin`. `catman` with no arguments reformats every
+  source page into `/usr/catman`. `PAGER` defaults to `/usr/bin/more`.
+- **`MANPATH` is one directory, not a colon list:** `MANPATH=/a:/usr/man` makes `man` open
+  `/a:/usr/man/whatis` (`egrep: can't open`).
+- **Lookup goes through `<MANPATH>/whatis`**, with
+  `egrep -i "(^name[^a-zA-Z0-9]| name[^a-zA-Z0-9]).*-"`. A page on disk with no `whatis` line is
+  `No manual entry`. A `whatis` line reads `name(sect)<spaces>names - description`, e.g.
+  `grep(1)          grep - search a file for a pattern`. The stock index is `/usr/share/man/whatis`
+  (136040 bytes), with `base_whatis` beside it.
+- **Page files:** under `<tree>/<section>/`, a page can be `<name>.Z`, a plain `<name>` or `<name>.1`,
+  and a `.so /absolute/path` alias works. A BSD-style `man1/<name>.1` tree is **not** found.
+- **Packaging hazard:** with `MANPATH` set and `CATPATH` not, `man` writes the formatted page into
+  the stock `/usr/catman/<section>/<name>`. A page that shares a stock page's name (say, a GNU
+  `grep(1)`) then shadows the stock page for every later plain `man grep`. Setting `CATPATH` to a
+  private tree avoids that, but then the stock pages are unreachable (`No manual entry for ls`) until
+  both variables are unset. A package that ships man pages should therefore add its own `whatis`
+  lines and keep its pages out of the stock names, or accept the shadowing.
+
 ## See also
 - [Device list](device-list.md) — every `/dev` node with its major/minor number.
 - [Versions](versions.md) — which release supports what; the `2.1c` / "2.2" caveats.
@@ -17477,6 +17512,7 @@ For the install in full, see the [install walkthrough](../getting-started/instal
   historical material (we cross-link rather than duplicate it).
 
 ## Sources
+- The **stock `man(1)` mechanics** (first-party record, 2026-10-30) ✅ — the packages station's four probe runs on the emulated stock 2.1c 68030: `ls -l` of the binaries and trees, `strings` of `/usr/bin/man` (the default paths, the `egrep` lookup, the format pipeline), `whatis` excerpts, planted pages in each layout, the `MANPATH` colon test, `-M`, and the `CATPATH` shadowing run.
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - The stock-`init` shutdown stall over telnet — first-party, eight discriminating runs, 2026-09-29
   (`amix-gayle-ide/README.md`) ✅.

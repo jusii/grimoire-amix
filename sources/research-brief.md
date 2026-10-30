@@ -506,3 +506,10 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   0.9.29 plus `prngd-ctl` traffic panics stock 2.1c (illegal instruction, pc in kernel data) ✅ 3/3,
   backtrace `ureturn` → `queuerun` ✅, a deferred put through a garbage `qi_putp` 🟡, no repro without
   `prngd` 🟡, 040/060 and hardware 🔴. Source: amix-packages `prngd` runs and `cc61d24`.
+- **Stock `man(1)` (2026-10-30)** → `commands-cheatsheet.md#man-pages`, `first-login-and-tour.md`,
+  `versions.md`, `overview.md`: one binary for `man`/`catman`/`whatis`, no `-M`; `MANPATH` one
+  directory (default `/usr/share/man`), `CATPATH` default `/usr/catman`; lookup through `whatis`;
+  SVR4 base pages formatted only, Amiga sections as compressed `nroff` source formatted on first view
+  by `/usr/ucb/nroff` ✅ (corrects "pre-formatted only, cannot reformat"); `man1/` layout not found;
+  `MANPATH` without `CATPATH` writes into, and shadows, the stock cat tree ✅. Source: the packages
+  station's probe runs on the emulated stock 2.1c 68030.

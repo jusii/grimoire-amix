@@ -152,7 +152,7 @@ ps -ef              # SVR4-style full process list
 
 - `uname -v` matching `^2\.1.* 08004..$` is exactly the test the patch disk runs before applying ✅ — if your string matches, you're on a patchable 2.1.
 - The kernel accepts any year, but the stock date tooling does not ✅ (corrected 2026-09-29): the 2-digit `date` form reads `yy` as `19yy`, `amixadm` accepts only ≤ 1999, and the stock `setclk` cannot set a year ≥ 2000 from the battery clock (`date: bad conversion` at boot). Set the date by hand with the 4-digit form `date MMDDhhmmCCYY`, or install the community-patched `setclk` — see [quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap).
-- Man pages on 2.1 are **pre-formatted only** (the nroff sources were dropped) ✅ — `man` works, but you can't reformat.
+- The SVR4 base man pages ship **pre-formatted only** (in `/usr/catman`) ✅; the Amiga-specific sections (`1A`, `1X`, `3A`, …) ship as `nroff` source and `man` formats them on first view with `/usr/ucb/nroff` ✅. `MANPATH` takes one directory, and lookup goes through its `whatis` file — see [man pages](../reference/commands-cheatsheet.md#man-pages).
 
 When you're ready to do real work, the next stops are the [commands cheat-sheet](../reference/commands-cheatsheet.md) and, if you want to build kernels or drivers, the [driver model](../drivers/driver-model.md) and [kernel build](../drivers/kernel-build.md) pages.
 

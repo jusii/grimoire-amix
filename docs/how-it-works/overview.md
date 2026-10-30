@@ -95,7 +95,7 @@ The releases, with confidence tags carried straight from the research brief:
 | SVR3.x precursors | 1988–89 | A2500UX demos (68020 → 68030); proprietary windowing, not yet SVR4 | 🟡 |
 | 1.1 | 1991 | First widely-referenced SVR4 release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | Color X via the A2410; archive.org carries 2.01 and 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** 🟡 | **Last retail release** ✅ (month community-reported). Ships pre-formatted man pages only (nroff sources dropped) | ✅ |
+| **2.1** | **Feb 1992** 🟡 | **Last retail release** ✅ (month community-reported). Ships pre-formatted SVR4 man pages (no nroff source; the Amiga sections are source) | ✅ |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | Unofficial but considered definitive; inet / NFS fixes (no Y2K content — [quirks §7](quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)) | ✅ |
 
 **Notes on the matrix:**

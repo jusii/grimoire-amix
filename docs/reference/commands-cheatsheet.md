@@ -303,6 +303,39 @@ For the install in full, see the [install walkthrough](../getting-started/instal
 
 ---
 
+## Man pages: how stock `man` finds a page ✅ {#man-pages}
+
+Measured on the stock 2.1c install (emulated 68030), 2026-10-30.
+
+- **One binary, four names:** `/usr/bin/man` (13968 bytes, ELF) is hard-linked as `/bin/man`,
+  `/usr/bin/catman` and `/usr/bin/whatis`. Usage: `man [section] name ...`, `man -k keyword`,
+  `man -f file`. There is **no `-M`** (`man: illegal option -- M`).
+- **Two trees.** Sources live in `$MANPATH`, default `/usr/share/man` (`/usr/man` is a symlink to it).
+  Formatted pages live in `$CATPATH`, default `/usr/catman`. The SVR4 base pages ship **formatted
+  only**, as compressed cat pages in `/usr/catman/<section>/<name>.Z` (sections `1`, `1m`, `2`, `3`,
+  `4`, `5`, `7`, `8` and their letter variants). The Amiga-specific sections (`1A`, `1X`, `1l`, `3A`,
+  `3X`, `5A`, `5l`, `6`, `7A`, `8l`) ship as compressed `nroff` **source** in
+  `/usr/share/man/<section>/<name>.Z`. Directories are named by section alone, with no `man` prefix.
+- **Formatting happens on first view:** `zcat | tbl | eqn | /usr/ucb/nroff -man -T37 | col` into the
+  cat tree (`Reformatting page 1A/a2024...`). `nroff` and `tbl` are in `/usr/ucb`; `compress`,
+  `uncompress` and `zcat` are one binary in `/usr/bin`. `catman` with no arguments reformats every
+  source page into `/usr/catman`. `PAGER` defaults to `/usr/bin/more`.
+- **`MANPATH` is one directory, not a colon list:** `MANPATH=/a:/usr/man` makes `man` open
+  `/a:/usr/man/whatis` (`egrep: can't open`).
+- **Lookup goes through `<MANPATH>/whatis`**, with
+  `egrep -i "(^name[^a-zA-Z0-9]| name[^a-zA-Z0-9]).*-"`. A page on disk with no `whatis` line is
+  `No manual entry`. A `whatis` line reads `name(sect)<spaces>names - description`, e.g.
+  `grep(1)          grep - search a file for a pattern`. The stock index is `/usr/share/man/whatis`
+  (136040 bytes), with `base_whatis` beside it.
+- **Page files:** under `<tree>/<section>/`, a page can be `<name>.Z`, a plain `<name>` or `<name>.1`,
+  and a `.so /absolute/path` alias works. A BSD-style `man1/<name>.1` tree is **not** found.
+- **Packaging hazard:** with `MANPATH` set and `CATPATH` not, `man` writes the formatted page into
+  the stock `/usr/catman/<section>/<name>`. A page that shares a stock page's name (say, a GNU
+  `grep(1)`) then shadows the stock page for every later plain `man grep`. Setting `CATPATH` to a
+  private tree avoids that, but then the stock pages are unreachable (`No manual entry for ls`) until
+  both variables are unset. A package that ships man pages should therefore add its own `whatis`
+  lines and keep its pages out of the stock names, or accept the shadowing.
+
 ## See also
 - [Device list](device-list.md) — every `/dev` node with its major/minor number.
 - [Versions](versions.md) — which release supports what; the `2.1c` / "2.2" caveats.
@@ -314,6 +347,7 @@ For the install in full, see the [install walkthrough](../getting-started/instal
   historical material (we cross-link rather than duplicate it).
 
 ## Sources
+- The **stock `man(1)` mechanics** (first-party record, 2026-10-30) ✅ — the packages station's four probe runs on the emulated stock 2.1c 68030: `ls -l` of the binaries and trees, `strings` of `/usr/bin/man` (the default paths, the `egrep` lookup, the format pipeline), `whatis` excerpts, planted pages in each layout, the `MANPATH` colon test, `-M`, and the `CATPATH` shadowing run.
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - The stock-`init` shutdown stall over telnet — first-party, eight discriminating runs, 2026-09-29
   (`amix-gayle-ide/README.md`) ✅.

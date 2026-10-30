@@ -23,7 +23,7 @@ exactly this **2.1p2a / kernel 2.1c** combination.
 | SVR3.x precursors | 1988–89 | AT&T System V **Release 3** | A2500UX demos; CPU stepped 68020 → 68030; proprietary windowing (pre-X) | 🟡 |
 | 1.1 | 1991 | SVR4 | First widely-referenced **SVR4** release; mono X reported "slow as molasses" | 🟡 |
 | 2.0 / 2.01 / 2.03 | 1991 | SVR4 | Color X via the A2410 graphics card; archive.org carries the 2.01 and 2.03 installers | 🟡 |
-| **2.1** | **Feb 1992** 🟡 | SVR4 | **Last retail release.** Ships **pre-formatted man pages only** — the `nroff` man sources were dropped | ✅ (installer exists locally; month 🟡) |
+| **2.1** | **Feb 1992** 🟡 | SVR4 | **Last retail release.** Ships **pre-formatted SVR4 man pages** (no `nroff` source; the Amiga sections are source) | ✅ (installer exists locally; month 🟡) |
 | 2.1 patch 2a → kernel **2.1c** | post-1992 | SVR4 patch on 2.1 | Unofficial but treated as definitive; inet/NFS fixes (often credited with a Y2K fix, but it carries none — [quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)). Our `patch.adf` *is* this patch | ✅ (the patch ADF exists locally) |
 | "2.2" | — | — | **Does not exist** in any primary source; almost certainly confusion with 2.1c | 🔴 |
 | "2.1c, 1994" (gunkies) | — | — | The **1994 date is almost certainly wrong** — support ended in 1993 | 🔴 |
@@ -58,8 +58,10 @@ AT&T's **3B2 (WE32x00) SVR4** source 🟡 (community-reported; amigaunix.com hed
 **Amix 2.1 is the last release Commodore sold** ✅ — February 1992, though the *month* is community-reported 🟡. It is the version every current
 guide assumes, because its install media (boot / root / patch floppies) are the set that survived and
 gets emulated. One concrete, frequently-tripped-over change in 2.1: the distribution carries
-**pre-formatted man pages only** — the `nroff`/`troff` man *sources* were removed to save space ✅, so
-you cannot regenerate or easily edit the manuals on a stock 2.1 system.
+**pre-formatted SVR4 man pages** — the base pages are in `/usr/catman` as formatted cat pages, with
+no `nroff` source ✅, so you cannot regenerate or easily edit those manuals on a stock 2.1 system. The
+Amiga-specific sections are the exception: they ship as `nroff` source and are formatted on first
+view, with `/usr/ucb/nroff` on the box ✅ ([man pages](commands-cheatsheet.md#man-pages)).
 
 Our local boot/root/patch floppies are the **2.1** install set (`amix_21_boot.adf`,
 `amix_21_root.adf`, `amix_21_patch.adf`). They are Commodore material — this repo does not redistribute
