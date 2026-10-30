@@ -161,6 +161,16 @@ Notes and caveats:
 
 For a complete, reproducible LAN setup (static IP at boot, gateway, DNS, internet, reachable inbound — all surviving reboot) under Amiberry, see **[Putting Amix on your real LAN](../getting-started/networking-on-the-lan.md)**.
 
+### `gethostbyname()` takes names, not dotted quads ✅ {#gethostbyname-no-dotted-quad}
+
+The stock hosts-only `libsocket` `gethostbyname()` **does not accept an IPv4 literal** ✅: given
+`"a.b.c.d"`, it opens `/etc/hosts`, reads it, makes no other lookup and fails, while the same call
+with a name listed in `/etc/hosts` works (measured with `truss` during the rsync 3.1.3 port: its
+bundled `getaddrinfo` passed the address string through and reported "Unknown server error"). Whether
+the DNS-enabled `libsockdns` behaves the same is untested 🔴. **Porting rule:** parse IPv4 literals
+yourself with `inet_addr()` before calling `gethostbyname()`; the rsync port patches its
+`lib/getaddrinfo.c` this way, and `apkg` does the same ([package repository](package-repository.md#http-specifics)).
+
 ## NFS (server and client)
 
 Amix includes **NFS as both server and client** ✅, the SVR4-standard RPC/NFS stack. The install/boot kernel is itself NFS/RPC-capable: the on-floppy bootstrap embeds a full **NFS/RPC client string table** (confirmed by string analysis of `amix_21_boot.adf`) ✅, so network booting / network install paths are wired in at the bootstrap level.
@@ -555,6 +565,10 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 
 ## Sources
 
+- The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync
+  3.1.3 port, a `truss` of the failing connect on an emulated stock 2.1c (`/etc/hosts` opened and
+  read, no other lookup, the call failing) and the same call with an `/etc/hosts` name succeeding;
+  the port's `lib/getaddrinfo.c` patch.
 - The **4 KB TCP lower-read queue** ✅ — first-party record, 2026-10-21: the stock kernel's `ipintr`,
   `putq`, `canput`, `iplrput` and `tcplrput` disassembled from the Amix `/stand/unix` objects (stock
   and 2.1c; `ipintr` identical, 0x24 apart) against the USL SVR4 source (`netinet/ip_input.c`

@@ -102,6 +102,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 87 | **On the Z3660, the second of two back-to-back register accesses can land at (previous address AND this address)** — a mailbox write becomes a different command (a WRITE doorbell to the previous block; a READ turned WRITE that reports GOOD), an interrupt acknowledge is lost. Precede every register write with a covering read, in one block at IPL 7 | 🟡 | [Quirks §87](#87-z3660-address-capture), [Z3660 SCSI driver](../drivers/z3660-scsi-driver.md#address-capture-race) |
 | 88 | **Stock `sed` silently drops a final input line that has no newline** — `printf 'a b c ' \| sed 's/ $//'` prints nothing at all. Terminated lines are fine. Make sure the input ends with a newline (`{ …; echo; } \| sed …`) | ✅ | [Quirks §88](#88-sed-drops-unterminated-line) |
 | 89 | **`libc.so.1`'s `TZ` parser writes into the `TZ` environment string in place** — a program that `putenv()`s a string literal (read-only under modern compilers) dies with SIGSEGV at its next time conversion; `date -u` of a GCC 14 build did, every run. `putenv()` writable storage | ✅ | [Quirks §89](#89-tz-parsed-in-place), [Toolchain](../drivers/toolchain.md#the-porting-surface-libc-and-library-gaps-modern-c-assumes) |
+| 90 | **Stock 2.1c panics (`KERNEL FAULT`, bus error) when `ftruncate` shrinks a file larger than its direct blocks to an unaligned EOF inside the block that holds the old EOF** — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs. Shrinking within the direct blocks, to an earlier block, or to a block boundary is safe. Cut at the block boundary below the new EOF, then write the tail back | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
 
 The rest of this page expands each item.
 
@@ -1291,6 +1292,35 @@ printed empty `file:` prefixes on multi-file searches this way ✅. Workaround: 
 ends with a newline, e.g. `{ …; echo; } | sed …`. See also [§12](#12-binsh-is-pre-posix) and
 [§81](#81-sh-read-buffer).
 
+### 90. Shrinking a big file with `ftruncate` can panic the stock kernel ✅ {#90-ftruncate-shrink-panics}
+
+On stock 2.1c, `ftruncate()` that **shrinks** a file to an EOF that is **not block-aligned** and lies
+**inside the block that held the old EOF** panics the box when the file is larger than its direct
+blocks ✅: `PANIC: KERNEL FAULT psw=0x2004, pc=<load base>+0x32C, fmt=0xA, vector=0x2 (Bus Error)`,
+the same backtrace every time (an emulated 68030 with 64 MB, ufs root with 8 KiB blocks, one case per
+boot, 2026-10-30). Writing N bytes and truncating to M:
+
+| Panics ✅ | Survives ✅ |
+|---|---|
+| 480017 → 480000 (also after close, `sync` and reopen) | 90017 → 90000, 20017 → 20000, 1000 → 500 (within the direct blocks) |
+| 480017 → 477000 (same 8 KiB block, other 4 KiB page) | 20000 → 15000, 200000 → 150000, 480017 → 470000 (EOF moves to an earlier block) |
+| 110017 → 110000 | 200000 → 196608, 480017 → 475136, 110017 → 106496 (block-aligned) |
+| | extending (20000 → 30000), truncating to 0 |
+
+The boundary lies between 90017 and 110017 bytes, consistent with 12 direct blocks × 8 KiB = 98304 🟡
+(the exact threshold is not measured). The path, symbolised against the stock 2.1c kernel: `ftruncate`
+→ `fcntl(F_FREESP)` → `ufs_space` → `ufs_freesp` → `ufs_itrunc` → `pvn_vptrunc` → `bzero`, faulting
+on bzero's `movel %a1,%a0@+` store (bzero at kernel text `0x302`) ✅. Why the address being zeroed
+takes a bus error is not proven 🟡. Only the stock 68030 kernel was tested; the 040/060 line is
+untested 🔴.
+
+**Workaround (proven ✅):** truncate to the block boundary at or below the new EOF — aligned, so there
+is no partial tail to zero — then write the bytes from that boundary up to the new EOF back. The
+rsync 3.1.3 port does this in `do_ftruncate`; its `--inplace` shrink 110011 → 110000 comes out
+byte-exact ✅. Exposed: any program that shrinks a big file in place — rsync `--inplace` (patched);
+probably also `dd of=… seek=…` without `conv=notrunc` and tar rewriting an archive in place
+(`--delete`, via gnulib's `ftruncate`), both untested 🔴. `shred`'s truncation to 0 is safe ✅.
+
 ### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
 
 A `/etc/TIMEZONE` that sets `TZ=US/Eastern` **without a leading colon** makes every SVR4 program that calls `localtime()`/`tzset()` die with `User BUS ERROR at 474D5400` ✅ — and `0x474D5400` is ASCII `"GMT\0"`, the GMT-fallback timezone abbreviation being dereferenced *as a pointer* after the POSIX-rule parser chokes on the `/` in the zone name. The fix is the **colon** form, `TZ=:US/Eastern`, which tells SVR4 to load `/usr/lib/locale/TZ/US/Eastern` as a tzfile path instead of parsing it as a rule (a valid POSIX rule string such as `EST5EDT` or `GMT0` also works — for a zone file always use the colon form, e.g. `TZ=:EET`). The crash set is exactly the localtime callers — `date`, `who -r`, `cron`, `sac`, `ls -l` — while console `login` survives (it needs `getpwnam`, not localtime), which is the tell that distinguishes this from the passwd-side defect. Second-order symptom: a crashed `who -r` empties the positional parameters in the `/etc/rc2.d/S*` scripts that begin `set \`who -r\``, so those degenerate into `test: unknown operator S` at boot. Note this is a **constant** fault address at cold boot — do not confuse it with the emulator's variable-address MMU-frame bus errors ([emulation fidelity](emulation-fidelity.md)).
@@ -1547,3 +1577,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
 - The **`AF_UNIX` memory-pressure corruption and the Amiberry `MOVES` page-boundary defect** 🟡 — third-party reports from [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) (`docs/findings.md`; the reproducer `test/sockstress.c`), not reproduced here; the Amiberry fix is upstream commit [`845af02`](https://github.com/BlitterStudio/amiberry/commit/845af02) (quirks 72, 73).
 - Quirks 76–86 (first-party record, 2026-10-25 to 2026-10-29) ✅: the kernel-module campaign's emulator rows on both kernel lines and the stock-script and disassembly reads behind them — the `syslogd`/`m4` row, the `putbuf`/`conslogging` read of the kernels' print code, the stock `bcheckrc`, the namelist probe, the 2.1 `sh` construct probes on the miniroot shell, the ufs/s5 page-size rows, the Paula timer and `/dev/audio` diagnosis, the AGA console row, the `swapconf` and `fakeswap` rows ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/CHANGELOG.md`, 2026-10-25 to 2026-10-28); the diffutils 2.8.1 port's rows on an emulated stock 2.1c (`diff -u`, `patch`); the Gayle IDE driver's ATAPI `dd` row (`amix-gayle-ide` CHANGELOG, 1.1.0-2).
 - Quirks 88–89 (first-party record, 2026-10-29) ✅: the amix-packages bzip2 1.0.8 and coreutils 5.2.1 ports — probes on an emulated stock 2.1c 68030 (the `tr`/`sed` steps; `date` with and without `TZ` from the shell), the core file's `NT_PRSTATUS` note for the crash PC and registers; the ports' patches (`recipes/bzip2/patches/02-bzgrep-bourne.patch`, `recipes/coreutils/patches/07`).
+- Quirk 90 (first-party record, 2026-10-30) ✅: the amix-packages rsync 3.1.3 port — a C truncation
+  probe on an emulated 2.1c 68030 (64 MB, ufs root, `st_blksize` 8192), one case per boot, the console
+  captured at each panic; the panic path symbolised against the stock 2.1c kernel (sha256 `80a1204f…`,
+  [versions](../reference/versions.md)); the port's `do_ftruncate` patch and its `--inplace` smoke test.

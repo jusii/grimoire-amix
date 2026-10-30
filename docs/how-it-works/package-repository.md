@@ -223,7 +223,8 @@ The client speaks **HTTP/1.0 only**, hand-rolled over BSD sockets ✅:
 - Headers parsed case-insensitively; `Content-Length` used as a truncation check.
 - Follows **exactly one** 301/302 redirect.
 - Whole-transfer `alarm()` timeout, 60 s by default.
-- IPv4 literals are parsed locally, because the SVR4 `gethostbyname()` need not accept dotted quads.
+- IPv4 literals are parsed locally, because the stock `gethostbyname()` does not accept dotted quads
+  ([measured](networking.md#gethostbyname-no-dotted-quad)).
 - **Plain `http://` only** — no TLS.
 
 **There is no FTP transport in the client** ✅: `apkg` speaks HTTP, a mounted filesystem, or a raw

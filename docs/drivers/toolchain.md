@@ -495,6 +495,14 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
 - **Cross `configure`:** putting `-include <decls.h>` into `CFLAGS` breaks autoconf's `char f();`
   function probes, so functions that exist read as absent. Keep such includes on the `make` line only.
 - Shell scripts: stock `sed` drops an unterminated last line ([quirk 88](../how-it-works/quirks.md#88-sed-drops-unterminated-line)).
+- **`ftruncate` exists but can panic the box:** shrinking a big file to an unaligned EOF in its old
+  last block takes a kernel bus error. Truncate to the block boundary, then write the tail back
+  ([quirk 90](../how-it-works/quirks.md#90-ftruncate-shrink-panics)).
+- **`gethostbyname()` does not take a dotted quad:** parse IPv4 literals with `inet_addr()` first
+  ([networking](../how-it-works/networking.md#gethostbyname-no-dotted-quad)).
+- **`/usr/bin/rsh` is the BSD remote shell** (setuid root, 15452 bytes), not the restricted shell ✅.
+- **The unprivileged account is `nobody`, uid and gid 60001; there is no `nogroup`** ✅ — a configure
+  that probes the build host's `/etc/group` picks the wrong group name.
 
 ### Cross-build traps that are not Amix's fault ✅
 
@@ -613,3 +621,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - [isoriano1968/gcc-cross-amix #7](https://github.com/isoriano1968/gcc-cross-amix/pull/7) (the wrapper fixes, opened 2026-10-13, merged 2026-10-19 as `959c17f`; state read with `gh` on 2026-10-29) ✅.
 - The upstream-runtime FPU check (first-party record, 2026-10-29) ✅: an upstream `58130fe` build checked with the project's `check-68060-safe.py --68881` (68060-safe for integer forms; 614 FPU instructions in 040/060-only forms across libgcc and libstdc++); upstream's `README.md` ("defaults to `--with-cpu=68060`") and `toolchain/build-cross.sh` at that commit.
 - The bzip2 1.0.8 and coreutils 5.2.1 ports (first-party record, 2026-10-29) ✅: sysroot reads (`nm` of `libc.so.1` and the `libc.so` archive, the headers) and the emulated 68030 runs behind the gaps list, the `TZ` crash and the `configure` trap.
+- The rsync 3.1.3 port (first-party record, 2026-10-30) ✅: the `ftruncate` probe rows and the `truss` of `gethostbyname()` on an emulated stock 2.1c (details in quirk 90 and on the networking page); `ls -l` of `/usr/bin/rsh` and the `nobody` entries of `/etc/passwd` and `/etc/group` read on the box.
