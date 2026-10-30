@@ -493,3 +493,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   gated kernel survives `SIGCLD`, `SIGINT`, `kill -INT` and `SIGALRM` ✅; with a 68882 unchanged ✅;
   real FPU-less 68030 🟡. Amiberry `cpu_type=68020` overrides `cpu_model` and leaves no MMU ✅.
   Source: the k30 kernel work's emulator runs; `kernel/k30` `2a3e894`.
+- **SIGSYS beyond the float-printers on an FPU-less 68030 (2026-10-30)** → `quirks.md` §31,
+  `real-hardware.md`: under the signal-gated 68030 kernel, stock `mkfs -F ufs` and gcc14-built GNU
+  `cp`/`gtar` exit 140 (`Bad System Call`); `dd`, `cmp`, `sh`, `sleep`, stock `cp` run 🟡 (emulation,
+  Amiberry `fpu_model=0`); which FP instruction each reaches 🔴; metal pending. Source: the k30
+  kernel work's emulator runs.

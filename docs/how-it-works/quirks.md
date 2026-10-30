@@ -44,7 +44,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 28 | **The partitioning tools' units are all 512-byte blocks, and `rdb`'s usage text omits the flags that matter** — `rdb -c` requires a `-d disksize` its usage block never mentions; `rdb -p` wants a 1-based partition *number* (a device path `atoi()`s to 0 and is refused); `mkfs_s5`'s size operand is 512-byte blocks (pass a pre-converted 1 KB count and the filesystem covers half the slice) | ✅ | [Filesystems & disks](filesystems-and-disks.md#etcrdb-and-mkfs_s5-the-grammar-and-the-units) |
 | 29 | **The stock kernel writes motherboard register `0xde0002` at every boot and at reboot/halt** — on the A3000 that is the SuperKickstart re-kick bit; on an A4000 the same address is Fat Gary's coldreboot latch, which nothing consumes, so the write is benign. Don't chase it in bus traces or emulator logs; decode-and-ignore is the correct model for an A4000 target | ✅ | [Quirks §29](#29-the-kernel-pokes-the-a3000-re-kick-register-0xde0002-at-every-boot-and-reboot) |
 | 30 | **A scripted `ed` edit that misses its address search still writes the file** — earlier inserts in the same body stay applied, and a name-wide `grep` guard then reports "already patched" forever: a permanent, invisible half-patch. Pre-probe the target row, one `ed` run per edit, post-verify the row — never trust `ed`'s exit status alone | ✅ | [Quirks §30](#30-a-scripted-ed-edit-that-misses-its-address-still-writes-the-file), [Kernel build](../drivers/kernel-build.md#scripting-the-kernelc-edits-with-ed-the-half-patch-trap) |
-| 31 | **On an FPU-less part, floating point dies as SIGSYS ("Bad System Call", exit 140)**, not SIGILL/SIGFPE — and it dies in *libc*: `_doprnt` carries FP on its `%e`/`%f`/`%g` paths, so any program that **prints** a float dies even if its own code is FP-free (`df -k`, `uptime`). `__fpstart` is FP-safe, so everything else runs. Triage rule: *does it print a float?* | ✅ | [Quirks §31](#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call), [040/060 status](68040-68060-status.md) |
+| 31 | **On an FPU-less part, floating point dies as SIGSYS ("Bad System Call", exit 140)**, not SIGILL/SIGFPE — and it dies in *libc*: `_doprnt` carries FP on its `%e`/`%f`/`%g` paths, so any program that **prints** a float dies even if its own code is FP-free (`df -k`, `uptime`). `__fpstart` is FP-safe, so everything else runs. Triage rule: *does it print a float?* On an FPU-less 68030 the stock `mkfs -F ufs` and gcc14-built GNU `cp`/`gtar` die too (🟡, emulation) | ✅/🟡 | [Quirks §31](#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call), [040/060 status](68040-68060-status.md) |
 | 32 | **`awk` is always a floating-point program** — it holds every number as a C `double`, so on an FPU-less part it dies even on `1+1`. An awk failure on integer arithmetic is not evidence of a second defect | ✅ | [Quirks §32](#32-awk-is-always-a-floating-point-program) |
 | 33 | **68060: the FP-disabled frame's stacked "Next PC" is software-maintained** — Motorola's own support package recomputes it from its own decode and treats the faulted-PC slot as the authority. A handler must resume on a PC it computed itself | 🟡 | [Quirks §33](#33-68060-the-fp-disabled-frames-next-pc-is-software-maintained) |
 | 34 | **68060: immediate `#<data>` is the one F-line operand the hardware cannot size** — its length lives in the FP command word a disabled FPU has no reason to decode, so the stacked next-PC can be short by the operand's width | 🟡 | [Quirks §34](#34-68060-immediate-data-is-the-one-f-line-operand-the-hardware-cannot-size) |
@@ -519,6 +519,15 @@ does not touch FP hardware, which is why everything else runs normally and the f
 exactly the float-printers. Because the whole class funnels through one libc path, one fix covers
 all of it. Triage rule: *"program dies with SIGSYS in a print call" means FP-in-libc, not a syscall
 bug* — ask "does it print a float?" before investigating anything else.
+
+**On an FPU-less 68030 the set is wider than the float-printers 🟡.** Once the 68030 line's signal
+gate lets such a system run ([§74](#74-no-fpu-signal-panic)), more programs die with `Bad System
+Call` (exit 140) than `awk` and the float-printers. They include the stock `mkfs -F ufs`, so **no new
+ufs can be made on an FPU-less 68030**, and GNU `cp` and `gtar` built with the gcc14 userland
+toolchain. `dd`, `cmp`, `sh`, `sleep` and the stock `cp` run. The kernel stays up throughout. Which
+FP instruction each of these reaches has not been traced yet 🔴, so for them "does it print a float?"
+is not the test. Seen in emulation only (Amiberry, `fpu_model=0`, `AttnFlags` `0007`); a real
+FPU-less 68030 has not run them yet.
 
 ### 32. `awk` is always a floating-point program ✅
 
@@ -1553,6 +1562,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in
   the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
   (first-party record); detail and citations on [networking](networking.md#sources).
+- The **wider SIGSYS set on an FPU-less 68030** (first-party record, 2026-10-30) 🟡 — quirk 31: the k30 kernel work's runs on an Amiberry 68030 with MMU and `fpu_model=0` under the signal-gated 68030 kernel: stock `mkfs -F ufs` and the gcc14-built GNU `cp` and `gtar` exit 140 with `Bad System Call`; `dd`, `cmp`, `sh`, `sleep` and stock `cp` run.
 - The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).
   The 68030 fix (first-party record, 2026-10-30) ✅: the k30 kernel work's emulator runs, stock 2.1c
   and the gated test kernel on an Amiberry 68030 with MMU and no FPU, and the gated kernel with a
