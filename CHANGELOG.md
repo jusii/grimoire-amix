@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 74 fixed on the 68030 line in emulation (dfa7b22)
+
+k30 2a3e894 gates sendsig's fpu_setup call with fpu_setup_gated, so an FPU-less 68030 boots and survives signals; a
+real FPU-less 68030 is still pending. The Amiberry page notes that cpu_type=68020 overrides cpu_model and leaves no MMU,
+so Amix reset-loops after "starting the kernel".
+
 ## 2026-10-30 — quirk 91: cold-cache extent, cause narrowed, fixed on k30 in emulation (a2316de)
 
 With the file cached, [roundup(M, PAGESIZE), block end) reads old; without, all of [M, block end). pvn_vptrunc zeroes
