@@ -497,7 +497,7 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
 - **Never `chmod` a bound `AF_UNIX` socket path:** it is a mode-000 FIFO, and after `chmod` every
   `connect()` fails `ENOTSOCK` ([networking](../how-it-works/networking.md#af-unix-socket-path)).
 - Shell scripts: stock `sed` drops an unterminated last line ([quirk 88](../how-it-works/quirks.md#88-sed-drops-unterminated-line)).
-- **`ftruncate` exists but can panic the box** (030 and 040/060 kernels): shrinking a big file to an unaligned EOF in its old
+- **`ftruncate` exists but can panic the box** (stock 2.1c and any kernel without the `kzero` fix): shrinking a big file to an unaligned EOF in its old
   last block takes a kernel bus error. Truncate to the block boundary, then write the tail back;
   `ftruncate` is a weak symbol in the static libc, so a strong replacement in the program overrides
   it for every caller (coreutils `dd`/`cp`, GNU tar `--delete`) ([quirk 90](../how-it-works/quirks.md#90-ftruncate-shrink-panics)).

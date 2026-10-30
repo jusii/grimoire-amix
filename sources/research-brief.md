@@ -459,7 +459,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   fault catch ✅, why the page fault is unresolvable 🟡, the 040/060 chain above `bzero` 🟡, exposure
   measured: `dd seek=`, `cp --sparse=always`, tar `-b 1 --delete` panic ✅, `mv`/`install`/tar
   incremental snapshots and `shred` 🟡 (quirk 90; 040/060 rows from the port's emulator probe, 2026-10-30; fixed on the 040/060 line by a
-  fault-catching `kzero`, port `ISSUE-107` @ `b65b43d`, emulation ✅, a real 68060 on an A4000T ✅, the 030 line not yet); hosts-only
+  fault-catching `kzero`, port `ISSUE-107` @ `b65b43d`, emulation ✅, a real 68060 on an A4000T ✅; the 68030 line, the same routine, `kernel/k30` `8b670ad`, emulation ✅); hosts-only
   `gethostbyname()` rejects dotted quads ✅ (`libsockdns` 🔴); `/usr/bin/rsh` is the BSD remote shell,
   `nobody` is 60001 with no `nogroup` ✅; `ftruncate` is weak in the static libc ✅; `%lld` in formats
   assembled at run time from `PRIdMAX` (coreutils `stat`, `od`) ✅.
@@ -484,7 +484,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   the block in the page cache, async put, aborts every page ≥ M; with no cached pages it zeroes
   nothing ✅; the putpage guard and the dirty-scan explanation ruled out ✅; the async write losing to
   the abort, by elimination 🟡; non-determinism 🟡; hardware 🔴. Fixed on the 68030 line in emulation
-  (synchronous tail zeroing, `kernel/k30` `1be27f8`) ✅, hardware 🟡, 040/060 not yet. Source: the k30
+  (synchronous tail zeroing, `kernel/k30` `1be27f8`) ✅, hardware 🟡; fixed on the 040/060 line in emulation by the same routine (port `ISSUE-108`,
+  `3d0b348`; 68/68 clean, control 56/68 stale) ✅, hardware 🟡. Source: the k30
   kernel work's and the 040/060 port's emulator cells and disassembly.
 - **The no-FPU signal panic, fixed on the 68030 line (2026-10-30)** → `quirks.md` §74,
   `emulation-amiberry.md`: `sendsig`'s `fpu_setup` call retargeted to `fpu_setup_gated`
