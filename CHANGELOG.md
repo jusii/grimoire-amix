@@ -2,6 +2,11 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 91: the old bytes survive a reboot on the 040/060 line (bcbfff5)
+
+On the 040/060 line the stale bytes survive a sync, clean shutdown and fresh start: the same 4096 bytes as a same-boot
+control.
+
 ## 2026-10-30 — quirk 91: the dropped write is open (b6ca40d)
 
 Why the async put leaves no zeros on disk is open: ufs_putpage's locked-inode return is only the pid 0/2 pageout guard
