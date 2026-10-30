@@ -2,6 +2,13 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 90 covers both kernel lines (a3ef7c7, 96df1ae)
+
+The ftruncate shrink panic hits the 040/060 line too: past the 12 direct blocks, an unaligned EOF in the old last block
+panics when that block ends past the old EOF's page (roundup(N, PAGESIZE) < roundup(N, 8192)), so the cases differ
+between 2 KiB and 4 KiB pages. Amix's kzero has no fault catch; the aligned-cut workaround is proven on both lines.
+Source lines cite the rsync port commit e7ac916.
+
 ## 2026-10-30 — quirk 90 and networking/porting notes (8d6f76f, 552227f)
 
 Quirk 90: stock 2.1c panics when ftruncate shrinks a file past its direct blocks to an unaligned EOF in the old last
