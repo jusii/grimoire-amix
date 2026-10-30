@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 92 and the AF_UNIX chmod trap (a9aefc6)
+
+Networking: a bound AF_UNIX path is a mode-000 FIFO, and chmod on it makes every connect() fail with ENOTSOCK; never
+chmod it. Quirk 92: prngd 0.9.29 under prngd-ctl traffic panics stock 2.1c (Illegal Instruction, pc in kernel data,
+backtrace ureturn → queuerun); a deferred put through a garbage qi_putp is the likely cause.
+
 ## 2026-10-30 — quirk 74: the gate saves the kernel, installs still need an FPU (2ae04e2)
 
 The 68030 signal gate keeps the kernel up, but on an FPU-less 68030 stock mkfs -F ufs and the gcc14-built GNU cp and
