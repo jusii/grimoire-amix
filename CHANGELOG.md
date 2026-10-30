@@ -2,6 +2,13 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 90 and networking/porting notes (8d6f76f, 552227f)
+
+Quirk 90: stock 2.1c panics when ftruncate shrinks a file past its direct blocks to an unaligned EOF in the old last
+block (rows, path to bzero, aligned-cut workaround). Networking: the hosts-only gethostbyname() rejects dotted quads
+(measured). Porting notes: ftruncate, IPv4 literals, /usr/bin/rsh is BSD rsh, nobody 60001 with no nogroup.
+llms-full regenerated.
+
 ## 2026-10-29 — quirks 88–89 and porting notes (e4b4f07, 8e9ed98)
 
 Quirk 88: stock sed drops a final line with no newline. Quirk 89: libc.so.1's TZ parser writes into the TZ string in place,
