@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirks 90 and 91 fixed on both kernel lines in emulation (90ef24a)
+
+Quirk 91: fixed on the 040/060 line in emulation by the 68030 line's tail-zeroing routine bound into its ufs module
+(port ISSUE-108); 68/68 runs clean, a control kernel stale on 56/68. Quirk 90: fixed on the 68030 line in emulation by
+the kzero fault catch (amix kernel/k30 8b670ad); not in a released 68030 kernel yet. Hardware pending for both.
+
 ## 2026-10-30 — networking: AF_UNIX mode bits are not checked (683443d)
 
 The AF_UNIX path is mode 000 under any umask (000/022/077 measured), and the mode bits are not checked, so a non-root
