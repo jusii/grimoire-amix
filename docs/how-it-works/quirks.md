@@ -104,6 +104,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 89 | **`libc.so.1`'s `TZ` parser writes into the `TZ` environment string in place** — a program that `putenv()`s a string literal (read-only under modern compilers) dies with SIGSEGV at its next time conversion; `date -u` of a GCC 14 build did, every run. `putenv()` writable storage | ✅ | [Quirks §89](#89-tz-parsed-in-place), [Toolchain](../drivers/toolchain.md#the-porting-surface-libc-and-library-gaps-modern-c-assumes) |
 | 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back. The 040/060 port fixes it in `kzero` (verified in emulation and on a real 68060) | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
 | 91 | **A shrink to an earlier block, then a sparse regrow, reads the old bytes back — from disk** — on stock 2.1c and both kernel lines, `F_FREESP` from N to an unaligned M in an earlier 8 KiB block (both past the direct blocks) returns cleanly, but after writing one byte at N−1 the file holds its old data in `[roundup(M, PAGESIZE), roundup(M, 8192))`, or in all of `[M, roundup(M, 8192))` if the file was not cached. No crash. Fixed on the 68030 line in emulation. Write real zeros through the gap, or cut block-aligned | ✅ | [Quirks §91](#91-shrink-regrow-stale-data) |
+| 92 | **Heavy local socket traffic next to a busy STREAMS user can panic stock 2.1c in `queuerun`** — `KERNEL FAULT … vector=0x4 (Illegal Instruction)` with the pc in kernel *data*, reached from `ureturn` → `queuerun`, i.e. a deferred STREAMS put through a bad `qi_putp`. Reproduced 3 of 3 with the `prngd` entropy daemon serving `prngd-ctl` requests while it gathers; not reproduced without `prngd` | ✅/🟡 | [Quirks §92](#92-queuerun-panic) |
 
 The rest of this page expands each item.
 
@@ -1479,6 +1480,39 @@ instead, from M. Or shrink only to an 8 KiB-aligned M and write the tail back, w
 aligned-cut workaround already does. (An M in its block's last page is clean only when the file is
 cached, so it is not a safe cut.)
 
+### 92. Local socket traffic next to a busy STREAMS user can panic stock 2.1c in `queuerun` ✅/🟡 {#92-queuerun-panic}
+
+On the emulated stock 2.1c 68030, the `prngd` 0.9.29 entropy daemon panics the kernel while it is
+still gathering entropy, when a client drives its `AF_UNIX` socket hard ✅ (3 of 3 runs):
+
+```text
+PANIC: KERNEL FAULT psw=0x2100, pc=0x403C3F00, fmt=0x0, vector=0x4 (Illegal Instruction)
+```
+
+The pc differs per run (`0x403C9600`, `0x403C3F00`, `0x403C0400`) and is always in kernel **data**,
+not text. The symbolised backtrace runs `ureturn` → `queuerun` ✅: the fault happens in deferred
+STREAMS service work that the kernel runs on the way back to user mode. `psw=0x2100` is the status
+register that `queuerun`'s scan loop sets just before it calls `q->q_qinfo->qi_putp(q, mp)` 🟡, so the
+likeliest reading is a deferred put through a garbage `qi_putp`: a queue freed and reused while its
+stream was still on the scan list with a message pending 🟡. The mechanism has not been traced
+further.
+
+What was running: `prngd` forks `ps`, `ls`, `netstat` and similar into pipes that it reads
+non-blocking, and serves its `AF_UNIX` stream socket from a `select` loop. Against that:
+
+| Client load while `prngd` gathers | Result |
+|---|---|
+| a loop of `prngd-ctl get` | panic (2 runs) ✅ |
+| 100 × `prngd-ctl read 32 \| wc` | panic ✅ |
+| 100 × `prngd-ctl get`, 100 × `prngd-ctl get \| tr` | survived ✅ |
+
+Not reproduced without `prngd` 🟡. A server that replies after its `AF_UNIX` client has closed
+(4 × 50 rounds, delayed and immediate, one write or two) survived. So did a non-blocking `select`
+server that forked `ps -efl` gatherers while a client made 200 read requests. The trigger is
+therefore narrower than "a socket server that forks". Any EGD-style entropy daemon on a stock
+kernel, and any client that reads entropy from it, is exposed until the cause is known 🟡. Not yet
+tried on the 040/060 line or on hardware 🔴.
+
 ### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
 
 A `/etc/TIMEZONE` that sets `TZ=US/Eastern` **without a leading colon** makes every SVR4 program that calls `localtime()`/`tzset()` die with `User BUS ERROR at 474D5400` ✅ — and `0x474D5400` is ASCII `"GMT\0"`, the GMT-fallback timezone abbreviation being dereferenced *as a pointer* after the POSIX-rule parser chokes on the `/` in the zone name. The fix is the **colon** form, `TZ=:US/Eastern`, which tells SVR4 to load `/usr/lib/locale/TZ/US/Eastern` as a tzfile path instead of parsing it as a rule (a valid POSIX rule string such as `EST5EDT` or `GMT0` also works — for a zone file always use the colon form, e.g. `TZ=:EET`). The crash set is exactly the localtime callers — `date`, `who -r`, `cron`, `sac`, `ls -l` — while console `login` survives (it needs `getpwnam`, not localtime), which is the tell that distinguishes this from the passwd-side defect. Second-order symptom: a crashed `who -r` empties the positional parameters in the `/etc/rc2.d/S*` scripts that begin `set \`who -r\``, so those degenerate into `test: unknown operator S` at boot. Note this is a **constant** fault address at cold boot — do not confuse it with the emulator's variable-address MMU-frame bus errors ([emulation fidelity](emulation-fidelity.md)).
@@ -1567,6 +1601,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in
   the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
   (first-party record); detail and citations on [networking](networking.md#sources).
+- The **`queuerun` panic** (first-party record, 2026-10-30) ✅/🟡 — quirk 92: the amix-packages `prngd` 0.9.29 port's runs on the emulated stock 2.1c 68030 (three panics captured on the console with their backtraces, symbolised against the stock kernel by the k30 kernel work; the survived loads and the two `prngd`-free reproducers); the recipe in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 - The **wider SIGSYS set on an FPU-less 68030** (first-party record, 2026-10-30) 🟡 — quirk 31: the k30 kernel work's runs on an Amiberry 68030 with MMU and `fpu_model=0` under the signal-gated 68030 kernel: stock `mkfs -F ufs` and the gcc14-built GNU `cp` and `gtar` exit 140 with `Bad System Call`; `dd`, `cmp`, `sh`, `sleep` and stock `cp` run.
 - The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).
   The 68030 fix (first-party record, 2026-10-30) ✅: the k30 kernel work's emulator runs, stock 2.1c

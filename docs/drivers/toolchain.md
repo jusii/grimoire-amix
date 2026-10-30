@@ -494,6 +494,8 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
   archive, not in `libc.so.1`.
 - **Cross `configure`:** putting `-include <decls.h>` into `CFLAGS` breaks autoconf's `char f();`
   function probes, so functions that exist read as absent. Keep such includes on the `make` line only.
+- **Never `chmod` a bound `AF_UNIX` socket path:** it is a mode-000 FIFO, and after `chmod` every
+  `connect()` fails `ENOTSOCK` ([networking](../how-it-works/networking.md#af-unix-socket-path)).
 - Shell scripts: stock `sed` drops an unterminated last line ([quirk 88](../how-it-works/quirks.md#88-sed-drops-unterminated-line)).
 - **`ftruncate` exists but can panic the box** (030 and 040/060 kernels): shrinking a big file to an unaligned EOF in its old
   last block takes a kernel bus error. Truncate to the block boundary, then write the tail back;
@@ -666,7 +668,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - [Versions](../reference/versions.md) — version matrix (GCC 2.7.2.3 built under 2.03; `rdbunix`→`relocunix` rename).
 
 ## Sources
-
+- The **`AF_UNIX` `chmod` trap** (first-party record, 2026-10-30) ✅ — see the matching Sources entry on [the networking page](../how-it-works/networking.md#af-unix-socket-path).
 - amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): gcc-cross-amix `984192a` fix_asm rewrite + test-divmod; on-box measurements; metal confirmation 2026-07-21.
 - [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §7 (Toolchain & packaging), §6 (modern driver repos — Hydra **native** build, GCC 2.7.2.3 — the brief's "from amigaunix.com" attribution is 🔴, unsourced), §11 (userland shells), and §13 (open gaps #1, #3).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (kernel build flow; `rdbunix` historical name).

@@ -171,6 +171,21 @@ the DNS-enabled `libsockdns` behaves the same is untested 🔴. **Porting rule:*
 yourself with `inet_addr()` before calling `gethostbyname()`; the rsync port patches its
 `lib/getaddrinfo.c` this way, and `apkg` does the same ([package repository](package-repository.md#http-specifics)).
 
+### Unix-domain sockets: the path is a mode-000 FIFO, and `chmod` breaks it ✅ {#af-unix-socket-path}
+
+`bind()` on an `AF_UNIX` stream socket creates its path as a **FIFO with no permission bits**
+(`st_mode` `010000`: `S_ISFIFO` true, no `S_IFSOCK`) ✅. `connect()` to it works with any of the
+usual address lengths (`sizeof(struct sockaddr_un)` = 110, `strlen(path) + 2`, `+ 3`) ✅. After a
+`chmod(path, 0777)` (mode `010777`), every `connect()` fails with `ENOTSOCK` (errno 95) at all
+three lengths ✅. Measured on the stock 2.1c 68030 in emulation with a GCC 14 test program, run as
+root. With mode 000, only root can be expected to connect 🟡 (a non-root client was not tried).
+**Porting rule:** never `chmod` a bound `AF_UNIX` path on Amix. Daemons that do (`prngd` chmods
+its socket, so its own `--kill` and `prngd-ctl` could never reach it) need that call removed; `prngd`'s
+UnixWare `DONT_CHMOD_SOCKET` define was meant for exactly this but nothing in 0.9.29 read it.
+
+Heavy local socket traffic next to a busy STREAMS user can also panic the stock kernel in
+`queuerun` ([quirk 92](quirks.md#92-queuerun-panic)).
+
 ## NFS (server and client)
 
 Amix includes **NFS as both server and client** ✅, the SVR4-standard RPC/NFS stack. The install/boot kernel is itself NFS/RPC-capable: the on-floppy bootstrap embeds a full **NFS/RPC client string table** (confirmed by string analysis of `amix_21_boot.adf`) ✅, so network booting / network install paths are wired in at the bootstrap level.
@@ -214,6 +229,9 @@ A 2026-07-27 soak of 69 530 cdfs mount/read/unmount cycles measured `FAIL=0` in 
 with `use` at baseline, so cdfs is not a source of this ✅; and a *refused* (rather than timed-out)
 connection is the [`inetd` throttle](#the-inetd-anti-looping-throttle-one-service-refuses-connections-while-the-box-is-healthy),
 not this.
+
+A different STREAMS failure, a kernel panic in the deferred-service routine `queuerun`, is
+[quirk 92](quirks.md#92-queuerun-panic).
 
 ## TCP's 4 KB lower read queue: IP drops the fourth segment of every burst, uncounted ✅ {#tcp-lower-read-queue}
 
@@ -564,6 +582,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
+- The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated stock 2.1c 68030 (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 
 - The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync
   3.1.3 port, a `truss` of the failing connect on an emulated stock 2.1c (`/etc/hosts` opened and
