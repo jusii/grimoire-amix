@@ -102,7 +102,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 87 | **On the Z3660, the second of two back-to-back register accesses can land at (previous address AND this address)** — a mailbox write becomes a different command (a WRITE doorbell to the previous block; a READ turned WRITE that reports GOOD), an interrupt acknowledge is lost. Precede every register write with a covering read, in one block at IPL 7 | 🟡 | [Quirks §87](#87-z3660-address-capture), [Z3660 SCSI driver](../drivers/z3660-scsi-driver.md#address-capture-race) |
 | 88 | **Stock `sed` silently drops a final input line that has no newline** — `printf 'a b c ' \| sed 's/ $//'` prints nothing at all. Terminated lines are fine. Make sure the input ends with a newline (`{ …; echo; } \| sed …`) | ✅ | [Quirks §88](#88-sed-drops-unterminated-line) |
 | 89 | **`libc.so.1`'s `TZ` parser writes into the `TZ` environment string in place** — a program that `putenv()`s a string literal (read-only under modern compilers) dies with SIGSEGV at its next time conversion; `date -u` of a GCC 14 build did, every run. `putenv()` writable storage | ✅ | [Quirks §89](#89-tz-parsed-in-place), [Toolchain](../drivers/toolchain.md#the-porting-surface-libc-and-library-gaps-modern-c-assumes) |
-| 90 | **Stock 2.1c panics (`KERNEL FAULT`, bus error) when `ftruncate` shrinks a file larger than its direct blocks to an unaligned EOF inside the block that holds the old EOF** — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs. Shrinking within the direct blocks, to an earlier block, or to a block boundary is safe. Cut at the block boundary below the new EOF, then write the tail back | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
+| 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
 
 The rest of this page expands each item.
 
@@ -1292,32 +1292,57 @@ printed empty `file:` prefixes on multi-file searches this way ✅. Workaround: 
 ends with a newline, e.g. `{ …; echo; } | sed …`. See also [§12](#12-binsh-is-pre-posix) and
 [§81](#81-sh-read-buffer).
 
-### 90. Shrinking a big file with `ftruncate` can panic the stock kernel ✅ {#90-ftruncate-shrink-panics}
+### 90. Shrinking a big file with `ftruncate` can panic the kernel — both lines ✅ {#90-ftruncate-shrink-panics}
 
-On stock 2.1c, `ftruncate()` that **shrinks** a file to an EOF that is **not block-aligned** and lies
-**inside the block that held the old EOF** panics the box when the file is larger than its direct
-blocks ✅: `PANIC: KERNEL FAULT psw=0x2004, pc=<load base>+0x32C, fmt=0xA, vector=0x2 (Bus Error)`,
-the same backtrace every time (an emulated 68030 with 64 MB, ufs root with 8 KiB blocks, one case per
-boot, 2026-10-30). Writing N bytes and truncating to M:
+`ftruncate()` (`fcntl(F_FREESP)`) that **shrinks** a file to an EOF that is **not block-aligned**,
+inside the block that held the old EOF, can panic the box with a kernel bus error ✅. It happens on
+stock 2.1c (68030, 2 KiB pages) and on the 040/060 kernel line (4 KiB pages), with different cases:
 
-| Panics ✅ | Survives ✅ |
-|---|---|
-| 480017 → 480000 (also after close, `sync` and reopen) | 90017 → 90000, 20017 → 20000, 1000 → 500 (within the direct blocks) |
-| 480017 → 477000 (same 8 KiB block, other 4 KiB page) | 20000 → 15000, 200000 → 150000, 480017 → 470000 (EOF moves to an earlier block) |
-| 110017 → 110000 | 200000 → 196608, 480017 → 475136, 110017 → 106496 (block-aligned) |
-| | extending (20000 → 30000), truncating to 0 |
+- **030:** `PANIC: KERNEL FAULT psw=0x2004, pc=<load base>+0x32C, fmt=0xA, vector=0x2 (Bus Error)`
+  (an emulated 68030 with 64 MB, ufs root with 8 KiB blocks, one case per boot, 2026-10-30).
+- **040/060:** `PANIC: KERNEL FAULT psw=0x2004, pc=<load base>+0x32A, fmt=0x4, vector=0x2 (Bus Error)`
+  (an emulated A4000 with a 68060, ufs with 8 KiB blocks and 1 KiB fragments, one case per boot,
+  2026-10-30).
 
-The boundary lies between 90017 and 110017 bytes, consistent with 12 direct blocks × 8 KiB = 98304 🟡
-(the exact threshold is not measured). The path, symbolised against the stock 2.1c kernel: `ftruncate`
-→ `fcntl(F_FREESP)` → `ufs_space` → `ufs_freesp` → `ufs_itrunc` → `pvn_vptrunc` → `bzero`, faulting
-on bzero's `movel %a1,%a0@+` store (bzero at kernel text `0x302`) ✅. Why the address being zeroed
-takes a bus error is not proven 🟡. Only the stock 68030 kernel was tested; the 040/060 line is
-untested 🔴.
+Writing N bytes and truncating to M:
 
-**Workaround (proven ✅):** truncate to the block boundary at or below the new EOF — aligned, so there
-is no partial tail to zero — then write the bytes from that boundary up to the new EOF back. The
-rsync 3.1.3 port does this in `do_ftruncate`; its `--inplace` shrink 110011 → 110000 comes out
-byte-exact ✅. Exposed: any program that shrinks a big file in place — rsync `--inplace` (patched);
+| N → M | 030 | 040/060 |
+|---|---|---|
+| 480017 → 480000 (also after close, `sync` and reopen on the 030) | panics ✅ | survives ✅ |
+| 480017 → 477000 | panics ✅ | survives ✅ |
+| 477017 → 477000 | — | panics ✅ |
+| 110017 → 110000 | panics ✅ | panics ✅ |
+| 112017 → 110000 | — | survives ✅ |
+| 90017 → 90000, 1000 → 500 (within the direct blocks) | survives ✅ | survives ✅ |
+| 110017 → 106496 (block-aligned) | survives ✅ | survives ✅ |
+
+Also surviving on the 030 ✅: 20017 → 20000, 20000 → 15000, 200000 → 150000 and 480017 → 470000 (the
+EOF moves to an earlier block), 200000 → 196608 and 480017 → 475136 (aligned), extending
+(20000 → 30000), and truncating to 0.
+
+**The rule that fits every case on both lines ✅:** the shrink panics when M is unaligned, M and N
+lie in the same 8 KiB block **past the 12 direct blocks** (N > 98304 bytes), and that block ends
+beyond the page that holds the old EOF — `roundup(N, PAGESIZE) < roundup(N, 8192)`. With 2 KiB pages
+that is any old EOF outside the block's last quarter; with 4 KiB pages, only an old EOF in the
+block's lower half. That is why 480017 → 480000 panics on the 030 (the EOF page ends at 481280,
+short of 483328) and survives on the 040/060 line (the EOF page ends at 483328). The mechanism, read
+from the kernels: for a block past the direct blocks `ufs_itrunc` asks to zero from M to the end of
+the block, and `pvn_vptrunc` zeroes through `segmap` with `kzero` into a page wholly past the old
+EOF ✅. Path, symbolised against the stock 2.1c kernel: `fcntl(F_FREESP)` → `ufs_space` →
+`ufs_freesp` → `ufs_itrunc` → `pvn_vptrunc` → `bzero`, faulting on bzero's `movel %a1,%a0@+` store
+✅. In both kernels `kzero` and `bzero` are one routine (kernel text `0x302`). SVR4's design calls
+`kzero` there so that a page that cannot be read in does not panic the system, but Amix's `kzero` has
+no fault catch ✅. The two PCs are the same store: the 060's format-4 frame reports the faulting
+instruction, the 030's format-A frame the next one ✅. On the 040/060 line `ufs_itrunc`, `ufs_freesp`,
+`ufs_space` and `segmap_fault` are the stock code, and `pvn_vptrunc` differs only in its page size ✅.
+The 040/060 backtrace stops at the trap frame, so the chain above `bzero` there rests on the trigger
+geometry 🟡. Why the fault on that page cannot be resolved (`segmap_fault` → `ufs_getpage` past
+`roundup(i_size, PAGESIZE)`) is not proven 🟡.
+
+**Workaround (proven ✅ on both lines):** truncate to the block boundary at or below the new EOF —
+aligned, so there is no partial tail to zero — then write the bytes from that boundary up to the new
+EOF back. The rsync 3.1.3 port does this in `do_ftruncate`; its `--inplace` shrink 110011 → 110000
+comes out byte-exact ✅, and the aligned cut 110017 → 106496 survives on the 040/060 line ✅. Exposed: any program that shrinks a big file in place — rsync `--inplace` (patched);
 probably also `dd of=… seek=…` without `conv=notrunc` and tar rewriting an archive in place
 (`--delete`, via gnulib's `ftruncate`), both untested 🔴. `shred`'s truncation to 0 is safe ✅.
 
@@ -1583,3 +1608,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   [versions](../reference/versions.md)); the port's `do_ftruncate` patch and its `--inplace` smoke test
   ([amix-packages](https://github.com/jusii/amix-packages) `e7ac916`,
   `recipes/rsync/patches/01-ftruncate-freesp-tail.patch`, the probe matrix in `recipes/rsync/README.md`).
+  The 040/060 rows (first-party record, 2026-10-30) ✅: the 68040/68060 port's `fcntl(F_FREESP)` probe on
+  an emulated A4000 with a 68060 and ufs loaded as a module, one panic case per boot with the console
+  captured; the kernel read behind the rule (`ufs_itrunc`, `pvn_vptrunc`, `kzero`/`bzero`, compared
+  with the stock 2.1c code) and the SVR4 `vm_pvn.c` design note on `kzero`.

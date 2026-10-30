@@ -495,7 +495,7 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
 - **Cross `configure`:** putting `-include <decls.h>` into `CFLAGS` breaks autoconf's `char f();`
   function probes, so functions that exist read as absent. Keep such includes on the `make` line only.
 - Shell scripts: stock `sed` drops an unterminated last line ([quirk 88](../how-it-works/quirks.md#88-sed-drops-unterminated-line)).
-- **`ftruncate` exists but can panic the box:** shrinking a big file to an unaligned EOF in its old
+- **`ftruncate` exists but can panic the box** (030 and 040/060 kernels): shrinking a big file to an unaligned EOF in its old
   last block takes a kernel bus error. Truncate to the block boundary, then write the tail back
   ([quirk 90](../how-it-works/quirks.md#90-ftruncate-shrink-panics)).
 - **`gethostbyname()` does not take a dotted quad:** parse IPv4 literals with `inet_addr()` first
