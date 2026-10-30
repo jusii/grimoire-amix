@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 74: the gate saves the kernel, installs still need an FPU (2ae04e2)
+
+The 68030 signal gate keeps the kernel up, but on an FPU-less 68030 stock mkfs -F ufs and the gcc14-built GNU cp and
+gtar still die with SIGSYS (§31), so installs need a 68881/68882. The plan line now names a software FPU on the 68030
+line (NetBSD's FPE).
+
 ## 2026-10-30 — quirk 31 on an FPU-less 68030 (8fe8cfe)
 
 With the signal-gated 68030 kernel, an FPU-less 68030 also gets SIGSYS (exit 140) from stock mkfs -F ufs, so no new
