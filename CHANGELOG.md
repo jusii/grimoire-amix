@@ -2,6 +2,13 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — stock libm.a; LC060 status corrected (b239450)
+
+Toolchain: the stock libm.a is archive-only software math (40 members, 21 fmovecr and 16 fintrz sites, a per-function
+table of what traps on the 040/060), bit-identical through the 040 FPSP, within 1 ulp, SVID errors (EDOM, matherr
+line, -HUGE/0). musl 1.2.5 math is wrong under extended precision (🟡). 040/060 status: the LC060 software FPU is merged
+but not accepted, so FPU-less parts have no usable floating point yet.
+
 ## 2026-10-30 — quirk 90 exposure measured; %lld in run-time formats (9b024ff)
 
 On stock 2.1c, dd seek= without conv=notrunc, cp --sparse=always ending in a hole and tar -b 1 --delete all panic;
