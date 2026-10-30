@@ -1714,7 +1714,8 @@ with `swap -a` ✅ (emulation, both kernel lines).
   at `b65b43d`, the write-up at `ab53ccc`) and its emulator rows: nine shrink cases on two boots, the
   fix's own fault, landing and foreign-landing counters (three faults, all at the first page past the
   old EOF, none foreign). The metal rows (first-party record, 2026-10-30) ✅: the same nine cases and
-  counters on an A4000T with a Z3660 at 68060, plus a `cp`/`cmp` and odd-size `dd` smoke test.
+  counters on an A4000T with a Z3660 at 68060, plus a `cp`/`cmp` and odd-size `dd` smoke test
+  (recorded in the port's `ISSUE-107`, `574cea1`).
 - Quirk 91 (first-party record, 2026-10-30) ✅: the k30 kernel work — the port's two-phase shrink
   probe (write N, `F_FREESP` to M, check size and `[0, M)`, write one byte at N−1, check `[M, N−1)`
   reads zero) on two 68030 kernels of the project's 68030 line, an emulated A4000 with the Z3660 in
