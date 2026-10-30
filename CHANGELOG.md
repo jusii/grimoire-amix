@@ -2,6 +2,13 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 91: stock 2.1c measured, old bytes on disk, the cause (d5fb469)
+
+Quirk 91 holds on stock 2.1c and both kernel lines, and the old bytes come from disk (they survive a remount). Cause,
+read from the stock objects: pvn_vptrunc zeroes the block in the page cache, issues an async put, then aborts every page
+at or past M; an 8 KiB-page design on Amix's 2/4 KiB pages. Workaround: write real zeros through the gap, or cut
+block-aligned.
+
 ## 2026-10-30 — quirk 91 on both kernel lines; the extent rule (c664b12)
 
 An F_FREESP shrink to an unaligned M in an earlier 8 KiB block past the direct blocks, followed by a sparse regrow,
