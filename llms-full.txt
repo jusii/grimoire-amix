@@ -4000,8 +4000,13 @@ reaches multi-user and survives `SIGCLD`, a trapped `SIGINT`, `kill -INT` of a s
 (`awk` printing a float), which is §31 and unchanged. With a 68882 the gated kernel behaves as
 before (`awk` prints `1.50`). A real FPU-less 68030 has not run the fixed kernel yet 🟡, and it is
 not in a released 68030 kernel yet.
-**Planned, not yet implemented** 🟡: support for FPU-less 68030 cards — the `sendsig` gate first,
-then NetBSD's FPE, the software FPU the 68LC060 lane runs, on the 68030 line.
+
+The gate saves the kernel, not the userland: on the gated kernel the stock `mkfs -F ufs` and
+gcc14-built GNU `cp` and `gtar` still die with `SIGSYS` ([§31](#31-on-an-fpu-less-part-floating-point-dies-as-sigsys-bad-system-call), 🟡 emulation), so an
+**install on a 68030 still needs a 68881/68882**.
+
+**Planned, not yet implemented** 🟡: a software FPU on the 68030 line — NetBSD's FPE, the one the
+68LC060 lane runs — which would carry the userland on FPU-less 68030 cards.
 
 ## 68060 CPU quirks
 
