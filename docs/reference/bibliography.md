@@ -62,7 +62,7 @@ by the reader** — checksums live in `sources/CHECKSUMS.txt`.
 | Image (gitignored) | What it is | Grounds |
 |---|---|---|
 | `amix_21_boot.adf` | ✅ AmigaDOS OFS bootblock + Amix secondary bootstrap + compressed install kernel | [anatomy-boot-adf](../boot-disks/anatomy-boot-adf.md) |
-| `amix_21_root.adf` | ✅ UFS miniroot: installer ELF (m68k) binaries + install shell scripts | [anatomy-root-adf](../boot-disks/anatomy-root-adf.md), [install walkthrough](../getting-started/install-walkthrough.md) |
+| `amix_21_root.adf` | ✅ s5 miniroot: installer ELF (m68k) binaries + install shell scripts | [anatomy-root-adf](../boot-disks/anatomy-root-adf.md), [install walkthrough](../getting-started/install-walkthrough.md) |
 | `amix_21_patch.adf` | ✅ Self-extracting "Patch Disks 1 & 2" for Amix SVR4 2.1 (→ kernel 2.1c) | [anatomy-patch-adf](../boot-disks/anatomy-patch-adf.md) |
 
 Cite local analysis in the form **"`amix_21_root.adf` analysis via `tools/inspect-adf.sh`"** so any

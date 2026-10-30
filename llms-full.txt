@@ -6394,7 +6394,7 @@ major 16; `/dev/par` = char major 21 ✅. You create a node with `mknod /dev/<na
 
 ## miniroot
 
-The minimal UFS root filesystem on the install **root floppy** (`amix_21_root.adf`) that mounts
+The minimal root filesystem (**s5**) on the install **root floppy** (`amix_21_root.adf`) that mounts
 during installation and runs the installer ELF binaries and shell scripts ✅. It carries the
 partition/install logic, the installer programs (cpio, fsck, dd, amixpkg, …), and
 [`viper_kludge`](#viper_kludge) ✅. See the [root floppy anatomy](../boot-disks/anatomy-root-adf.md)
@@ -6472,7 +6472,8 @@ networking, TLI plus BSD sockets, POSIX.1, `init`/`/etc/inittab`/run levels, and
 The Berkeley Fast File System (UFS), the **community-recommended** Amix filesystem 🟡. The installer
 scripts do **not** default to it — the prompt is `[s5]` and empty input selects s5; `ufs` must be
 typed explicitly ✅ (corrected 2026-07-19; this page previously claimed the opposite).
-The install [miniroot](#miniroot) itself is a UFS filesystem ✅.
+The install [miniroot](#miniroot) on the stock root floppy is an **s5** filesystem, not UFS ✅
+([root disk anatomy](../boot-disks/anatomy-root-adf.md)).
 Contrast [s5](#s5). See [filesystems and disks](filesystems-and-disks.md).
 
 ## viper_kludge
@@ -6502,7 +6503,7 @@ addresses are assigned by [AUTOCONFIG](#autoconfig) at reset ✅. See [hardware]
 
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — sections 1, 2, 3, 4, 5, 6, 7, 9, 11 (the grounding source of every definition above); the stock-only scope of the HAT entry's CPU limit per the [040/060 status page](68040-68060-status.md)
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model, `cdevsw`/`bdevsw`, majors/minors, `spl`/clist, `rdbunix` (the Ditto paper)
-- `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — miniroot, UFS, `viper_kludge`, install/partition logic, `relocunix`/`make bootpart`
+- `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — miniroot (s5; corrected 2026-07-05), `viper_kludge`, install/partition logic, `relocunix`/`make bootpart`
 - `amix_21_boot.adf` analysis via `tools/inspect-adf.sh` — compressed kernel, HAT panic string
 - The native-chipset display path (Amix entry): research brief §21 (the screen manager's `DisplayScreen()`/`NewBitmap` chip-RAM bitmap on the native display) and [`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) `docs/X-INSTALL-RTG.md` (the console login on the chipset screen; the stock `startx` on the native chipset); the stock `cdevsw[]` row 10 `screen` on the [major-number registry](../reference/major-number-registry.md)
 - Driver repos: [asokero/va2000-amix](https://github.com/asokero/va2000-amix), [asokero/xrtg-amix](https://github.com/asokero/xrtg-amix), [asokero/lszorro-amix](https://github.com/asokero/lszorro-amix), [isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix) — `autocon()`, RTG/`/dev/va2000`, DLPI/STREAMS, `elf2brel`, `m68k-cbm-sysv4`
@@ -6591,7 +6592,7 @@ See the [quirks page](../how-it-works/quirks.md) for the full list of hard-coded
 
 7. **Start the emulation.** The A3000's "Superkickstart" bootstrap behavior is what you are reproducing: at power-on, the default path boots Amix (holding the right mouse button would instead load AmigaOS Kickstart on real hardware) ✅. WinUAE will run the bootblock from DF0, the Amix secondary bootstrap loads and **decompresses the install kernel** (you may see messages such as `Load boot volume %d`; failures print `Decompression failed!` or `WARNING! Kernel file checksum mismatch.`) ✅, and the kernel comes up.
 
-8. **You reach the install kernel / first prompt.** From here you are in the Amix installer flow: insert the root floppy when prompted, the UFS miniroot mounts, and the installer runs. That process is covered in detail in the [install walkthrough](install-walkthrough.md).
+8. **You reach the install kernel / first prompt.** From here you are in the Amix installer flow: insert the root floppy when prompted, the s5 miniroot mounts, and the installer runs. That process is covered in detail in the [install walkthrough](install-walkthrough.md).
 
 **Tip:** Save this as a WinUAE configuration (e.g. `amix-a3000ux.uae`) immediately after step 6, so you never re-enter the table. A single wrong row (JIT back ON, RAM bumped past what the kernel can describe — ≈64 MB on the stock 030 kernel) is the most common cause of "it stopped booting."
 
@@ -7277,7 +7278,7 @@ Useful for automation / agents driving Amix without a visible window:
 
 ---
 title: Installing Amix (Emulation-First Walkthrough)
-summary: End-to-end install of Amix 2.1 — boot/root floppies, the UFS miniroot, RDB partitioning, streaming the distribution from a SCSI tape, building and writing the boot partition, first boot, and applying the patch disk to reach 2.1c, and the community Y2K `setclk`.
+summary: End-to-end install of Amix 2.1 — boot/root floppies, the s5 miniroot, RDB partitioning, streaming the distribution from a SCSI tape, building and writing the boot partition, first boot, and applying the patch disk to reach 2.1c, and the community Y2K `setclk`.
 status: draft
 ---
 
@@ -7312,7 +7313,7 @@ the [boot disk anatomy](../boot-disks/anatomy-boot-adf.md),
 | Floppy | Role | Contents (✅) |
 |---|---|---|
 | `amix_21_boot.adf` | Bootstrap | AmigaDOS OFS bootblock (`DOS\0` + checksum + 68k bootstrap) → loads and **decompresses a checksummed install kernel**. No AmigaDOS filesystem on the disk. |
-| `amix_21_root.adf` | Miniroot | A **UFS miniroot** image: the installer ELF binaries (cpio, fsck, dd, amixpkg, …), the `/bin/sh` install scripts, and `viper.README`. |
+| `amix_21_root.adf` | Miniroot | An **s5 miniroot** image: the installer ELF binaries (cpio, fsck, dd, amixpkg, …), the `/bin/sh` install scripts, and `viper.README`. |
 | `amix_21_patch.adf` | Patch | Self-extracting "Patch Disks 1 & 2" → brings 2.1 up to **2.1p2a / kernel 2.1c**. |
 
 The distribution itself (the actual OS packages) does **not** live on a floppy — it streams from a
@@ -7365,10 +7366,12 @@ see bootstrap messages like `Load boot volume %d`; failures surface as `Decompre
 The install kernel is **NFS/RPC-capable** — it carries a full RPC client string table — which is what
 lets a networked install pull packages, though the tape path is what we use here.
 
-## Stage 2 — mount the UFS miniroot
+## Stage 2 — mount the miniroot {#stage-2-mount-the-ufs-miniroot}
 
-When prompted, insert `amix_21_root.adf`. Its body is a **UFS filesystem** (you can see `lost+found`
-and `fsck` strings in the image ✅), and it mounts as the **miniroot**. The installer — a set of m68k
+When prompted, insert `amix_21_root.adf`. Its body is an SVR4 **s5 filesystem** (superblock at byte
+`0x200`, s5 magic `0xfd187e20` ✅; the `lost+found` and `fsck` strings in the image once suggested UFS,
+but they are not a UFS fingerprint — see [the root disk anatomy](../boot-disks/anatomy-root-adf.md)),
+and it mounts as the **miniroot**. The installer — a set of m68k
 ELF binaries plus `/bin/sh` scripts living on that miniroot — now takes over.
 
 **Note:** the Amix `/bin/sh` is **pre-POSIX** ✅ — no `$(...)` command substitution, no `grep -q`.
@@ -7540,8 +7543,8 @@ keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-se
 
 ```text
 1. DF0 = boot.adf            → bootstrap loads & decompresses the install kernel
-2. insert root.adf           → UFS miniroot mounts; installer runs
-3. partition the ID 6 disk   → BOOTSIZE=2 MB boot part, swap (BREAKPT=120), FS=ufs
+2. insert root.adf           → s5 miniroot mounts; installer runs
+3. partition the ID 6 disk   → BOOTSIZE=2 MB boot part, swap (BREAKPT=120), FS: type ufs (default s5)
 4. tape @ SCSI ID 4:         dd if=/dev/rmt/4hn bs=256k | cpio -imdcu
                              amixpkg -i -m -d -r /mnt -y standard
                              (viper_kludge only for nonstandard tape drives)
@@ -7557,7 +7560,7 @@ keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-se
 - [FS-UAE emulator setup](emulation-fs-uae.md) — verified A3000 snippet.
 - [Installing on real hardware](real-hardware.md) — A3000UX / A2500UX specifics.
 - [First login and tour](first-login-and-tour.md) — what to do after the install finishes.
-- [Root disk anatomy](../boot-disks/anatomy-root-adf.md) — the UFS miniroot and install scripts in detail.
+- [Root disk anatomy](../boot-disks/anatomy-root-adf.md) — the s5 miniroot and install scripts in detail.
 - [Boot disk anatomy](../boot-disks/anatomy-boot-adf.md) — the bootblock and compressed install kernel.
 - [Patch disk anatomy](../boot-disks/anatomy-patch-adf.md) — how the self-extracting patch works.
 - [Kernel build](../drivers/kernel-build.md) — `/usr/sys`, `make bootpart`, and relinking `/unix`.
@@ -17329,7 +17332,7 @@ by the reader** — checksums live in `sources/CHECKSUMS.txt`.
 | Image (gitignored) | What it is | Grounds |
 |---|---|---|
 | `amix_21_boot.adf` | ✅ AmigaDOS OFS bootblock + Amix secondary bootstrap + compressed install kernel | [anatomy-boot-adf](../boot-disks/anatomy-boot-adf.md) |
-| `amix_21_root.adf` | ✅ UFS miniroot: installer ELF (m68k) binaries + install shell scripts | [anatomy-root-adf](../boot-disks/anatomy-root-adf.md), [install walkthrough](../getting-started/install-walkthrough.md) |
+| `amix_21_root.adf` | ✅ s5 miniroot: installer ELF (m68k) binaries + install shell scripts | [anatomy-root-adf](../boot-disks/anatomy-root-adf.md), [install walkthrough](../getting-started/install-walkthrough.md) |
 | `amix_21_patch.adf` | ✅ Self-extracting "Patch Disks 1 & 2" for Amix SVR4 2.1 (→ kernel 2.1c) | [anatomy-patch-adf](../boot-disks/anatomy-patch-adf.md) |
 
 Cite local analysis in the form **"`amix_21_root.adf` analysis via `tools/inspect-adf.sh`"** so any

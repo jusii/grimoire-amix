@@ -115,7 +115,7 @@ major 16; `/dev/par` = char major 21 ✅. You create a node with `mknod /dev/<na
 
 ## miniroot
 
-The minimal UFS root filesystem on the install **root floppy** (`amix_21_root.adf`) that mounts
+The minimal root filesystem (**s5**) on the install **root floppy** (`amix_21_root.adf`) that mounts
 during installation and runs the installer ELF binaries and shell scripts ✅. It carries the
 partition/install logic, the installer programs (cpio, fsck, dd, amixpkg, …), and
 [`viper_kludge`](#viper_kludge) ✅. See the [root floppy anatomy](../boot-disks/anatomy-root-adf.md)
@@ -193,7 +193,8 @@ networking, TLI plus BSD sockets, POSIX.1, `init`/`/etc/inittab`/run levels, and
 The Berkeley Fast File System (UFS), the **community-recommended** Amix filesystem 🟡. The installer
 scripts do **not** default to it — the prompt is `[s5]` and empty input selects s5; `ufs` must be
 typed explicitly ✅ (corrected 2026-07-19; this page previously claimed the opposite).
-The install [miniroot](#miniroot) itself is a UFS filesystem ✅.
+The install [miniroot](#miniroot) on the stock root floppy is an **s5** filesystem, not UFS ✅
+([root disk anatomy](../boot-disks/anatomy-root-adf.md)).
 Contrast [s5](#s5). See [filesystems and disks](filesystems-and-disks.md).
 
 ## viper_kludge
@@ -223,7 +224,7 @@ addresses are assigned by [AUTOCONFIG](#autoconfig) at reset ✅. See [hardware]
 
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) — sections 1, 2, 3, 4, 5, 6, 7, 9, 11 (the grounding source of every definition above); the stock-only scope of the HAT entry's CPU limit per the [040/060 status page](68040-68060-status.md)
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model, `cdevsw`/`bdevsw`, majors/minors, `spl`/clist, `rdbunix` (the Ditto paper)
-- `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — miniroot, UFS, `viper_kludge`, install/partition logic, `relocunix`/`make bootpart`
+- `amix_21_root.adf` analysis via `tools/inspect-adf.sh` — miniroot (s5; corrected 2026-07-05), `viper_kludge`, install/partition logic, `relocunix`/`make bootpart`
 - `amix_21_boot.adf` analysis via `tools/inspect-adf.sh` — compressed kernel, HAT panic string
 - The native-chipset display path (Amix entry): research brief §21 (the screen manager's `DisplayScreen()`/`NewBitmap` chip-RAM bitmap on the native display) and [`jusii/amix-z3660rtg`](https://github.com/jusii/amix-z3660rtg) `docs/X-INSTALL-RTG.md` (the console login on the chipset screen; the stock `startx` on the native chipset); the stock `cdevsw[]` row 10 `screen` on the [major-number registry](../reference/major-number-registry.md)
 - Driver repos: [asokero/va2000-amix](https://github.com/asokero/va2000-amix), [asokero/xrtg-amix](https://github.com/asokero/xrtg-amix), [asokero/lszorro-amix](https://github.com/asokero/lszorro-amix), [isoriano1968/hydra-amix](https://github.com/isoriano1968/hydra-amix) — `autocon()`, RTG/`/dev/va2000`, DLPI/STREAMS, `elf2brel`, `m68k-cbm-sysv4`

@@ -21,7 +21,7 @@
 |---|---|---|
 | **Ditto driver paper** | `sources/pdf/Writing Amix Device Drivers …(2).pdf` | ✅ The authoritative driver spec by Michael Ditto (the Amix porter). 22 unique pages; **pp. 23–44 are a duplicate scan**. Page headers read **"1990 European Amiga Developer's Conference"** — cite it as such; the *filename's* "North American" is inaccolerate. |
 | **boot floppy** | `sources/floppy/amix_21_boot.adf` | ✅ Bootable AmigaDOS bootblock + Amix secondary bootstrap + compressed install kernel. |
-| **root floppy** | `sources/floppy/amix_21_root.adf` | ✅ UFS miniroot: installer ELF (m68k) binaries + install shell scripts. |
+| **root floppy** | `sources/floppy/amix_21_root.adf` | ✅ s5 miniroot (superblock magic `0xfd187e20` at `0x200`; corrected 2026-07-05, the earlier "UFS" was a string-heuristic artefact): installer ELF (m68k) binaries + install shell scripts. |
 | **patch floppy** | `sources/floppy/amix_21_patch.adf` | ✅ Self-extracting "Patch Disks 1 & 2" for Amix SVR4 2.1. |
 
 SHA-256 of all four: see `sources/CHECKSUMS.txt`. Inspect any ADF with `tools/inspect-adf.sh <image>`.
@@ -227,8 +227,8 @@ motherboard_ram = 16384
 ## 9. Installation flow ✅ (reconstructed from root.adf scripts)
 
 1. Boot `boot.adf` (DF0) → install kernel loads & decompresses.
-2. Insert `root.adf` → **UFS miniroot** mounts; installer runs.
-3. Installer detects a "suitable UNIX rdb", computes "obvious" partition choices or asks the user; sets `BOOTSIZE=2` (MB), swap (larger when disk > `BREAKPT=120` MB), FS default **`ufs`**.
+2. Insert `root.adf` → **s5 miniroot** mounts; installer runs.
+3. Installer detects a "suitable UNIX rdb", computes "obvious" partition choices or asks the user; sets `BOOTSIZE=2` (MB), swap (larger when disk > `BREAKPT=120` MB), FS prompt `[s5]`: empty input selects **s5**, `ufs` must be typed (corrected 2026-07-19; earlier "default `ufs`" was wrong).
 4. Distribution streamed from **tape at SCSI ID 4**: `dd if=/dev/rmt/4hn bs=256k | cpio -imdcu` (and a `… | zcat | cpio` variant); driven by `amixpkg -b/-i -r /mnt`.
 5. Kernel built/patched; `make bootpart KERNEL=relocunix` writes boot partition; reboot; finish via `amixadm` (nodename/domain/tz/date≤1999/root pw/X11).
 6. Apply the **patch disk** (→ 2.1p2a / kernel 2.1c); run Y2K-fixed `setclk`.

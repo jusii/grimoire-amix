@@ -1,6 +1,6 @@
 ---
 title: Installing Amix (Emulation-First Walkthrough)
-summary: End-to-end install of Amix 2.1 — boot/root floppies, the UFS miniroot, RDB partitioning, streaming the distribution from a SCSI tape, building and writing the boot partition, first boot, and applying the patch disk to reach 2.1c, and the community Y2K `setclk`.
+summary: End-to-end install of Amix 2.1 — boot/root floppies, the s5 miniroot, RDB partitioning, streaming the distribution from a SCSI tape, building and writing the boot partition, first boot, and applying the patch disk to reach 2.1c, and the community Y2K `setclk`.
 status: draft
 ---
 
@@ -35,7 +35,7 @@ the [boot disk anatomy](../boot-disks/anatomy-boot-adf.md),
 | Floppy | Role | Contents (✅) |
 |---|---|---|
 | `amix_21_boot.adf` | Bootstrap | AmigaDOS OFS bootblock (`DOS\0` + checksum + 68k bootstrap) → loads and **decompresses a checksummed install kernel**. No AmigaDOS filesystem on the disk. |
-| `amix_21_root.adf` | Miniroot | A **UFS miniroot** image: the installer ELF binaries (cpio, fsck, dd, amixpkg, …), the `/bin/sh` install scripts, and `viper.README`. |
+| `amix_21_root.adf` | Miniroot | An **s5 miniroot** image: the installer ELF binaries (cpio, fsck, dd, amixpkg, …), the `/bin/sh` install scripts, and `viper.README`. |
 | `amix_21_patch.adf` | Patch | Self-extracting "Patch Disks 1 & 2" → brings 2.1 up to **2.1p2a / kernel 2.1c**. |
 
 The distribution itself (the actual OS packages) does **not** live on a floppy — it streams from a
@@ -88,10 +88,12 @@ see bootstrap messages like `Load boot volume %d`; failures surface as `Decompre
 The install kernel is **NFS/RPC-capable** — it carries a full RPC client string table — which is what
 lets a networked install pull packages, though the tape path is what we use here.
 
-## Stage 2 — mount the UFS miniroot
+## Stage 2 — mount the miniroot {#stage-2-mount-the-ufs-miniroot}
 
-When prompted, insert `amix_21_root.adf`. Its body is a **UFS filesystem** (you can see `lost+found`
-and `fsck` strings in the image ✅), and it mounts as the **miniroot**. The installer — a set of m68k
+When prompted, insert `amix_21_root.adf`. Its body is an SVR4 **s5 filesystem** (superblock at byte
+`0x200`, s5 magic `0xfd187e20` ✅; the `lost+found` and `fsck` strings in the image once suggested UFS,
+but they are not a UFS fingerprint — see [the root disk anatomy](../boot-disks/anatomy-root-adf.md)),
+and it mounts as the **miniroot**. The installer — a set of m68k
 ELF binaries plus `/bin/sh` scripts living on that miniroot — now takes over.
 
 **Note:** the Amix `/bin/sh` is **pre-POSIX** ✅ — no `$(...)` command substitution, no `grep -q`.
@@ -263,8 +265,8 @@ keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-se
 
 ```text
 1. DF0 = boot.adf            → bootstrap loads & decompresses the install kernel
-2. insert root.adf           → UFS miniroot mounts; installer runs
-3. partition the ID 6 disk   → BOOTSIZE=2 MB boot part, swap (BREAKPT=120), FS=ufs
+2. insert root.adf           → s5 miniroot mounts; installer runs
+3. partition the ID 6 disk   → BOOTSIZE=2 MB boot part, swap (BREAKPT=120), FS: type ufs (default s5)
 4. tape @ SCSI ID 4:         dd if=/dev/rmt/4hn bs=256k | cpio -imdcu
                              amixpkg -i -m -d -r /mnt -y standard
                              (viper_kludge only for nonstandard tape drives)
@@ -280,7 +282,7 @@ keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-se
 - [FS-UAE emulator setup](emulation-fs-uae.md) — verified A3000 snippet.
 - [Installing on real hardware](real-hardware.md) — A3000UX / A2500UX specifics.
 - [First login and tour](first-login-and-tour.md) — what to do after the install finishes.
-- [Root disk anatomy](../boot-disks/anatomy-root-adf.md) — the UFS miniroot and install scripts in detail.
+- [Root disk anatomy](../boot-disks/anatomy-root-adf.md) — the s5 miniroot and install scripts in detail.
 - [Boot disk anatomy](../boot-disks/anatomy-boot-adf.md) — the bootblock and compressed install kernel.
 - [Patch disk anatomy](../boot-disks/anatomy-patch-adf.md) — how the self-extracting patch works.
 - [Kernel build](../drivers/kernel-build.md) — `/usr/sys`, `make bootpart`, and relinking `/unix`.

@@ -76,7 +76,7 @@ See the [quirks page](../how-it-works/quirks.md) for the full list of hard-coded
 
 7. **Start the emulation.** The A3000's "Superkickstart" bootstrap behavior is what you are reproducing: at power-on, the default path boots Amix (holding the right mouse button would instead load AmigaOS Kickstart on real hardware) ✅. WinUAE will run the bootblock from DF0, the Amix secondary bootstrap loads and **decompresses the install kernel** (you may see messages such as `Load boot volume %d`; failures print `Decompression failed!` or `WARNING! Kernel file checksum mismatch.`) ✅, and the kernel comes up.
 
-8. **You reach the install kernel / first prompt.** From here you are in the Amix installer flow: insert the root floppy when prompted, the UFS miniroot mounts, and the installer runs. That process is covered in detail in the [install walkthrough](install-walkthrough.md).
+8. **You reach the install kernel / first prompt.** From here you are in the Amix installer flow: insert the root floppy when prompted, the s5 miniroot mounts, and the installer runs. That process is covered in detail in the [install walkthrough](install-walkthrough.md).
 
 **Tip:** Save this as a WinUAE configuration (e.g. `amix-a3000ux.uae`) immediately after step 6, so you never re-enter the table. A single wrong row (JIT back ON, RAM bumped past what the kernel can describe — ≈64 MB on the stock 030 kernel) is the most common cause of "it stopped booting."
 
