@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — how stock man(1) works; "pre-formatted only" corrected (8f77de1)
+
+MANPATH is one directory, lookup goes through whatis, there is no -M, a man1/ layout is not found, and MANPATH without
+CATPATH writes into, and shadows, the stock /usr/catman. The SVR4 base pages are formatted only, but the Amiga sections
+ship as nroff source, which man formats on first view with /usr/ucb/nroff.
+
 ## 2026-10-30 — quirks 90 and 91 fixed on both kernel lines in emulation (90ef24a)
 
 Quirk 91: fixed on the 040/060 line in emulation by the 68030 line's tail-zeroing routine bound into its ufs module
