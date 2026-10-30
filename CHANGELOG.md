@@ -2,6 +2,13 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 91: cold-cache extent, cause narrowed, fixed on k30 in emulation (a2316de)
+
+With the file cached, [roundup(M, PAGESIZE), block end) reads old; without, all of [M, block end). pvn_vptrunc zeroes
+nothing when the file isn't cached; the async write loses to the abort, by elimination. Fixed on the 68030 line in
+emulation (synchronous tail zeroing, kernel/k30 1be27f8); the 040/060 line pending. Workaround corrected: only an
+8 KiB-aligned cut, or writing zeros from M, is safe.
+
 ## 2026-10-30 — quirk 90: the kzero fix passes on a real 68060 (7e27e2b)
 
 The 040/060 kzero fix passes on a real 68060 (A4000T + Z3660, 128 MB): nine shrink cases intact, three caught faults,
