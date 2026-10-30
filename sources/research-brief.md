@@ -476,10 +476,10 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   (89 of 105 images caught, the 16 misses all split halves, 0 of 29 expansion ROMs) ✅. Source:
   amix-packagemanager `dccd3b1`, `e656915` (`tools/repo/payload-licence-gate.py`). Source: the amix-packages bzip2, coreutils and rsync ports
   (emulated stock 2.1c 68030, `truss`, core notes, symbolised stock kernel).
-- **Stale data after a shrink (2026-10-30)** → `quirks.md` §91: on both kernel lines, an
-  `F_FREESP` shrink to an unaligned M in an earlier 8 KiB block past the direct blocks, then a
-  one-byte regrow at N−1, reads the old bytes in `[roundup(M, PAGESIZE), roundup(M, 8192))` ✅
-  (emulation; two kernels per line, with and without the fault-catching `kzero`); block-aligned M
-  clean ✅; stock 2.1c, hardware and reboot-between untested 🔴; mechanism (whole block kept, pages
-  past the new EOF invalidated unwritten) inferred 🟡. Source: the k30 kernel work's and the
-  040/060 port's emulator cells.
+- **Stale data after a shrink (2026-10-30)** → `quirks.md` §91: on stock 2.1c and both kernel lines,
+  an `F_FREESP` shrink to an unaligned M in an earlier 8 KiB block past the direct blocks, then a
+  regrow across the gap, reads the old bytes in `[roundup(M, PAGESIZE), roundup(M, 8192))` ✅
+  (emulation; on disk, survives a remount ✅); block-aligned M, M in the last page, and an in-block
+  regrow clean ✅; cause read from the stock objects — `pvn_vptrunc` zeroes the block in the page
+  cache, async put, then aborts every page ≥ M ✅, why the put is dropped 🟡; non-determinism 🟡;
+  hardware 🔴. Source: the k30 kernel work's and the 040/060 port's emulator cells and disassembly.

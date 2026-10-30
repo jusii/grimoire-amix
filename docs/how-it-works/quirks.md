@@ -103,7 +103,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 88 | **Stock `sed` silently drops a final input line that has no newline** — `printf 'a b c ' \| sed 's/ $//'` prints nothing at all. Terminated lines are fine. Make sure the input ends with a newline (`{ …; echo; } \| sed …`) | ✅ | [Quirks §88](#88-sed-drops-unterminated-line) |
 | 89 | **`libc.so.1`'s `TZ` parser writes into the `TZ` environment string in place** — a program that `putenv()`s a string literal (read-only under modern compilers) dies with SIGSEGV at its next time conversion; `date -u` of a GCC 14 build did, every run. `putenv()` writable storage | ✅ | [Quirks §89](#89-tz-parsed-in-place), [Toolchain](../drivers/toolchain.md#the-porting-surface-libc-and-library-gaps-modern-c-assumes) |
 | 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back. The 040/060 port fixes it in `kzero` (emulation-verified; hardware pending) | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
-| 91 | **A shrink to an earlier block, then a sparse regrow, reads the old bytes back** — on both kernel lines, `F_FREESP` from N to an unaligned M in an earlier 8 KiB block (both past the direct blocks) returns cleanly, but after writing one byte at N−1, `[roundup(M, PAGESIZE), roundup(M, 8192))` holds the file's old data instead of zeros. No crash. Cut block-aligned, or write zeros through the gap | ✅ | [Quirks §91](#91-shrink-regrow-stale-data) |
+| 91 | **A shrink to an earlier block, then a sparse regrow, reads the old bytes back — from disk** — on stock 2.1c and both kernel lines, `F_FREESP` from N to an unaligned M in an earlier 8 KiB block (both past the direct blocks) returns cleanly, but after writing one byte at N−1, `[roundup(M, PAGESIZE), roundup(M, 8192))` holds the file's old data: `pvn_vptrunc` zeroes the block in the page cache and then discards the pages past M's own. No crash. Write real zeros through the gap, or cut block-aligned | ✅ | [Quirks §91](#91-shrink-regrow-stale-data) |
 
 The rest of this page expands each item.
 
@@ -1380,44 +1380,57 @@ It needs a readable descriptor (coreutils `dd` opens its output `O_RDWR` when `s
 The project's coreutils and GNU tar packages carry such a replacement, and its `cp` writes the
 final hole's NUL by seeking back rather than by truncating (upstream's own non-`ftruncate` branch) ✅.
 
-### 91. A shrink to an earlier block, then a sparse regrow, reads the old bytes back — both lines ✅ {#91-shrink-regrow-stale-data}
+### 91. A shrink to an earlier block, then a sparse regrow, reads the old bytes back — stock 2.1c and both lines ✅ {#91-shrink-regrow-stale-data}
 
-Related to [§90](#90-ftruncate-shrink-panics) but separate: no crash, wrong data. On a ufs with
-8 KiB blocks and 1 KiB fragments, write N bytes to a fresh file and shrink it with
+Related to [§90](#90-ftruncate-shrink-panics) but separate: no crash, wrong data, **on disk**. On a
+ufs with 8 KiB blocks and 1 KiB fragments, write N bytes to a fresh file and shrink it with
 `fcntl(F_FREESP)` (`ftruncate`) to an M in an **earlier** 8 KiB block than N, both past the 12 direct
-blocks. The shrink returns 0, the size is M and `[0, M)` is intact. Now regrow the file sparsely by
-writing one byte at N−1: `[M, roundup(M, PAGESIZE))` reads zero as it should, but
+blocks. The shrink returns 0, the size is M and `[0, M)` is intact. Now regrow the file across the
+gap by writing one byte at N−1: `[M, roundup(M, PAGESIZE))` reads zero as it should, but
 **`[roundup(M, PAGESIZE), roundup(M, 8192))` holds the file's old bytes** whenever that range is not
 empty ✅. With the 040/060 line's 4 KiB pages that takes an M in the lower half of its block; with the
-68030's 2 KiB pages, any M outside its block's last 2 KiB page. A block-aligned M (a multiple of
-8192) is always clean.
+68030's 2 KiB pages, any M outside its block's last 2 KiB page. A block-aligned M, an M in its
+block's last page, and a regrow that stays inside M's block are clean ✅.
 
 | N → M | 68030 (2 KiB pages) | 040/060 (4 KiB pages) |
 |---|---|---|
-| 200000 → 150000 | stale from 151552 to the block end ✅ | stale `[151552, 155647]`, 4096 old bytes ✅ |
-| 480017 → 470000 | stale from 471040 to the block end ✅ | stale `[471040, 475135]`, 4096 old bytes ✅ |
+| 200000 → 150000 | stale pages 151552 and 153600 (all old), zero from 155648 ✅ | stale `[151552, 155647]` ✅ |
+| 480017 → 470000 | stale pages 471040 and 473088 ✅ | stale `[471040, 475135]` ✅ |
+| 200000 → 148000 (M in the block's first page) | stale 149504–155647 ✅ (clean once on one disk 🟡) | — |
 | 200000 → 151552 (page-aligned, not block-aligned) | — | stale `[151552, 155647]` ✅ |
+| 200000 → 154000 (M in the block's last 2 KiB page) | clean ✅ | — |
+| 200000 → 150000, regrow to 155001 (inside the block) | clean ✅ | — |
 | 300017 → 250000, 1000000 → 900000 (M in the upper half of its block) | — | clean ✅ |
-| 200000 → 147456, 200000 → 196608, 480017 → 475136 (block-aligned) | clean (the last two) ✅ | clean (the first) ✅ |
-| 1000 → 500, 20000 → 15000 (within the direct blocks) | clean ✅ | clean ✅ |
+| block-aligned M (200000 → 147456 / 196608, 480017 → 475136) | clean ✅ | clean ✅ |
+| within the direct blocks (1000 → 500, 20000 → 15000, 90017 → 90000) | clean ✅ | clean ✅ |
 
-Also clean on the 68030 ✅: 90017 → 90000, 20017 → 20000, 110017 → 106496, and the §90 same-block
-shapes on a 68030 test kernel carrying the fault-catching `kzero`. Measured in emulation, one boot per
-cell, 2026-10-30: the 68030 line on an emulated A4000 with the Z3660 in 68030 mode, the 040/060 line
-on an emulated A4000 with a 68LC060; on each line two kernels, one with the stock `kzero` and one
-with the fault-catching `kzero` of §90, with identical results — so that fix neither causes nor cures
-it. A plain stock 2.1c kernel, real hardware, and a reboot between the shrink and the regrow are
-untested 🔴.
+Measured in emulation, 2026-10-30: on **stock 2.1c** (an emulated A3000 with 64 MB, ufs root), on the
+project's 68030 kernel line (an emulated A4000 with the Z3660 in 68030 mode, its root and a freshly
+made ufs), and on the 040/060 line (an emulated A4000 with a 68LC060). Each line ran two kernels,
+with the stock `kzero` and with the fault-catching `kzero` of §90, and got identical results, so that
+fix neither causes nor cures it. The project's 68030 line runs the stock ufs and VM code byte for
+byte. **The old bytes are on the disk** ✅: `sync`, shrink, unmount and remount (which empties the
+page cache), regrow — the same old bytes; regrow, `sync`, remount, then read — the same. It is not
+fully deterministic 🟡: a `sync` and 40 s between the shrink and the regrow came out clean once on
+one filesystem and stale on another. With the file's pages out of the cache before the shrink
+(remount between write and shrink, one run) M's own page lost its zeros too, leaving all of
+`[M, block end)` old 🟡. Real hardware is untested 🔴.
 
-**Mechanism (inferred, not read from the source) 🟡:** past the direct blocks the cut block stays a
-whole block rather than shrinking to fragments. `pvn_vptrunc` zeroes `[M, block end)` in the page
-cache, but the pages from `roundup(M, PAGESIZE)` on lie wholly past the new EOF and appear to be
-invalidated without being written back, so the disk keeps the old bytes there. Inside the direct
-blocks the block shrinks to fragments, and new fragments are zeroed when allocated, hence clean.
+**Cause, read from the stock objects ✅** (the step that drops the write is 🟡): past the direct
+blocks `ufs_itrunc` keeps the last block whole and calls `pvn_vptrunc(vp, M, fs_bsize − blkoff(M))`
+with the inode lock held, before it sets the size to M. `pvn_vptrunc` zeroes `[M, block end)` through
+`segmap` with `kzero` — in the page cache only — releases the 8 KiB window with an **asynchronous**
+put, then aborts **every** page whose offset is ≥ M (not rounded to a page). So the zeroed pages
+past M's own page are discarded, and their zeros reach the disk only if the asynchronous put really
+wrote them first; the measurements say it usually does not. `ufs_putpage` returns at once without
+writing when the inode is locked, under a condition on the calling process not yet fully decoded 🟡.
+The code comes from a design with 8 KiB pages, where M's page covers the whole rest of the block and
+is never aborted; Amix's 2 KiB (68030) and 4 KiB (040/060) pages break that assumption.
 
-**Workaround:** shrink to a block-aligned length (the §90 aligned cut, which covers this too), or,
-after an unaligned shrink, regrow by writing zeros through the gap rather than by writing past the
-new EOF.
+**Workaround ✅ (by construction):** after a shrink to an unaligned M past the direct blocks, never
+regrow the file across a gap — write real zeros through the gap instead. Or shrink only to an
+8 KiB-aligned M (or an M in its block's last page) and write the tail back, which §90's aligned-cut
+workaround already does.
 
 ### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
 
@@ -1697,7 +1710,12 @@ with `swap -a` ✅ (emulation, both kernel lines).
   The 040/060 rows (first-party record, 2026-10-30) ✅: the 68040/68060 port's run of the same probe
   on an emulated A4000 with a 68LC060 (4 KiB pages), its record kernel and its `kzero` test kernel,
   eight cases with the stale extents measured; the rule was written down before the run. The
-  mechanism is the port's inference, not a source reading.
+  port inferred the mechanism; the source reading below confirms it.
+  The stock 2.1c rows, the extents, the on-disk proof and the cause (first-party record, 2026-10-30)
+  ✅: the k30 kernel work's page-map probe on the stock 2.1c golden image, the project's 68030 root
+  and a fresh ufs on a scratch disk (with `sync`, unmount/remount and delay variants); the
+  disassembly of the stock `ufs_itrunc`, `pvn_vptrunc` and `ufs_putpage` objects; the build-time
+  hash of the 68030 line's ufs module against the stock tree.
   The exposure rows (first-party record, 2026-10-30) ✅: amix-packages probes of coreutils 5.2.1 `dd`
   and `cp`, and GNU tar 1.14 `--delete`, on the emulated stock 2.1c 68030, the console captured at
   each panic; the fixes in [amix-packages](https://github.com/jusii/amix-packages)
