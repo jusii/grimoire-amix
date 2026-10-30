@@ -461,5 +461,11 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   incremental snapshots and `shred` 🟡 (quirk 90; 040/060 rows from the port's emulator probe, 2026-10-30); hosts-only
   `gethostbyname()` rejects dotted quads ✅ (`libsockdns` 🔴); `/usr/bin/rsh` is the BSD remote shell,
   `nobody` is 60001 with no `nogroup` ✅; `ftruncate` is weak in the static libc ✅; `%lld` in formats
-  assembled at run time from `PRIdMAX` (coreutils `stat`, `od`) ✅. Source: the amix-packages bzip2, coreutils and rsync ports
+  assembled at run time from `PRIdMAX` (coreutils `stat`, `od`) ✅.
+- **Stock `libm.a` (2026-10-30)** → `docs/drivers/toolchain.md#stock-libm`, `68040-68060-status.md`:
+  archive only; software math on basic 6888x arithmetic, 21 `fmovecr` and 16 `fintrz` sites ✅
+  (`objdump`, re-read); per-function trap map ✅; bit-identical through the 040 FPSP (emulated) ✅, no
+  060 libm run 🟡; within 1 ulp, `pow(2, 0.5)` one ulp low ✅; SVID errors (`EDOM`, `matherr` line,
+  `-HUGE`/0 returns) ✅; musl 1.2.5 math wrong under 68881 extended precision 🟡; the LC060 FPE merged
+  but not accepted by the port ✅. Source: amix-packages libm probes; port `STATUS.md` @ `baf3ddf`. Source: the amix-packages bzip2, coreutils and rsync ports
   (emulated stock 2.1c 68030, `truss`, core notes, symbolised stock kernel).

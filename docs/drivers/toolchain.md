@@ -511,6 +511,52 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
 - **The unprivileged account is `nobody`, uid and gid 60001; there is no `nogroup`** ✅ — a configure
   that probes the build host's `/etc/group` picks the wrong group name.
 
+### The stock math library: `libm.a` ✅ {#stock-libm}
+
+Stock Amix ships its math library **only as an archive**, `/usr/ccs/lib/libm.a` (40 members, plus a
+profiled copy in `libp/`); there is no shared `libm`. GCC 14 code links it and gets correct `double`
+returns ✅ (measured: 357 results over 19 functions on an emulated stock 2.1c 68030, 2026-10-30).
+
+**It is software math on basic 6888x arithmetic** ✅ (`objdump` of every member): no `fsin`, `fcos`,
+`fetox`, `flogn`, `fatan` or `ftan` anywhere. It does use two instructions the 040/060 FPUs lack in
+hardware: **`fmovecr`** (the constant ROM; 21 sites, unimplemented on both the 68040 and the 68060)
+and **`fintrz`** (16 sites, unimplemented on the 68040, implemented on the 68060). Per function, from
+link maps of one-call programs ✅:
+
+| Function | Members linked | 040/060 traps |
+|---|---|---|
+| `sin`, `cos`, `tan` | `reduce.o`, `sin.o` | `fintrz` ×3 |
+| `atan`, `atan2` | `atan.o` | `fintrz` ×1, `fmovecr` ×1 |
+| `exp`; `sinh`, `cosh`, `tanh` (pull `exp.o`) | `exp.o` | `fintrz` ×1 |
+| `pow` | `pow.o`, `rem.o` | `fintrz` ×4, `fmovecr` ×1 |
+| `fmod` | `rem.o` | `fintrz` ×1 |
+| `log`, `log10`, `sqrt`, `floor`, `ceil`, `asin`, `acos` | — | none |
+| `hypot`, `erf`, `gamma`, `j0`, `j1` | — | `fmovecr` |
+
+So on a 68060 with its FPU only `pow`, `atan`, `atan2`, `hypot`, `erf`, `gamma` and the Bessel
+functions reach the unimplemented-instruction trap; on a 68040 most of the library does. The
+040/060 kernel's FPSP handles them: the same program's 357 results on an emulated 68040 (with the
+emulator trapping the 040's unimplemented instructions) are **bit-identical** to the 68030's ✅. No
+libm-level run on a 68060 yet 🟡. On FPU-less parts there is no usable floating point yet (see
+[the 040/060 status](../how-it-works/68040-68060-status.md#what-the-port-reports-working)) ✅.
+
+**Accuracy:** within 1 ulp of the correctly rounded result on every function tested ✅ — worst
+`atan2` 0.745, `tan` 0.721, `tanh` 0.717, `sin` 0.63, `cosh` 0.625, `pow` 0.565 ulp; `floor`, `ceil`
+and `fmod` exact. Not always correctly rounded: `pow(2, 0.5)` is `0x3ff6a09e667f3bcc`, one ulp below
+`sqrt(2)`'s `…bcd` ✅.
+
+**Errors are SVID, not IEEE** ✅: domain errors set `errno` to `EDOM` (33), the default `matherr()`
+prints one line to stderr (`log: DOMAIN error`, `log: SING error`, `pow: DOMAIN error`, …), and the
+return values are SVID's rather than NaN or infinity — `log(0)` and `log(-1)` → `-HUGE`
+(−3.40282e38), `sqrt(-1)` → 0, `pow(0, -1)` → 0, `pow(-2, 0.5)` → 0, `fmod(1, 0)` → 1, `asin(2)` → 0.
+A program that defines its own `matherr()` (the SVID hook) changes this. Code that tests `isnan()`
+after a bad call sees none.
+
+**Do not swap in musl's math as is** 🟡: musl 1.2.5's `src/math` built with GCC 14 for this target
+gave `floor(1.0) = 0`, `ceil(2.0) = 1` and `sin(10) = −24.5`. Its round-to-integer trick assumes
+`double` evaluation, and the 68881's extended-precision registers defeat it even with
+`-fexcess-precision=standard` (one build measured, not investigated further).
+
 ### Cross-build traps that are not Amix's fault ✅
 
 - **help2man pages come out empty.** Patch a source file that a man page is generated from and `make`
@@ -629,4 +675,5 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The upstream-runtime FPU check (first-party record, 2026-10-29) ✅: an upstream `58130fe` build checked with the project's `check-68060-safe.py --68881` (68060-safe for integer forms; 614 FPU instructions in 040/060-only forms across libgcc and libstdc++); upstream's `README.md` ("defaults to `--with-cpu=68060`") and `toolchain/build-cross.sh` at that commit.
 - The bzip2 1.0.8 and coreutils 5.2.1 ports (first-party record, 2026-10-29) ✅: sysroot reads (`nm` of `libc.so.1` and the `libc.so` archive, the headers) and the emulated 68030 runs behind the gaps list, the `TZ` crash and the `configure` trap.
 - The rsync 3.1.3 port (first-party record, 2026-10-30) ✅: the `ftruncate` probe rows and the `truss` of `gethostbyname()` on an emulated stock 2.1c (details in quirk 90 and on the networking page); `ls -l` of `/usr/bin/rsh` and the `nobody` entries of `/etc/passwd` and `/etc/group` read on the box; [amix-packages](https://github.com/jusii/amix-packages) `e7ac916` (`recipes/rsync/`).
+- The stock `libm.a` measurements (first-party record, 2026-10-30) ✅: `ar t` and `objdump -d` of the sysroot's `/usr/ccs/lib/libm.a` (21 `fmovecr`, 16 `fintrz`, no transcendental instructions; counts re-read for this page), link maps of one-call programs, and a GCC 14 test program (19 functions, raw IEEE bits) run on an emulated stock 2.1c 68030 and an emulated 68040 on the 040/060 kernel line with unimplemented-instruction trapping on, the outputs equal; ulps against `mpmath` at 200 bits; a musl 1.2.5 `src/math` build of the same program (amix-packages).
 - The coreutils 5.2.1-3 and gtar 1.14-7 rebuilds (first-party record, 2026-10-30) ✅: the `stat -c %s` and `stat -f` rows on the box, `stat.c`'s run-time format assembly, `nm` of `truncate.o` in the static libc archive (`_ftruncate` T, `ftruncate` W); [amix-packages](https://github.com/jusii/amix-packages) `97bbcf1` (patch 09, the `ftruncate` replacement), `cad15e4`, `cbd8c25`.
