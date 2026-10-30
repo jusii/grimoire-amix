@@ -4835,7 +4835,10 @@ page cache), regrow — the same old bytes; regrow, `sync`, remount, then read �
 fully deterministic 🟡: a `sync` and 40 s between the shrink and the regrow came out clean once on
 one filesystem and stale on another. With the file's pages out of the cache before the shrink
 (remount between write and shrink, one run) M's own page lost its zeros too, leaving all of
-`[M, block end)` old 🟡. Real hardware is untested 🔴.
+`[M, block end)` old 🟡. On the 040/060 line the old bytes also survive a **reboot** ✅: shrink, `sync`
+twice, a clean shutdown and a fresh start, then the regrow reads exactly the same 4096 old bytes as
+a same-boot control (all three stale shapes; the clean shapes stay clean). Real hardware is
+untested 🔴.
 
 **Cause, read from the stock objects ✅** (why the zeros never reach the disk is open 🔴): past the direct
 blocks `ufs_itrunc` keeps the last block whole and calls `pvn_vptrunc(vp, M, fs_bsize − blkoff(M))`
@@ -5143,6 +5146,8 @@ with `swap -a` ✅ (emulation, both kernel lines).
   disassembly of the stock `ufs_itrunc`, `pvn_vptrunc` and `ufs_putpage` objects (the `ufs_putpage`
   early return decoded as a pid 0/2 guard); the build-time
   hash of the 68030 line's ufs module against the stock tree.
+  The 040/060 reboot rows (first-party record, 2026-10-30) ✅: the port's shrink, double `sync`, clean
+  shutdown, fresh emulator start and regrow, against a same-boot control.
   The exposure rows (first-party record, 2026-10-30) ✅: amix-packages probes of coreutils 5.2.1 `dd`
   and `cp`, and GNU tar 1.14 `--delete`, on the emulated stock 2.1c 68030, the console captured at
   each panic; the fixes in [amix-packages](https://github.com/jusii/amix-packages)
