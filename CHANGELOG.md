@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 91: the dropped write is open (b6ca40d)
+
+Why the async put leaves no zeros on disk is open: ufs_putpage's locked-inode return is only the pid 0/2 pageout guard
+and is ruled out. Two untested candidates: the segmap-zeroed pages are not seen as modified, or the abort races the
+write.
+
 ## 2026-10-30 — quirk 91: stock 2.1c measured, old bytes on disk, the cause (d5fb469)
 
 Quirk 91 holds on stock 2.1c and both kernel lines, and the old bytes come from disk (they survive a remount). Cause,
