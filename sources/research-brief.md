@@ -535,3 +535,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   68030 test kernel pass the smoke test and three loads 🟡 (one boot each; on the guard-only kernel the
   loads ran while `prngd` was still gathering; swap-reservation path not re-run). Source: the
   amix-packages `prngd` runs, `recipes/prngd` README `fd96cc7`.
+- 2026-10-31 — correction to the line above: the bench-image `prngd` panic is consistent with quirk 92
+  (heap pc, vector `0x4`) but not confirmed as it 🟡 — the booted kernel has no symbol table, so its
+  backtrace cannot be resolved; it came after the smoke test's no-socket check, exact step not logged.
+  Source: amix-packages `recipes/prngd` README `7349c19`, `3208937`.
