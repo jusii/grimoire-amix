@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — quirk 93: netstat -rn fails on stock 2.1c (d713caf)
+
+On the stock 2.1c image (emulated A3000) `netstat -rn` prints "read error on routehash" and exits 1, and
+`netstat -in` prints only its header ✅; cause unknown 🔴. Set routes with `route` and keep your own record.
+Networking gains "reading the routing table back"; quirk 26's observation is kept as another box's.
+
 ## 2026-10-30 — pkg* man pages exist in /usr/catman/1m (362d72e)
 
 pkgadd(1M), pkgask(1M), pkgchk(1M) and pkgrm(1M) are installed, formatted only, in /usr/catman/1m; there is no page for
