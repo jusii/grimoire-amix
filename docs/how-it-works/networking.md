@@ -81,16 +81,16 @@ route add default 192.168.0.1 1
 
 The trailing `1` is the metric/hopcount, not an option flag. This is the single most common networking gotcha on Amix and is listed in [the quirks checklist](quirks.md).
 
-**Reading the routing table back — `netstat -rn` can fail ✅/🔴.** On the stock 2.1c image (an
-emulated A3000 with a 68030, `aen0` up and addressed, the booted kernel byte-identical to
-`/stand/unix`), `netstat -rn` prints `read error on routehash` and exits 1, the same on four runs over
-three boots ✅. On the same box `netstat -in` exits 0 but prints only its header line, with no
-interface rows, while the box is being driven over `aen0` ✅. Why is unknown 🔴: `netstat` reads
-`routehash` through `/dev/kmem` at the address its namelist gives ([quirk 80](quirks.md#80-namelist-stand-unix)),
-so a namelist that does not match the running kernel would fail this way, but here it matched.
-Other boxes have shown both commands working ([quirk 26](quirks.md#26-three-diagnostic-tools-that-lie-or-do-not-work)).
-**Practical rule:** a script should not depend on `netstat -r` to read the routes; set them with
-`route` and keep its own record of what it set ([quirk 93](quirks.md#93-netstat-rn-routehash)).
+**Reading the routing table back — check `/stand/unix` first ✅/🟡.** On the project's 2.1c bench
+image, whose `/stand/unix` is not the kernel it boots, `netstat -rn` prints
+`read error on routehash` and exits 1 (four runs over three boots), and `netstat -in` exits 0 with
+only its header line ✅. `netstat` reads the kernel through `/dev/kmem` at addresses taken from
+`/stand/unix` ([quirk 80](quirks.md#80-namelist-stand-unix)), so a namelist that does not match the
+running kernel is the leading explanation 🟡; a run with a matching namelist is pending. Boxes whose
+`/stand/unix` is the booted kernel have shown both commands working
+([quirk 26](quirks.md#26-three-diagnostic-tools-that-lie-or-do-not-work)). **Practical rule:** a
+script should not depend on `netstat -r` to read the routes; set them with `route` and keep its own
+record of what it set ([quirk 93](quirks.md#93-netstat-rn-routehash)).
 
 ## DNS is off by default — turning it on
 
@@ -191,13 +191,14 @@ usual address lengths (`sizeof(struct sockaddr_un)` = 110, `strlen(path) + 2`, `
 `chmod(path, 0777)` (mode `010777`), every `connect()` fails with `ENOTSOCK` (errno 95) at all
 three lengths ✅. The mode bits are not checked: a non-root client (uid 2, `bin`) connects to the
 mode-000 path and gets the server's data, just as root does ✅. So it is the `chmod` itself that
-breaks the socket, not the mode it sets, and a mode-000 socket is no access control. Measured on the
-stock 2.1c 68030 in emulation with GCC 14 test programs. **Porting rule:** never `chmod` a bound `AF_UNIX` path on Amix. Daemons that do (`prngd` chmods
+breaks the socket, not the mode it sets, and a mode-000 socket is no access control. Measured in
+emulation on the 2.1c bench image (stock userland; its kernel is described under
+[quirk 93](quirks.md#93-netstat-rn-routehash)) with GCC 14 test programs. **Porting rule:** never `chmod` a bound `AF_UNIX` path on Amix. Daemons that do (`prngd` chmods
 its socket, so its own `--kill` and `prngd-ctl` could never reach it) need that call removed; `prngd`'s
 UnixWare `DONT_CHMOD_SOCKET` define was meant for exactly this but nothing in 0.9.29 read it.
 
-Heavy local socket traffic next to a busy STREAMS user can also panic the stock kernel in
-`queuerun` ([quirk 92](quirks.md#92-queuerun-panic)).
+A `sockmod` open that fails can leave a freed queue on the STREAMS run list and panic the stock
+kernel in `queuerun` ([quirk 92](quirks.md#92-queuerun-panic)).
 
 ## NFS (server and client)
 
@@ -595,8 +596,8 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
-- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🔴 — the amix base station's runs on the emulated stock 2.1c A3000 image over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`; the booted kernel checked equal to `/stand/unix`. Cause untested.
-- The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated stock 2.1c 68030 (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
+- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30); a matching-namelist run is pending.
+- The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated 2.1c bench image (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 
 - The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync
   3.1.3 port, a `truss` of the failing connect on an emulated stock 2.1c (`/etc/hosts` opened and

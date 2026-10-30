@@ -180,7 +180,7 @@ resolves names from `/etc/hosts` until you switch it on).
 | `ifconfig aen0 <ip> netmask <mask> up` | Bring the interface up with a static address | ✅ |
 | `slink addaen /dev/hya0 hya0` | Link the Hydra STREAMS NIC into IP (Amix SVR4.0 has no `ifconfig plumb`), then `ifconfig hya0 …` | ✅ |
 | `route add default <gw> 1` | Add a default route — **the trailing `1` (metric/hops) is required** | ✅ |
-| `netstat -rn` | Show the routing table — fails with `read error on routehash` on the stock 2.1c image ([quirk 93](../how-it-works/quirks.md#93-netstat-rn-routehash)) | ✅ |
+| `netstat -rn` | Show the routing table — fails with `read error on routehash` when `/stand/unix` is not the booted kernel ([quirk 93](../how-it-works/quirks.md#93-netstat-rn-routehash)) | ✅ |
 
 **Default route — don't drop the metric ✅:**
 

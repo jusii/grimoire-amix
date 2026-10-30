@@ -104,8 +104,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 89 | **`libc.so.1`'s `TZ` parser writes into the `TZ` environment string in place** — a program that `putenv()`s a string literal (read-only under modern compilers) dies with SIGSEGV at its next time conversion; `date -u` of a GCC 14 build did, every run. `putenv()` writable storage | ✅ | [Quirks §89](#89-tz-parsed-in-place), [Toolchain](../drivers/toolchain.md#the-porting-surface-libc-and-library-gaps-modern-c-assumes) |
 | 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back. The 040/060 port fixes it in `kzero` (verified in emulation and on a real 68060); the 68030 line has the same fix, verified in emulation | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
 | 91 | **A shrink to an earlier block, then a sparse regrow, reads the old bytes back — from disk** — on stock 2.1c and both kernel lines, `F_FREESP` from N to an unaligned M in an earlier 8 KiB block (both past the direct blocks) returns cleanly, but after writing one byte at N−1 the file holds its old data in `[roundup(M, PAGESIZE), roundup(M, 8192))`, or in all of `[M, roundup(M, 8192))` if the file was not cached. No crash. Fixed on both lines in emulation. Write real zeros through the gap, or cut block-aligned | ✅ | [Quirks §91](#91-shrink-regrow-stale-data) |
-| 92 | **Heavy local socket traffic next to a busy STREAMS user can panic stock 2.1c in `queuerun`** — `KERNEL FAULT … vector=0x4 (Illegal Instruction)` with the pc in kernel *data*, reached from `ureturn` → `queuerun`, i.e. a deferred STREAMS put through a bad `qi_putp`. Reproduced 3 of 3 with the `prngd` entropy daemon serving `prngd-ctl` requests while it gathers; not reproduced without `prngd` | ✅/🟡 | [Quirks §92](#92-queuerun-panic) |
-| 93 | **`netstat -rn` fails on the stock 2.1c image: `read error on routehash`, exit 1** — and `netstat -in` prints only its header, although `aen0` is up and `/stand/unix` is the booted kernel. Cause unknown. Don't script against `netstat -r`: set routes with `route` and record them yourself | ✅/🔴 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
+| 92 | **A failed STREAMS open can leave a freed queue on the run list, and stock 2.1c then panics in `queuerun`** — `qattach` undoes the failed open with `qdetach(q, 0)`, whose short path frees an already-enabled queue without taking it off `qhead`; the next `queuerun` calls `qi_srvp` through freed memory. Signature: `KERNEL FAULT`, vector `0x4` or `0xB`, pc in the kernel heap, backtrace `ureturn` → `queuerun`. Found with `prngd` exhausting a small swap's reservation. Fixed on the 68030 line in emulation | ✅ | [Quirks §92](#92-queuerun-panic) |
+| 93 | **`netstat -rn` fails with `read error on routehash`, and `netstat -in` lists no interfaces**, on an image whose `/stand/unix` is not the booted kernel. Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 
 The rest of this page expands each item.
 
@@ -746,7 +746,7 @@ Recorded so nobody re-chases them, and so nobody plans a capture around them:
   during a known-good session prints the identical message, so it is an Amix `netstat` limitation,
   **not** evidence of anything ✅. (`netstat -m` likewise answers
   `Memory information not currently supported`.) `netstat -in` and `netstat -rn` worked on the boxes
-  of that soak, but not on the stock 2.1c image: see [§93](#93-netstat-rn-routehash).
+  of that soak; on an image whose `/stand/unix` is not the booted kernel they fail ([§93](#93-netstat-rn-routehash)).
 - **`sar -v` fails** with `sadc: Not enough space` ✅.
 - **`ipcs -a` fails** with `read error: No such device or address` ✅.
 
@@ -1443,7 +1443,7 @@ included, for any unaligned M ✅ (16 of 16 runs, deterministic).
 | block-aligned M (200000 → 147456 / 196608, 480017 → 475136) | clean ✅ | clean ✅ |
 | within the direct blocks (1000 → 500, 20000 → 15000, 90017 → 90000) | clean ✅ | clean ✅ |
 
-Measured in emulation, 2026-10-30: on **stock 2.1c** (an emulated A3000 with 64 MB, ufs root), on the
+Measured in emulation, 2026-10-30: on the 2.1c bench image (stock userland; a 2.1c kernel with drivers added and the stock ufs and VM code; an emulated A3000 with 64 MB, ufs root), on the
 project's 68030 kernel line (an emulated A4000 with the Z3660 in 68030 mode, its root and a freshly
 made ufs), and on the 040/060 line (an emulated A4000 with a 68LC060). Each line ran two kernels,
 with the stock `kzero` and with the fault-catching `kzero` of §90, and got identical results, so that
@@ -1493,50 +1493,69 @@ instead, from M. Or shrink only to an 8 KiB-aligned M and write the tail back, w
 aligned-cut workaround already does. (An M in its block's last page is clean only when the file is
 cached, so it is not a safe cut.)
 
-### 92. Local socket traffic next to a busy STREAMS user can panic stock 2.1c in `queuerun` ✅/🟡 {#92-queuerun-panic}
+### 92. A failed STREAMS open can leave a freed queue on the run list: stock 2.1c panics in `queuerun` ✅ {#92-queuerun-panic}
 
-On the emulated stock 2.1c 68030, the `prngd` 0.9.29 entropy daemon panics the kernel while it is
-still gathering entropy, when a client drives its `AF_UNIX` socket hard ✅ (3 of 3 runs):
+**The symptom.** `PANIC: KERNEL FAULT` with vector `0x4` (Illegal Instruction) or `0xB` (Line-F), the
+pc in the kernel **heap** rather than text, and a backtrace of `ureturn` → `queuerun` ✅: the kernel
+was running deferred STREAMS service work on the way back to user mode, and jumped through freed
+memory. The pc differs from run to run (`0x403C9600`, `0x403C3F00`, `0x403C0400` in three runs).
 
-```text
-PANIC: KERNEL FAULT psw=0x2100, pc=0x403C3F00, fmt=0x0, vector=0x4 (Illegal Instruction)
-```
+**The cause, read from the stock objects and caught in the act ✅.** When a module's or driver's open
+fails, `qattach` undoes the attach with `qdetach(q, 0, 0, cr)`. With `clmode` 0, the stock `qdetach`
+takes a short path. It skips `runqueues`, the close routine, the removal from the run list and the
+`flushq` calls, and goes straight to the `backq` fix-ups and `freeq`. If the failing open had already
+enabled its own queue, the freed pair stays on the run list (`qhead`). The next `queuerun` calls
+`q_qinfo->qi_srvp` through freed memory. On the stock kernel with instrumentation in `freeq`, two of
+two runs caught exactly one such free each: a `sockmod` read queue, `q_flag` `0x33`
+(`QENAB|QWANTR|QREADR|QUSE`), at the head of the run list, freed from `qattach` → `qdetach`. With
+observation-only instrumentation (no unlinking) the same kernel panicked with the same backtrace ✅.
+`kmem_free` reuses the freed block's first word, `q_qinfo`, as its free-list link, so the jump goes
+wherever that link's neighbouring word points. That is why the panic is probabilistic 🟡. (An earlier
+reading here, a deferred put through a garbage `qi_putp`, is withdrawn: it is the service routine.)
 
-The pc differs per run (`0x403C9600`, `0x403C3F00`, `0x403C0400`) and is always in kernel **data**,
-not text. The symbolised backtrace runs `ureturn` → `queuerun` ✅: the fault happens in deferred
-STREAMS service work that the kernel runs on the way back to user mode. `psw=0x2100` is the status
-register that `queuerun`'s scan loop sets just before it calls `q->q_qinfo->qi_putp(q, mp)` 🟡, so the
-likeliest reading is a deferred put through a garbage `qi_putp`: a queue freed and reused while its
-stream was still on the scan list with a message pending 🟡. The mechanism has not been traced
-further.
+Ruled out ✅: a `bufcall` or `timeout` re-enabling a dead queue. No callback ran on a freed queue,
+and no `bufcall` or callout was pending at any free, over about 4.7 million frees. (`sockmod` drops
+its `bufcall`/`timeout` ids, so that hole exists but did not fire.) Separately, the stock `strclose`
+walks the run list for the write queue only, at the caller's priority 🟡 (read from the code, not
+seen to fail).
 
-What was running: `prngd` forks `ps`, `ls`, `netstat` and similar into pipes that it reads
-non-blocking, and serves its `AF_UNIX` stream socket from a `select` loop. Against that:
+**What triggers it.** It was found with the `prngd` 0.9.29 entropy daemon and a 10 MB swap. `prngd`'s
+gatherers exhaust the swap **reservation** (`anoninfo` 4777 of 5119 reserved, with 82% of memory
+free) ✅. `fork` then fails `EAGAIN`, and `prngd` spins on pipe, failed fork, close and `syslog`
+without serving its clients. Its `prngd-ctl` clients hang, and in that window a `sockmod` open fails ✅.
+Killing `prngd` frees the reservation, so the exhaustion is userland plus a small swap, not a kernel
+leak ✅. Under that load a loop of `prngd-ctl get` panicked twice and 100 × `prngd-ctl read 32 | wc`
+once; 100 × `get` and 100 × `get | tr` survived ✅. Simpler `AF_UNIX` servers did not reproduce it,
+which fits: the trigger is a failed open, not socket traffic as such. Any program that makes a
+STREAMS open fail after the queue was enabled is exposed. A larger swap makes this route less likely
+and does not remove it.
 
-| Client load while `prngd` gathers | Result |
-|---|---|
-| a loop of `prngd-ctl get` | panic (2 runs) ✅ |
-| 100 × `prngd-ctl read 32 \| wc` | panic ✅ |
-| 100 × `prngd-ctl get`, 100 × `prngd-ctl get \| tr` | survived ✅ |
+**Fixed on the 68030 line, in emulation ✅ (hardware pending 🟡):** the project's 68030 kernel sends
+all five `freeq` calls (in `qdetach`, `strclose` and `stropen`) through a guard that first unlinks the
+pair from the run and scan lists at `spl7`, then calls the stock `freeq`. On by default;
+`--no-freeq-guard` rebuilds the previous kernel byte for byte. The stock kernel with the guard caught
+the free once and survived, and the fixed test kernel passes its regression runs. Not in a released
+68030 kernel yet; the 040/060 line and hardware are untried 🔴.
 
-Not reproduced without `prngd` 🟡. A server that replies after its `AF_UNIX` client has closed
-(4 × 50 rounds, delayed and immediate, one write or two) survived. So did a non-blocking `select`
-server that forked `ps -efl` gatherers while a client made 200 read requests. The trigger is
-therefore narrower than "a socket server that forks". Any EGD-style entropy daemon on a stock
-kernel, and any client that reads entropy from it, is exposed until the cause is known 🟡. Not yet
-tried on the 040/060 line or on hardware 🔴.
+### 93. `netstat -rn` fails with `read error on routehash` when `/stand/unix` is not the booted kernel ✅/🟡 {#93-netstat-rn-routehash}
 
-### 93. `netstat -rn` fails on the stock 2.1c image with `read error on routehash` ✅/🔴 {#93-netstat-rn-routehash}
+On the project's 2.1c **bench image**, `netstat -rn` prints `read error on routehash` and exits 1 ✅
+(four times over three boots). On the same box `netstat -in` exits 0 but prints only its header line,
+with no interface rows, while the box is being driven over `aen0` ✅. That image boots a 2.1c
+kernel with cdfs and the A3091/A4091 drivers linked in (its text is about 72 KB larger than the stock
+link), and its `/stand/unix` is a different file ✅ (a 1475108-byte relocatable, `sum -r` 55482,
+against a 1252347-byte executable for the booted kernel). `netstat` looks its symbols up in
+`/stand/unix` and reads them through `/dev/kmem` ([§80](#80-namelist-stand-unix)). If the two
+kernels' layouts differ, it reads the wrong addresses. That is the leading explanation for both
+failures 🟡; a run with an explicit, matching namelist is pending. Boxes whose
+`/stand/unix` is the booted kernel have run both commands ([§26](#26-three-diagnostic-tools-that-lie-or-do-not-work)).
+**Practical rule:** check that `/stand/unix` is the kernel that booted before trusting `netstat`,
+`ifconfig` or `crash`. A script that must know its routes should set them with `route add` and keep
+its own record of them ([networking](networking.md#static-ip-configuration-no-dhcp)).
 
-On the stock 2.1c image (an emulated A3000 with a 68030, `aen0` up and addressed, the booted kernel
-byte-identical to `/stand/unix`, no `/unix`), `netstat -rn` prints `read error on routehash` and exits
-1 ✅ — four times over three boots. `netstat -in` exits 0 but prints only its header line, with no
-interface rows ✅. The cause is unproven 🔴. `netstat` finds `routehash` in its namelist,
-`/stand/unix` ([§80](#80-namelist-stand-unix)), and reads it through `/dev/kmem`, so a namelist that
-does not match the running kernel would fail exactly like this; but on this box it matched. Other
-boxes have run both commands ([§26](#26-three-diagnostic-tools-that-lie-or-do-not-work)), so the
-difference is still to be found. Until it is, don't build a script on `netstat -r`: set routes with
-`route add` and keep your own record of them ([networking](networking.md#static-ip-configuration-no-dhcp)).
+The same image's userland is stock 2.1c. Measurements of userland behaviour on it (`man`, the
+`pkg*` pages, `libm`) are stock facts. Kernel behaviour seen on it is the stock code only where that
+code is the stock object, which the kernel work checks for each case.
 
 ### 21. A colon-less zoneinfo `TZ` crashes every `tzset()` caller ✅
 
@@ -1626,8 +1645,8 @@ with `swap -a` ✅ (emulation, both kernel lines).
   `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in
   the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
   (first-party record); detail and citations on [networking](networking.md#sources).
-- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🔴 — quirk 93: see the matching Sources entry on [the networking page](networking.md#static-ip-configuration-no-dhcp).
-- The **`queuerun` panic** (first-party record, 2026-10-30) ✅/🟡 — quirk 92: the amix-packages `prngd` 0.9.29 port's runs on the emulated stock 2.1c 68030 (three panics captured on the console with their backtraces, symbolised against the stock kernel by the k30 kernel work; the survived loads and the two `prngd`-free reproducers); the recipe in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
+- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — quirk 93: see the matching Sources entry on [the networking page](networking.md#static-ip-configuration-no-dhcp). The bench image's kernel (first-party record, 2026-10-30) ✅: the k30 kernel work's comparison of the booted kernel with the image's `/stand/unix` (size, `sum -r`, cdfs and A3091 strings, text size against the stock link).
+- The **`queuerun` panic** (first-party record, 2026-10-30) ✅ — quirk 92: the amix-packages `prngd` 0.9.29 port's runs on the emulated 2.1c bench image (three panics captured on the console with their backtraces, symbolised by the k30 kernel work; the survived loads and the two `prngd`-free reproducers); the recipe in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`). The cause (first-party record, 2026-10-30) ✅: the k30 kernel work's disassembly of the stock `qattach`, `qdetach`, `freeq` and `strclose`; its runs of the stock 2.1c link on an emulated A3000 (16 MB bank) with `freeq` instrumentation (two catches, one panic with observation only), the `bufcall`/callout counts, and the `anoninfo` reservation figures; the fix [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/k30` `f4aef26` (`src/freeqguard030.c`, `tools/freeqguard-retarget.py`, on `master`).
 - The **wider SIGSYS set on an FPU-less 68030** (first-party record, 2026-10-30) 🟡 — quirk 31: the k30 kernel work's runs on an Amiberry 68030 with MMU and `fpu_model=0` under the signal-gated 68030 kernel: stock `mkfs -F ufs` and the gcc14-built GNU `cp` and `gtar` exit 140 with `Bad System Call`; `dd`, `cmp`, `sh`, `sleep` and stock `cp` run.
 - The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).
   The 68030 fix (first-party record, 2026-10-30) ✅: the k30 kernel work's emulator runs, stock 2.1c
@@ -1830,7 +1849,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   eight cases with the stale extents measured; the rule was written down before the run. The
   port inferred the mechanism; the source reading below confirms it.
   The stock 2.1c rows, the extents, the on-disk proof and the cause (first-party record, 2026-10-30)
-  ✅: the k30 kernel work's page-map probe on the stock 2.1c golden image, the project's 68030 root
+  ✅: the k30 kernel work's page-map probe on the 2.1c bench image, the project's 68030 root
   and a fresh ufs on a scratch disk (with `sync`, unmount/remount and delay variants); the
   disassembly of the stock `ufs_itrunc`, `pvn_vptrunc` and `ufs_putpage` objects (the `ufs_putpage`
   early return decoded as a pid 0/2 guard); the build-time
@@ -1847,7 +1866,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   `src/ufs_vptrunz.c` and `tools/ufs-tailzero.sh` at `3d0b348`, the write-up at `3c6160d`) — 68 of 68
   probe runs clean on its test kernel, 56 of 68 stale on the control.
   The exposure rows (first-party record, 2026-10-30) ✅: amix-packages probes of coreutils 5.2.1 `dd`
-  and `cp`, and GNU tar 1.14 `--delete`, on the emulated stock 2.1c 68030, the console captured at
+  and `cp`, and GNU tar 1.14 `--delete`, on the emulated 2.1c bench image, the console captured at
   each panic; the fixes in [amix-packages](https://github.com/jusii/amix-packages)
   `recipes/common/amix-ftruncate.c` (`cad15e4`), coreutils 5.2.1-3 (`97bbcf1`) and gtar 1.14-7
   (`cbd8c25`), passing on the bench.

@@ -518,5 +518,15 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   `package-management.md` and the cheat sheet); `/usr/ucb/eqn` and `neqn` present ✅.
 - **`netstat -rn` on stock 2.1c (2026-10-30)** → `networking.md`, `quirks.md` §93, the cheat sheet:
   `read error on routehash`, exit 1, four runs over three boots of the stock image; `netstat -in`
-  header only, exit 0 ✅; the booted kernel equal to `/stand/unix` ✅; cause 🔴 (namelist lead,
+  header only, exit 0 ✅; the booted kernel equal to `/stand/unix` (wrong, corrected 2026-10-31: it is not); cause 🔴 (namelist lead,
   untested). Source: the amix base station's emulator runs.
+- **Quirk 92's cause and the bench image's kernel (2026-10-31)** → `quirks.md` §92, §93,
+  `networking.md`: a failed STREAMS open is undone by `qdetach(q, 0)`, whose short path frees an
+  enabled queue left on `qhead`; `queuerun` then calls `qi_srvp` through freed memory ✅ (stock
+  objects disassembled; two catches with `freeq` instrumentation on the stock link; panic with
+  observation only); the earlier `qi_putp` reading withdrawn; probabilistic through `kmem_free`'s
+  link word 🟡; `bufcall`/callout re-enable ruled out ✅; trigger: `prngd` exhausting a 10 MB swap's
+  reservation ✅; fixed on k30 in emulation (`f4aef26`, `freeq` guard) ✅. The bench image boots a
+  2.1c kernel with cdfs and A3091/A4091 drivers that is not its `/stand/unix` ✅, so §93's `netstat`
+  failure is most likely §80's namelist mismatch 🟡 (was 🔴); measurements on that image now say
+  "bench image" where they concern the kernel. Source: the k30 kernel work's emulator cells.
