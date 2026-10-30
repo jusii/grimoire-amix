@@ -20,7 +20,7 @@ The shipped system carries the standard SVR4 build and install tools, but **not*
 - **`/usr/sbin`:** `pkgadd`, `pkgrm`, `pkgchk`, `installf` (the three privileged ones — `pkgadd`, `pkgrm`, `installf` — are mode `r-x------`, **root-only**).
 - **Absent:** `pkgask`, `removef`, and `amixpkg` are **not on the installed system** at all. Notably `installf` ships **without its partner `removef`**, and `amixpkg` — the install-time wrapper everyone remembers — lives only on the install media, not the running box ([see below](#amixpkg-the-install-media-front-end)).
 
-There are also **no `pkg*` man pages** installed: the Amix man tree is Amiga-reorganised (`man1A`, `man1X`, `man3A`, `man5A`, `man6`, …) with **no `man1m`/`man4`**, so the conventional SVR4 `pkgadd(1M)` / `contents(4)` pages are simply not present. ✅
+**Man pages** (corrected 2026-10-30) ✅: `pkgadd(1M)`, `pkgask(1M)`, `pkgchk(1M)` and `pkgrm(1M)` are installed, formatted only, in `/usr/catman/1m` (`man pkgadd` works). There is no page for `pkginfo`, `pkgmk`, `pkgtrans` or `pkgproto` in `1m`, and no `contents(4)`. Note that `pkgask` has a page but no binary. An earlier version of this page said there were no `pkg*` pages: that looked only at the source tree `/usr/share/man`, which holds just the Amiga sections; the SVR4 base pages are in `/usr/catman` ([man pages](../reference/commands-cheatsheet.md#man-pages)).
 
 This list belongs on the [command cheat sheet](../reference/commands-cheatsheet.md#packages-svr4-pkg); it is repeated here because the absences (`removef`, `amixpkg`) explain some of the system's rough edges.
 
@@ -178,6 +178,7 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 - [amigaunix.com — more_software](https://www.amigaunix.com/doku.php/more_software) and **AmixBP** (`amixbp.sourceforge.net`) — the community `.pkg` collection and distribution practice (🟡).
 
 ## Sources
+- The **`pkg*` man pages** (first-party record, 2026-10-30) ✅ — the packages station's probe on the emulated stock 2.1c 68030: `ls /usr/catman/1m/pkg*` (`pkgadd`, `pkgask`, `pkgchk`, `pkgrm`), `man pkgadd` displaying `pkgadd(1M)`, and `No manual entry for contents` in section 4.
 
 - amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): the pkgadd -R altroot SIGSEGV root cause (adb on the in-altroot core; nhash HASH), engine rebuilt + re-verified 4/4 on the bench box 2026-07-20/21.
 - **Firsthand, reproduced live** (✅): a clean **Amix 2.1c** image (`UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, 2026-07-01 (the **amix-packagemanager** project; command transcripts retained there). Specifically: `ls -l /usr/{bin,sbin}/pkg*` + the `No such file or directory` for `pkgask`/`removef`/`amixpkg` (F1); `ls -laR /var/sadm`, `/var/sadm/install/admin/default`, `pkginfo -x`, `/var/sadm/pkg/*/pkginfo` (F2); `head`/`grep` of `/var/sadm/install/contents` (F3); an on-box throwaway package built with `pkgmk`/`pkgtrans` and its `pkgmap` + `.pkg` header dissected with `od -c` (F4); a before/after `diff` of `contents` across a controlled `pkgadd` (F5); `find /var/sadm/pkg -type f` showing only `pkginfo` + `*.mi` (F6); the `pkgrm`/`pkginfo -l` abort, the offending `contents` record, and its removal-and-retry (F7); the `# Last modified by amixpkg …` marker with `amixpkg` absent from the filesystem (F8).

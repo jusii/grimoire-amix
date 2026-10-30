@@ -79,7 +79,7 @@ stock-image defect that breaks `pkgrm`/`pkginfo -l` out of the box — see
 **Installed on the running system ✅:** `/usr/bin` has `pkginfo pkgmk pkgproto pkgparam pkgtrans`;
 `/usr/sbin` has `pkgadd pkgrm pkgchk installf` (`pkgadd`/`pkgrm`/`installf` are root-only, `r-x------`).
 **Not installed:** `pkgask`, `removef`, and `amixpkg` — the last lives only on the `root.adf` install
-media (see below). There are no `pkg*` man pages on the box (the man tree is Amiga-reorganised). ✅
+media (see below). Man pages exist for `pkgadd`, `pkgask`, `pkgchk` and `pkgrm` (section `1m`, formatted only), but not for `pkginfo`, `pkgmk`, `pkgtrans`, `pkgproto` or `contents(4)` ✅ (corrected 2026-10-30).
 
 | Command | What it does | Tag |
 |---|---|---|
@@ -312,12 +312,13 @@ Measured on the stock 2.1c install (emulated 68030), 2026-10-30.
   `man -f file`. There is **no `-M`** (`man: illegal option -- M`).
 - **Two trees.** Sources live in `$MANPATH`, default `/usr/share/man` (`/usr/man` is a symlink to it).
   Formatted pages live in `$CATPATH`, default `/usr/catman`. The SVR4 base pages ship **formatted
-  only**, as compressed cat pages in `/usr/catman/<section>/<name>.Z` (sections `1`, `1m`, `2`, `3`,
-  `4`, `5`, `7`, `8` and their letter variants). The Amiga-specific sections (`1A`, `1X`, `1l`, `3A`,
+  only**, as compressed cat pages in `/usr/catman/<section>/<name>.Z` (sections `1`, `1b`, `1c`, `1f`, `1m`, `2`, `2z`, `3`,
+  `3b`–`3x`, `4`, `4b`, `4z`, `5`, `7`, `7b`, `8`, beside formatted copies of the Amiga sections). The Amiga-specific sections (`1A`, `1X`, `1l`, `3A`,
   `3X`, `5A`, `5l`, `6`, `7A`, `8l`) ship as compressed `nroff` **source** in
   `/usr/share/man/<section>/<name>.Z`. Directories are named by section alone, with no `man` prefix.
 - **Formatting happens on first view:** `zcat | tbl | eqn | /usr/ucb/nroff -man -T37 | col` into the
-  cat tree (`Reformatting page 1A/a2024...`). `nroff` and `tbl` are in `/usr/ucb`; `compress`,
+  cat tree (`Reformatting page 1A/a2024...`). `nroff`, `tbl`, `eqn` and `neqn` are in `/usr/ucb` (no
+`/usr/bin/eqn`); `compress`,
   `uncompress` and `zcat` are one binary in `/usr/bin`. `catman` with no arguments reformats every
   source page into `/usr/catman`. `PAGER` defaults to `/usr/bin/more`.
 - **`MANPATH` is one directory, not a colon list:** `MANPATH=/a:/usr/man` makes `man` open

@@ -513,3 +513,6 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   by `/usr/ucb/nroff` ✅ (corrects "pre-formatted only, cannot reformat"); `man1/` layout not found;
   `MANPATH` without `CATPATH` writes into, and shadows, the stock cat tree ✅. Source: the packages
   station's probe runs on the emulated stock 2.1c 68030.
+  Follow-up: `pkgadd`/`pkgask`/`pkgchk`/`pkgrm` pages in `/usr/catman/1m`, no `pkginfo`/`pkgmk`/
+  `pkgtrans`/`pkgproto` page, no `contents(4)` ✅ (corrects "no `pkg*` man pages" in
+  `package-management.md` and the cheat sheet); `/usr/ucb/eqn` and `neqn` present ✅.
