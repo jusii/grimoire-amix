@@ -2,6 +2,11 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — networking: AF_UNIX mode bits are not checked (683443d)
+
+The AF_UNIX path is mode 000 under any umask (000/022/077 measured), and the mode bits are not checked, so a non-root
+client connects anyway; chmod is what breaks the socket (ENOTSOCK), not the mode.
+
 ## 2026-10-30 — quirk 92 and the AF_UNIX chmod trap (a9aefc6)
 
 Networking: a bound AF_UNIX path is a mode-000 FIFO, and chmod on it makes every connect() fail with ENOTSOCK; never
