@@ -11624,6 +11624,8 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
   last block takes a kernel bus error. Truncate to the block boundary, then write the tail back;
   `ftruncate` is a weak symbol in the static libc, so a strong replacement in the program overrides
   it for every caller (coreutils `dd`/`cp`, GNU tar `--delete`) ([quirk 90](../how-it-works/quirks.md#90-ftruncate-shrink-panics)).
+  After a shrink to an earlier block, regrow by writing zeros, not by seeking past the new EOF: a
+  sparse regrow can read the old bytes back ([quirk 91](../how-it-works/quirks.md#91-shrink-regrow-stale-data)).
 - **`%lld` also hides in formats built at run time** ✅: coreutils `stat -c %s` and the `stat -f`
   counts printed 0 because `stat.c` assembles its format with `strcat(…, PRIdMAX)`, which is `"lld"`
   when `intmax_t` is `long long`, and libc's printf reads `%lld` as 32 bits (the printf `ll` defect
