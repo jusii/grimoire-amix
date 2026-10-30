@@ -57,6 +57,10 @@ uaehf1=tape0,rw,:/path/to/amix_21_tape.zip,0,0,0,512,0,,scsi4_a3000,SCSI1
 Same as any Amix target ✅ — and the CPU/MMU settings are mandatory or it won't boot:
 
 - **68030 with MMU on** (`cpu_model=68030`, `mmu_model=68030`) + a **68881/68882 FPU**
+  (without the FPU, stock 2.1c panics at the first signal, [quirks §74](../how-it-works/quirks.md#74-no-fpu-signal-panic)).
+  Do not also set `cpu_type`: `cpu_type=68020` in a `.uae` wins over `cpu_model` and leaves no MMU
+  (`AttnFlags` `0003`). Amix then reset-loops right after `starting the kernel`, which looks
+  like a kernel crash but is the missing MMU ✅.
 - **JIT off** (`cachesize=0`) and **"More compatible" off** (`cpu_compatible=false`)
 - **Cycle-exact off — `cycle_exact=false`, pinned explicitly.** Omitting the key does **not** leave
   it neutral: Amiberry's `default_prefs()` starts all three cycle-exact flags `true`, so a
@@ -212,6 +216,7 @@ absolutises a relative argument and `mkdir -p`s its directory before sending.
 - [The A4091 / 53C710 SCSI driver](../drivers/a4091-53c710-driver.md) — the native driver that makes the emulated A4091 usable (and bootable) under Amix.
 
 ## Sources
+- The `cpu_type=68020` override: first-party record, 2026-10-30 (the k30 kernel work's no-FPU emulator runs: `AttnFlags` `0003` and a reset loop after `starting the kernel`, against `0007` with `cpu_model=68030`, `mmu_model=68030`, `fpu_model=0`) ✅.
 - The retired sole-A4091 CD gotcha and the A4091-root-on-A3000 config: first-party record, 2026-09-29 (a CD at `0,3` mounted with a card-0 A4091 on an ECS rig; on an A3000 the WD33C93 is card 0 and the A4091 card 1) 🟡.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
 - First-hand, 2026-06, Amiberry **8.1.6**: an installed Amix 2.1 boots to login from the `scsi6_a3000` hardfile; the GUI *Hard drives/CD* page shows `A3000 SCSI:6 → HDF` and `A3000 SCSI:4 → TAPE` mounted (RW) with an "Add Tape Drive…" button; a full from-tape install completes on Amiberry 8.1.6 (confirmed first-hand, 2026-06). Working config: `scsi_a3000=true`, `hardfile2=…,scsi6_a3000`, `uaehf1=tape0,…,scsi4_a3000`.

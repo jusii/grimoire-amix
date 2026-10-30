@@ -486,3 +486,10 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   the abort, by elimination 🟡; non-determinism 🟡; hardware 🔴. Fixed on the 68030 line in emulation
   (synchronous tail zeroing, `kernel/k30` `1be27f8`) ✅, hardware 🟡, 040/060 not yet. Source: the k30
   kernel work's and the 040/060 port's emulator cells and disassembly.
+- **The no-FPU signal panic, fixed on the 68030 line (2026-10-30)** → `quirks.md` §74,
+  `emulation-amiberry.md`: `sendsig`'s `fpu_setup` call retargeted to `fpu_setup_gated`
+  (`src/fpugate030.s`, returns when `fpu_present` is 0), on by default, `--no-fpu-gate` byte-identical
+  to the previous kernel ✅; on an emulated FPU-less 68030 with MMU, stock panics vector `0xB` and the
+  gated kernel survives `SIGCLD`, `SIGINT`, `kill -INT` and `SIGALRM` ✅; with a 68882 unchanged ✅;
+  real FPU-less 68030 🟡. Amiberry `cpu_type=68020` overrides `cpu_model` and leaves no MMU ✅.
+  Source: the k30 kernel work's emulator runs; `kernel/k30` `2a3e894`.
