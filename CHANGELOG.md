@@ -2,6 +2,11 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — the stock root floppy's miniroot is s5 (148aadb)
+
+Corrected from UFS to s5 in the research brief, install walkthrough, glossary, bibliography and WinUAE page, and the
+brief's FS-default line (the stock prompt defaults to s5; ufs must be typed). Restates the 2026-07-05 measurement.
+
 ## 2026-10-30 — package repository: the licence gate records stock libm, refuses ROMs (74012af)
 
 The payload-licence gate now records embedded stock SVR4 libm instead of refusing it, and refuses Kickstart ROM images
