@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — stock libm: sqrt and FPCR (c10fd4a)
+
+A direct sqrt() in GCC 14 code is an inline fsqrt (correctly rounded, hardware on the 040/060); libm's own sqrt,
+reached through a pointer, is within 1 ulp but not correctly rounded. FPCR is 0 at process start, and fpsetmask(0)
+touches only the enable byte.
+
 ## 2026-10-30 — quirk 90 fixed on the 040/060 line (4caab45)
 
 The 040/060 port fixes the ftruncate shrink panic with a fault-catching kzero (port ISSUE-107, b65b43d). Verified in
