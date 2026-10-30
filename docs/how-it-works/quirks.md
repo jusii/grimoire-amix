@@ -1580,4 +1580,6 @@ with `swap -a` ✅ (emulation, both kernel lines).
 - Quirk 90 (first-party record, 2026-10-30) ✅: the amix-packages rsync 3.1.3 port — a C truncation
   probe on an emulated 2.1c 68030 (64 MB, ufs root, `st_blksize` 8192), one case per boot, the console
   captured at each panic; the panic path symbolised against the stock 2.1c kernel (sha256 `80a1204f…`,
-  [versions](../reference/versions.md)); the port's `do_ftruncate` patch and its `--inplace` smoke test.
+  [versions](../reference/versions.md)); the port's `do_ftruncate` patch and its `--inplace` smoke test
+  ([amix-packages](https://github.com/jusii/amix-packages) `e7ac916`,
+  `recipes/rsync/patches/01-ftruncate-freesp-tail.patch`, the probe matrix in `recipes/rsync/README.md`).

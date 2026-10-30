@@ -568,7 +568,8 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync
   3.1.3 port, a `truss` of the failing connect on an emulated stock 2.1c (`/etc/hosts` opened and
   read, no other lookup, the call failing) and the same call with an `/etc/hosts` name succeeding;
-  the port's `lib/getaddrinfo.c` patch.
+  the port's `lib/getaddrinfo.c` patch ([amix-packages](https://github.com/jusii/amix-packages)
+  `e7ac916`, `recipes/rsync/patches/02-getaddrinfo-numeric-host.patch`).
 - The **4 KB TCP lower-read queue** ✅ — first-party record, 2026-10-21: the stock kernel's `ipintr`,
   `putq`, `canput`, `iplrput` and `tcplrput` disassembled from the Amix `/stand/unix` objects (stock
   and 2.1c; `ipintr` identical, 0x24 apart) against the USL SVR4 source (`netinet/ip_input.c`
