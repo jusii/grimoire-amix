@@ -1746,7 +1746,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   the k30 kernel work's cold-shrink cells on its stock-code kernel (16 of 16), a synchronous-release
   cell, and two two-boot cells of the fixed test kernel (68 + 68 clean runs, `fsck -n` clean);
   [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/k30` `1be27f8` (`src/ufs_vptrunz.c`,
-  branch `k30`, not yet on `master`).
+  on `master`).
   The exposure rows (first-party record, 2026-10-30) ✅: amix-packages probes of coreutils 5.2.1 `dd`
   and `cp`, and GNU tar 1.14 `--delete`, on the emulated stock 2.1c 68030, the console captured at
   each panic; the fixes in [amix-packages](https://github.com/jusii/amix-packages)
