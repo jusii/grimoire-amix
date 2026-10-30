@@ -2,6 +2,11 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-30 — package repository: the licence gate records stock libm, refuses ROMs (74012af)
+
+The payload-licence gate now records embedded stock SVR4 libm instead of refusing it, and refuses Kickstart ROM images
+by content (magic word + JMP, byte-swapped, AMIROMTYPE1; split halves not seen). The stripped-binary limit is restated.
+
 ## 2026-10-30 — stock libm.a; LC060 status corrected (b239450)
 
 Toolchain: the stock libm.a is archive-only software math (40 members, 21 fmovecr and 16 fintrz sites, a per-function
