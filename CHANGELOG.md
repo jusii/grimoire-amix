@@ -2,6 +2,20 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — networking: raw DLPI on aen0 for a DHCP client; quirk 95 (4c3cf20)
+
+Raw DLPI on aen0 for a DHCP client (Style 1, silent DL_ATTACH_REQ, reused slots open bound with stale frames, +14-byte
+frames, ICMP port unreachable without a :68 socket, limited broadcast leaves directed), with the driver-side view on the
+STREAMS driver page. New quirk 95. Emulation fidelity: Amiberry's A2065 rewrites the station address except inside DHCP
+options (✅; same MAC on every board 🟡, no-board aen open 🔴).
+
+## 2026-10-31 — quirk 93 follow-up; quirk 94: sh background jobs (52e2d56)
+
+On the 2.1c bench image, naming /stand/unix changes nothing, netstat -s is wrong too, and /stand/unix is an unbound
+ET_REL link to /stand/2.1_unix (✅); the cause is still 🟡. New quirk 94: four 2.1 /bin/sh facts for background jobs
+(wait loses a finished child's status, >> writers collide, a waiting shell outlives SIGTERM, sh -c sets $0) (✅; the
+O_APPEND mechanism 🟡).
+
 ## 2026-10-31 — package management: stock pkgadd refuses BASEDIR (89395ae)
 
 The stock pkgadd refuses any package whose pkginfo has a BASEDIR line ("requires a base directory", exit 5), whatever
