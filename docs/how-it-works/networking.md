@@ -121,6 +121,14 @@ A3000 with an A2065, IP already linked and addressed on `aen0`) ✅:
   type from the bound SAP ✅. A broadcast DHCPDISCOVER built with the client's own IP and UDP headers
   (source `0.0.0.0`) goes out, and both the broadcast OFFER and a unicast ACK come back on the DLPI
   stream.
+- **A `DL_UNITDATA_REQ` with a data part under 60 bytes is refused** ✅: `putmsg` fails with `ERANGE`
+  (errno 34) at the stream head, and nothing is sent. A 28-byte ARP body fails, and so does one padded
+  to 46 bytes (Ethernet's minimum payload); padded to 60 bytes it goes out. The driver's
+  `module_info` sets its minimum packet size to `AEN_MIN`, 64 minus the 4-byte CRC, a figure that
+  counts the 14-byte Ethernet header, but the stream head checks it against the data part alone. The
+  driver lengthens a short frame itself when it transmits, so the 60-byte floor is only the stream
+  head's. IP's own packets never meet it, and a 328-byte DHCP message is unaffected; a raw-DLPI
+  client sending ARP or another short frame must pad its data part to 60 bytes.
 - **IP answers an unexpected unicast ACK with ICMP port unreachable** ✅ (type 3, code 3) when the
   interface has an address and nothing is bound to UDP port 68. With a socket bound to `*:68` it
   never does, and renew and rebind ACKs arrive on that socket. A DHCP client needs its port-68 socket
@@ -133,7 +141,7 @@ A3000 with an A2065, IP already linked and addressed on `aen0`) ✅:
 
 Under Amiberry the emulated A2065 rewrites the station address on its way to the host
 ([emulation fidelity](emulation-fidelity.md#amiberry-a2065-address)). The driver-side view of the
-first four points is in [writing a STREAMS driver](../drivers/writing-a-streams-driver.md#aen-dlpi-measured);
+first four points and the short-frame refusal is in [writing a STREAMS driver](../drivers/writing-a-streams-driver.md#aen-dlpi-measured);
 the checklist item is [quirk 95](quirks.md#95-aen-dlpi-traps).
 
 ## DNS is off by default — turning it on
@@ -640,6 +648,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
+- The **short `DL_UNITDATA_REQ` refusal** (first-party record, 2026-10-31) ✅ — the amix base station's ARP check in its DHCP client on the emulated 2.1c bench image (stock userland): a SAP `0x0806` stream on `/dev/aen0`, `putmsg` errno 34 with a 28-byte and a 46-byte data part, sent with 60. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/dhcpc/dhcpc.c` `arpcheck` (`88954e7`, on `master`). The minimum is `AEN_MIN` in the stock `aen.h`, used by `aen_minfo` in `aen.c` ([`amigaux/amix-system`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h)).
 - **Stock sources, public** ✅ — the stock A2065 driver in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/driver/aen/aen.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.c).
 - The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
 - The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30). The follow-up runs (first-party record, 2026-10-30) ✅: `netstat -rn /stand/unix` and `netstat -rn /stand/unix /dev/kmem` fail alike, `netstat -in` in both forms prints its header only, `netstat -s` counts 0 IP packets received while `ifconfig aen0`/`lo0` show both up, and `od -x` and `ls -li` show `/stand/unix` as an `ET_REL` hard link to `/stand/2.1_unix`; a run with the booted kernel's own symbols is still to come. The image-file read (first-party record, 2026-10-31) ✅: the k30 kernel work's offline read of the bench image: `/stand/unix` and `/stand/2.1_unix` one inode, byte-identical to [`amigaux/amix-system`](https://github.com/amigaux/amix-system) `kernels/2.1/unix` (sha256 `97ae253a…`), no other kernel in `/stand`; the booted load image 1,252,347 bytes against 1,171,216 for `/stand/unix` through `elf2brel`.

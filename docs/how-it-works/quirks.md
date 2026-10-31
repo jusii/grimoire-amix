@@ -107,7 +107,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 92 | **A failed STREAMS open can leave a freed queue on the run list, and stock 2.1c then panics in `queuerun`** — `qattach` undoes the failed open with `qdetach(q, 0)`, whose short path frees an already-enabled queue without taking it off `qhead`; the next `queuerun` calls `qi_srvp` through freed memory. Signature: `KERNEL FAULT`, vector `0x4` or `0xB`, pc in the kernel heap, backtrace `ureturn` → `queuerun`. Found with `prngd` exhausting a small swap's reservation. Fixed on the 68030 line in emulation; the 040/060 line has the same code and carries the same guard, its save not yet seen there | ✅ | [Quirks §92](#92-queuerun-panic) |
 | 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel (on the bench image it is the retail 2.1 kernel ✅). Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
-| 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram. Attach only on Style 2, check the state, trust the IP length | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
+| 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram; a `DL_UNITDATA_REQ` with under 60 data bytes fails with `ERANGE`. Attach only on Style 2, check the state, trust the IP length, pad short frames to 60 | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
 
 The rest of this page expands each item.
 
@@ -1685,13 +1685,15 @@ See also [§12](#12-binsh-is-pre-posix) and [§81](#81-sh-read-buffer).
 ### 95. The A2065 `aen` driver's DLPI traps ✅ {#95-aen-dlpi-traps}
 
 For a program that talks DLPI to `aen0` itself, such as a DHCP client (measured on the 2.1c bench
-image; the stock source agrees on the first two) ✅:
+image; the stock source agrees on the first, second and fourth) ✅:
 
 - `DL_ATTACH_REQ` gets no answer at all, and neither does an unknown primitive. Attach only on a
   Style 2 provider; `aen` is Style 1.
 - An open can return a slot an earlier process left bound: state 3, the old SAP, and 53–58 frames
   already queued. Check the state and drain before trusting what you read.
 - Every received frame is 14 bytes longer than its IP datagram. Use the IP and UDP lengths.
+- A `DL_UNITDATA_REQ` whose data part is under 60 bytes fails with `ERANGE` (errno 34): the driver's
+  minimum counts the 14-byte header. Pad an ARP or other short frame to 60 bytes.
 
 And from the IP side ✅: with nothing bound to UDP port 68, a unicast DHCP ACK draws an ICMP port
 unreachable, and a send to `255.255.255.255` leaves as the subnet's directed broadcast. Details in
@@ -1715,7 +1717,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
-- The **`aen` DLPI traps** (first-party record, 2026-10-30) ✅ — quirk 95: see the matching Sources entry on [the networking page](networking.md#raw-dlpi-aen).
+- The **`aen` DLPI traps** (first-party record, 2026-10-30; the short-frame refusal 2026-10-31) ✅ — quirk 95: see the matching Sources entries on [the networking page](networking.md#raw-dlpi-aen).
 
 - The **4 KB TCP lower-read queue** (2026-10-21) ✅ — quirk 75: the stock kernel's `ipintr` /
   `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in

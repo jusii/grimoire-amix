@@ -152,8 +152,8 @@ per function, which is worth doing when you touch a receive path you cannot benc
 
 ### What `aen` does on the DLPI surface, measured ✅ {#aen-dlpi-measured}
 
-A raw-DLPI probe of the stock `aen` on an emulated 2.1c system found three more things not to copy,
-and the stock source agrees on the first two ✅:
+A raw-DLPI probe of the stock `aen` on an emulated 2.1c system found four more things not to copy,
+and the stock source agrees on the first two and the last ✅:
 
 - **`DL_ATTACH_REQ` gets no reply at all**, and neither does an unknown primitive: the default arm of
   `aenproto` drops them. `aen` is Style 1, where attach is not expected, but a client that sends one
@@ -164,6 +164,10 @@ and the stock source agrees on the first two ✅:
   per-stream state on close.
 - **Received frames carry 14 bytes too many**: the copied length includes the Ethernet header (342
   bytes for a 328-byte IP datagram).
+- **The `module_info` minimum counts the Ethernet header**: `AEN_MIN` is 64 minus the CRC, 60 bytes,
+  but the stream head checks `putmsg`'s data part against it, which holds no header. A
+  `DL_UNITDATA_REQ` under 60 data bytes fails with `ERANGE`, although the transmit path would have
+  padded the frame anyway. Give a DLPI driver a minimum of 0 and pad in the driver.
 
 The full client-side list (Style 1, the bind ack, `DL_UNITDATA_REQ`, a unit without a board) is on
 [the networking page](../how-it-works/networking.md#raw-dlpi-aen).
@@ -206,6 +210,7 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 - [Device list reference](../reference/device-list.md) — known major/minor and `cdevsw` slot assignments.
 
 ## Sources
+- The **short `DL_UNITDATA_REQ` refusal** (first-party record, 2026-10-31) ✅ — the amix base station's ARP check in its DHCP client on the emulated 2.1c bench image (stock userland): a SAP `0x0806` stream on `/dev/aen0`, `putmsg` errno 34 with a 28-byte and a 46-byte data part, sent with 60. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/dhcpc/dhcpc.c` `arpcheck` (`88954e7`, on `master`). The minimum is `AEN_MIN` in the stock `aen.h`, used by `aen_minfo` in `aen.c` ([`amigaux/amix-system`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h)).
 - **Stock sources, public** ✅ — the stock A2065 driver in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/driver/aen/aen.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.c), [`usr/sys/amiga/driver/aen/aen.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h), [`usr/sys/amiga/driver/aen/lance.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/lance.h).
 - The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
 

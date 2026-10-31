@@ -580,3 +580,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   making the node at 0, and `core`'s own records carry `0` ✅; an object of a class `CLASSES` does not
   list is skipped (no node, no `contents` line) while `pkgadd` reports success, exit 0 ✅. Source: amix
   `userland/base` `d1cf84c` (`rc/devnodes`), `build/pkg` `e9f43c6`.
+- 2026-10-31 — stock `aen` raw DLPI, amix base station, emulated 2.1c bench image (stock userland):
+  a `DL_UNITDATA_REQ` with a data part under 60 bytes fails at the stream head with `ERANGE` (errno
+  34 at 28 and 46 bytes; sent at 60) ✅. Stock `aen.h` `AEN_MIN` = 64 − CRC = 60 is `aen_minfo`'s
+  minimum and counts the 14-byte header; the transmit path lengthens short frames itself (source).
+  Source: amix `userland/base/dhcpc/dhcpc.c` `arpcheck` `88954e7`; amix-system `aen.h`/`aen.c`.
