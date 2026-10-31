@@ -569,3 +569,9 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   2.1c link's load image is 1,252,347 B (no symbol table) against 1,171,216 B for `/stand/unix` via
   `elf2brel`. Namelist readers on that image get retail 2.1 symbols ✅; that this causes the `netstat`
   failures stays 🟡.
+- 2026-10-31 — quirk 92 on the 040/060 line: the k46 kernel's `qattach`, `qdetach`, `freeq`,
+  `queuerun`, `strclose`, `stropen`, `runqueues` are the stock 2.1c bytes at the stock addresses, same
+  five `freeq` call sites ✅ (byte compare); the k30 guard, code unchanged, bound in the 040/060 cut
+  candidate; 7 guarded emulated runs clean (A4000/060, 16 MB) ✅, but the freed-queue event never
+  occurred (spin did not start) — the save on 040/060 untested 🔴; hardware 🔴. Source: port ISSUE-109,
+  `k46-module` `17501b9`, `a1418bb`.
