@@ -2,6 +2,13 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — quirk 93: the bench image's /stand/unix is the retail 2.1 kernel (dfe92d7)
+
+The 2.1c bench image's /stand/unix (one inode with /stand/2.1_unix) is byte-identical to the retail 2.1 kernel in
+amix-system kernels/2.1/unix, with no other kernel in /stand; the booted 2.1c link is larger and has no symbol table, so
+namelist readers on that image get retail 2.1 symbols (✅, read offline from the image file). That this causes the
+netstat failures stays 🟡.
+
 ## 2026-10-31 — stock sources linked in amigaux/amix-system (c2308b2)
 
 Stock sources linked in the now-public amigaux/amix-system (pinned to 7cba961): aen, the bootstrap, the SCSI layer, the
