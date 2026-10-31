@@ -2112,6 +2112,46 @@ booted kernel's own symbols is the next test. Boxes whose
 script should not depend on `netstat -r` to read the routes; set them with `route` and keep its own
 record of what it set ([quirk 93](quirks.md#93-netstat-rn-routehash)).
 
+## Raw DLPI on `aen0`: what a DHCP client meets ✅ {#raw-dlpi-aen}
+
+Stock Amix has no DHCP client, so one has to talk to the A2065 driver through DLPI itself. These
+are the stock `aen` driver's and IP's answers as measured on the project's 2.1c bench image (emulated
+A3000 with an A2065, IP already linked and addressed on `aen0`) ✅:
+
+- **`aen` is a DLPI Style 1 provider** ✅. On a fresh stream `DL_INFO_ACK` reports state 0 (unbound)
+  and no address (`dl_addr_offset` 0), `DL_ETHER`, a maximum SDU of 1500 and an address length of 6.
+- **It never answers `DL_ATTACH_REQ`** ✅: no `DL_OK_ACK` and no `DL_ERROR_ACK`. An unknown primitive
+  is dropped silently too, and the stream stays usable. A client that attaches unconditionally hangs;
+  attach only when `dl_provider_style` says Style 2.
+- **The station address comes back in `DL_BIND_ACK`** ✅, and in `DL_INFO_ACK` only once the stream is
+  bound (state 3). A second stream can bind SAP `0x0800` while IP's own stream is linked, and it then
+  receives a copy of every IP frame (58 frames queued in 3 s).
+- **An open can return a slot an earlier process left bound** ✅. It arrives already bound (state 3,
+  the old SAP, the address present) with 53–58 frames queued before any request is sent; a fresh slot
+  queues none. The acks are `M_PCPROTO`, so they still overtake the queued data. A client must check
+  the state in `DL_INFO_ACK` and drain or skip stale frames.
+- **Every received frame is 14 bytes longer than its IP datagram** ✅ (342 bytes for a 328-byte DHCP
+  packet): the receive path counts the Ethernet header into the copied length. Trust the IP and UDP
+  lengths, never the frame length.
+- **`DL_UNITDATA_REQ` takes a 6-byte destination** at `dl_dest_addr_offset` and fills the Ethernet
+  type from the bound SAP ✅. A broadcast DHCPDISCOVER built with the client's own IP and UDP headers
+  (source `0.0.0.0`) goes out, and both the broadcast OFFER and a unicast ACK come back on the DLPI
+  stream.
+- **IP answers an unexpected unicast ACK with ICMP port unreachable** ✅ (type 3, code 3) when the
+  interface has an address and nothing is bound to UDP port 68. With a socket bound to `*:68` it
+  never does, and renew and rebind ACKs arrive on that socket. A DHCP client needs its port-68 socket
+  from the moment it is bound.
+- **A UDP send to `255.255.255.255` with `SO_BROADCAST` leaves as the subnet's directed broadcast**
+  (`x.y.z.255`, Ethernet broadcast destination) ✅. A broadcast REBIND therefore reaches only the local
+  segment; a relay agent would not see it.
+- **A unit with no board behind it fails at once** ✅: `/dev/aen1` on a machine with one A2065 returns
+  `ENXIO`/`ENODEV` immediately. A machine with no A2065 at all was not tested 🔴.
+
+Under Amiberry the emulated A2065 rewrites the station address on its way to the host
+([emulation fidelity](emulation-fidelity.md#amiberry-a2065-address)). The driver-side view of the
+first four points is in [writing a STREAMS driver](../drivers/writing-a-streams-driver.md#aen-dlpi-measured);
+the checklist item is [quirk 95](quirks.md#95-aen-dlpi-traps).
+
 ## DNS is off by default — turning it on
 
 By default the C library resolves names from **`/etc/hosts` only**; **DNS lookups are disabled** ✅. This is deliberate in the shipped configuration — the stock `libsocket.so` does not call a name server. Enabling DNS means swapping in the DNS-capable library on **two** resolution paths and providing a resolver config. This procedure is now **first-hand verified** on a running Amix 2.1 ✅:
@@ -2616,6 +2656,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
+- The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
 - The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30). The follow-up runs (first-party record, 2026-10-30) ✅: `netstat -rn /stand/unix` and `netstat -rn /stand/unix /dev/kmem` fail alike, `netstat -in` in both forms prints its header only, `netstat -s` counts 0 IP packets received while `ifconfig aen0`/`lo0` show both up, and `od -x` and `ls -li` show `/stand/unix` as an `ET_REL` hard link to `/stand/2.1_unix`; a run with the booted kernel's own symbols is still to come.
 - The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated 2.1c bench image (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 
@@ -3592,6 +3633,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 92 | **A failed STREAMS open can leave a freed queue on the run list, and stock 2.1c then panics in `queuerun`** — `qattach` undoes the failed open with `qdetach(q, 0)`, whose short path frees an already-enabled queue without taking it off `qhead`; the next `queuerun` calls `qi_srvp` through freed memory. Signature: `KERNEL FAULT`, vector `0x4` or `0xB`, pc in the kernel heap, backtrace `ureturn` → `queuerun`. Found with `prngd` exhausting a small swap's reservation. Fixed on the 68030 line in emulation | ✅ | [Quirks §92](#92-queuerun-panic) |
 | 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel. Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
+| 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram. Attach only on Style 2, check the state, trust the IP length | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
 
 The rest of this page expands each item.
 
@@ -5151,6 +5193,21 @@ Measured on the stock 2.1c userland (emulated A3000, 2026-10-30):
 
 See also [§12](#12-binsh-is-pre-posix) and [§81](#81-sh-read-buffer).
 
+### 95. The A2065 `aen` driver's DLPI traps ✅ {#95-aen-dlpi-traps}
+
+For a program that talks DLPI to `aen0` itself, such as a DHCP client (measured on the 2.1c bench
+image; the stock source agrees on the first two) ✅:
+
+- `DL_ATTACH_REQ` gets no answer at all, and neither does an unknown primitive. Attach only on a
+  Style 2 provider; `aen` is Style 1.
+- An open can return a slot an earlier process left bound: state 3, the old SAP, and 53–58 frames
+  already queued. Check the state and drain before trusting what you read.
+- Every received frame is 14 bytes longer than its IP datagram. Use the IP and UDP lengths.
+
+And from the IP side ✅: with nothing bound to UDP port 68, a unicast DHCP ACK draws an ICMP port
+unreachable, and a send to `255.255.255.255` leaves as the subnet's directed broadcast. Details in
+[networking](networking.md#raw-dlpi-aen).
+
 ### 86. Swap is not optional, and its node must exist ✅ {#86-swap-not-optional}
 
 With no swap device added, the stock kernel's anonymous-memory reservation refuses every request and
@@ -5169,6 +5226,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
+- The **`aen` DLPI traps** (first-party record, 2026-10-30) ✅ — quirk 95: see the matching Sources entry on [the networking page](networking.md#raw-dlpi-aen).
 
 - The **4 KB TCP lower-read queue** (2026-10-21) ✅ — quirk 75: the stock kernel's `ipintr` /
   `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in
@@ -5671,6 +5729,16 @@ The real CPU showed the emulated path's failures were an **access artifact** ✅
 before attributing a memory failure to hardware. The diagnostic framing for a suspect accelerator is
 on [Z3660 board timings](z3660-timings.md#moving-boundary).
 
+## Amiberry's A2065 rewrites the station address ✅ {#amiberry-a2065-address}
+
+The emulated A2065 shows the guest one station address and the host network another ✅. The guest
+sees `00:80:10:ff:ff:ff` (the low three bytes come from the board's serial number, so probably every
+emulated board has it 🟡, not checked). The emulator rewrites it to the configured address in the
+Ethernet header, in ARP and in the DHCP `chaddr` field, fixing up the UDP checksum, but not inside
+DHCP options ✅. On the emulator, then, a DHCP client identifier (option 61) built from the MAC
+carries the guest's address, and the UDP checksum the server sees is the emulator's. Real hardware
+has one address on both sides. See [raw DLPI on `aen0`](networking.md#raw-dlpi-aen).
+
 ## Blaming an emulator release needs the same image on the *old* build
 
 Withdrawn 2026-10-04 (bench process); the ENXIO-vs-EIO contrast lives on [the boot process](boot-process.md#how-the-kernel-picks-the-root-filesystem).
@@ -5699,6 +5767,7 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   mandatory `cycle_exact=false`.
 
 ## Sources
+- The **A2065 address rewrite** (first-party record, 2026-10-30) ✅ (same address on every emulated board 🟡) — the amix base station's DLPI probe saw `00:80:10:ff:ff:ff` in the guest while the test DHCP server saw the configured address ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md`, `8ee48af`); Amiberry's `a2065.cpp` (`mungepacket`) does the rewrite.
 
 - The **relink-corruption measurement** under emulation (first-party record, 2026-07-20/21): a 20-round relink measurement; the mechanism and figures are on [building a kernel](../drivers/kernel-build.md#the-d245-boot-breaker-an-intermittent-ld-corruption).
 - The **Amiberry `MOVES` page-split report** 🟡 — third-party: [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) `docs/findings.md` ("Emulation (Amiberry)"), fixed upstream in [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) commit `845af02`; not reproduced here.
@@ -10837,6 +10906,24 @@ The trailer arm is best **deleted** rather than repaired: SVR4 IP never negotiat
 Removing it leaves normal RX byte-for-byte unchanged — verifiable by splitting the compiled object
 per function, which is worth doing when you touch a receive path you cannot bench-test easily.
 
+### What `aen` does on the DLPI surface, measured ✅ {#aen-dlpi-measured}
+
+A raw-DLPI probe of the stock `aen` on an emulated 2.1c system found three more things not to copy,
+and the stock source agrees on the first two ✅:
+
+- **`DL_ATTACH_REQ` gets no reply at all**, and neither does an unknown primitive: the default arm of
+  `aenproto` drops them. `aen` is Style 1, where attach is not expected, but a client that sends one
+  anyway hangs. A new driver should answer every primitive it does not handle with `DL_ERROR_ACK`
+  (`DL_BADPRIM` or `DL_OUTSTATE`).
+- **`aenclose` clears the queue pointer but not the SAP or the DLPI state**, so the next open of that
+  slot starts bound, with the old SAP and frames already queued (53–58 in the runs). Reset the
+  per-stream state on close.
+- **Received frames carry 14 bytes too many**: the copied length includes the Ethernet header (342
+  bytes for a 328-byte IP datagram).
+
+The full client-side list (Style 1, the bind ack, `DL_UNITDATA_REQ`, a unit without a board) is on
+[the networking page](../how-it-works/networking.md#raw-dlpi-aen).
+
 ## Building the driver (natively on Amix)
 
 hydra is **source-only** and is **built natively on the Amix box — no cross-compiler** ✅. You still need a licensed Amix install (the repo ships no kernel headers/libs; until 2026-09-23 this project treated them as not redistributable — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)), which is why no binaries ship. The driver `Makefile` uses the on-box compiler (`cc`/`ld -r`); the build is just:
@@ -10875,6 +10962,7 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 - [Device list reference](../reference/device-list.md) — known major/minor and `cdevsw` slot assignments.
 
 ## Sources
+- The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
 
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 (the brief's "from amigaunix.com" attribution is 🔴, unsourced — see toolchain.md), `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; cross-toolchain via `gcc-cross-amix`), §13 (cross-toolchain now public via `gcc-cross-amix`; native on-box still simplest).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).

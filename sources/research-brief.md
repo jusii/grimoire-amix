@@ -551,3 +551,11 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   New quirk 94 ✅: 2.1 `/bin/sh` `wait` loses a finished child's status; two long-lived `>>` writers
   collide (no `O_APPEND` 🟡); a shell waiting on a foreground child outlives `SIGTERM`; `sh -c` sets
   `$0` from the first operand. Source: the amix base station's runs; `userland/base/rc/rc.subr` `8ee48af`.
+- 2026-10-30 — raw DLPI on `aen0` (2.1c bench image, emulated A2065) ✅: Style 1, fresh stream unbound
+  with no address; `DL_ATTACH_REQ` and unknown primitives get no reply (stock `aenproto` agrees); the
+  MAC in `DL_BIND_ACK`; a second SAP-0x0800 stream gets a copy of every IP frame; a reused slot opens
+  bound with 53–58 stale frames (`aenclose` leaves SAP/state); received frames 14 bytes too long;
+  `DL_UNITDATA_REQ` 6-byte destination; ICMP port unreachable without a `*:68` socket; a limited
+  broadcast leaves as the directed one; `/dev/aen1` with one board fails at once (no-board 🔴).
+  Amiberry's A2065 rewrites the MAC except inside DHCP options ✅ (same MAC every board 🟡). New
+  quirk 95. Source: amix `userland/base/docs/dhcp-probe.md` `8ee48af`; Amiberry `a2065.cpp`.

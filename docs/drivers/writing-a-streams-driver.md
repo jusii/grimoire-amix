@@ -150,6 +150,24 @@ The trailer arm is best **deleted** rather than repaired: SVR4 IP never negotiat
 Removing it leaves normal RX byte-for-byte unchanged — verifiable by splitting the compiled object
 per function, which is worth doing when you touch a receive path you cannot bench-test easily.
 
+### What `aen` does on the DLPI surface, measured ✅ {#aen-dlpi-measured}
+
+A raw-DLPI probe of the stock `aen` on an emulated 2.1c system found three more things not to copy,
+and the stock source agrees on the first two ✅:
+
+- **`DL_ATTACH_REQ` gets no reply at all**, and neither does an unknown primitive: the default arm of
+  `aenproto` drops them. `aen` is Style 1, where attach is not expected, but a client that sends one
+  anyway hangs. A new driver should answer every primitive it does not handle with `DL_ERROR_ACK`
+  (`DL_BADPRIM` or `DL_OUTSTATE`).
+- **`aenclose` clears the queue pointer but not the SAP or the DLPI state**, so the next open of that
+  slot starts bound, with the old SAP and frames already queued (53–58 in the runs). Reset the
+  per-stream state on close.
+- **Received frames carry 14 bytes too many**: the copied length includes the Ethernet header (342
+  bytes for a 328-byte IP datagram).
+
+The full client-side list (Style 1, the bind ack, `DL_UNITDATA_REQ`, a unit without a board) is on
+[the networking page](../how-it-works/networking.md#raw-dlpi-aen).
+
 ## Building the driver (natively on Amix)
 
 hydra is **source-only** and is **built natively on the Amix box — no cross-compiler** ✅. You still need a licensed Amix install (the repo ships no kernel headers/libs; until 2026-09-23 this project treated them as not redistributable — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)), which is why no binaries ship. The driver `Makefile` uses the on-box compiler (`cc`/`ld -r`); the build is just:
@@ -188,6 +206,7 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 - [Device list reference](../reference/device-list.md) — known major/minor and `cdevsw` slot assignments.
 
 ## Sources
+- The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
 
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 (the brief's "from amigaunix.com" attribution is 🔴, unsourced — see toolchain.md), `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; cross-toolchain via `gcc-cross-amix`), §13 (cross-toolchain now public via `gcc-cross-amix`; native on-box still simplest).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).

@@ -263,6 +263,16 @@ The real CPU showed the emulated path's failures were an **access artifact** ✅
 before attributing a memory failure to hardware. The diagnostic framing for a suspect accelerator is
 on [Z3660 board timings](z3660-timings.md#moving-boundary).
 
+## Amiberry's A2065 rewrites the station address ✅ {#amiberry-a2065-address}
+
+The emulated A2065 shows the guest one station address and the host network another ✅. The guest
+sees `00:80:10:ff:ff:ff` (the low three bytes come from the board's serial number, so probably every
+emulated board has it 🟡, not checked). The emulator rewrites it to the configured address in the
+Ethernet header, in ARP and in the DHCP `chaddr` field, fixing up the UDP checksum, but not inside
+DHCP options ✅. On the emulator, then, a DHCP client identifier (option 61) built from the MAC
+carries the guest's address, and the UDP checksum the server sees is the emulator's. Real hardware
+has one address on both sides. See [raw DLPI on `aen0`](networking.md#raw-dlpi-aen).
+
 ## Blaming an emulator release needs the same image on the *old* build
 
 Withdrawn 2026-10-04 (bench process); the ENXIO-vs-EIO contrast lives on [the boot process](boot-process.md#how-the-kernel-picks-the-root-filesystem).
@@ -291,6 +301,7 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   mandatory `cycle_exact=false`.
 
 ## Sources
+- The **A2065 address rewrite** (first-party record, 2026-10-30) ✅ (same address on every emulated board 🟡) — the amix base station's DLPI probe saw `00:80:10:ff:ff:ff` in the guest while the test DHCP server saw the configured address ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md`, `8ee48af`); Amiberry's `a2065.cpp` (`mungepacket`) does the rewrite.
 
 - The **relink-corruption measurement** under emulation (first-party record, 2026-07-20/21): a 20-round relink measurement; the mechanism and figures are on [building a kernel](../drivers/kernel-build.md#the-d245-boot-breaker-an-intermittent-ld-corruption).
 - The **Amiberry `MOVES` page-split report** 🟡 — third-party: [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) `docs/findings.md` ("Emulation (Amiberry)"), fixed upstream in [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) commit `845af02`; not reproduced here.
