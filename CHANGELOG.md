@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — package management: stock pkgadd refuses BASEDIR (89395ae)
+
+The stock pkgadd refuses any package whose pkginfo has a BASEDIR line ("requires a base directory", exit 5), whatever
+the admin file says; APKGENG's pkgadd installs both forms; rule: packages for stock-pkgadd boxes carry no BASEDIR
+(✅, emulation).
+
 ## 2026-10-31 — quirk 92: prngd package test on three kernels (802b9b6, 3a8145b)
 
 The prngd package's smoke test panics the 2.1c bench image before any load (heap pc, vector 0x4; consistent with quirk
