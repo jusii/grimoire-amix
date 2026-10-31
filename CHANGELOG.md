@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — stock userland: grep \|, pkgadd's ? minor, unlisted classes (ac4eeea)
+
+`grep -v 'a\|b'` passes every line, so such a filter changes nothing (✅, commands cheatsheet). Stock `pkgadd` records a
+device minor of 0 as `?` in `contents` while making the node at 0, unlike `core`'s own records (✅). An object of a
+class that `CLASSES` doesn't list is skipped silently while `pkgadd` reports success (✅).
+
 ## 2026-10-31 — quirk 92 on the 040/060 line (edbd05a)
 
 The 68040/68060 kernel has the stock 2.1c STREAMS code and the same five freeq call sites (✅, byte compare), and the
