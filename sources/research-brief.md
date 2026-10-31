@@ -544,3 +544,10 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   variants fail alike under `-n` ✅ (interactive untried 🔴); `i copyright` and a long `DESC` are not the
   cause ✅; APKGENG's `pkgadd` and the host heirloom `pkgadd -R` install both forms ✅. Source: amix
   `userland/pkgtools` `494d477` (`docs/stock-pkg-system.md` §5, `gen-catalog.py` warning).
+- 2026-10-30 — quirk 93 follow-up ✅: on the 2.1c bench image, naming `/stand/unix` (with or without
+  `/dev/kmem`) changes nothing; `netstat -s` counts 0 IP packets while `ifconfig` shows `aen0`/`lo0`
+  up; `/stand/unix` is an `ET_REL` relocatable (entry 0) hard-linked to `/stand/2.1_unix`. Cause still
+  🟡 (namelist neither the booted kernel's nor bound); the booted kernel's own symbols are the next test.
+  New quirk 94 ✅: 2.1 `/bin/sh` `wait` loses a finished child's status; two long-lived `>>` writers
+  collide (no `O_APPEND` 🟡); a shell waiting on a foreground child outlives `SIGTERM`; `sh -c` sets
+  `$0` from the first operand. Source: the amix base station's runs; `userland/base/rc/rc.subr` `8ee48af`.

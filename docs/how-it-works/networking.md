@@ -86,7 +86,10 @@ image, whose `/stand/unix` is not the kernel it boots, `netstat -rn` prints
 `read error on routehash` and exits 1 (four runs over three boots), and `netstat -in` exits 0 with
 only its header line ✅. `netstat` reads the kernel through `/dev/kmem` at addresses taken from
 `/stand/unix` ([quirk 80](quirks.md#80-namelist-stand-unix)), so a namelist that does not match the
-running kernel is the leading explanation 🟡; a run with a matching namelist is pending. Boxes whose
+running kernel is the leading explanation 🟡. On that image `netstat -s` also counts no IP packets
+while `ifconfig` shows the interfaces up ✅, naming `/stand/unix` explicitly changes nothing ✅, and
+`/stand/unix` is an unbound ELF relocatable hard-linked to `/stand/2.1_unix` ✅; a run with the
+booted kernel's own symbols is the next test. Boxes whose
 `/stand/unix` is the booted kernel have shown both commands working
 ([quirk 26](quirks.md#26-three-diagnostic-tools-that-lie-or-do-not-work)). **Practical rule:** a
 script should not depend on `netstat -r` to read the routes; set them with `route` and keep its own
@@ -596,7 +599,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
-- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30); a matching-namelist run is pending.
+- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30). The follow-up runs (first-party record, 2026-10-30) ✅: `netstat -rn /stand/unix` and `netstat -rn /stand/unix /dev/kmem` fail alike, `netstat -in` in both forms prints its header only, `netstat -s` counts 0 IP packets received while `ifconfig aen0`/`lo0` show both up, and `od -x` and `ls -li` show `/stand/unix` as an `ET_REL` hard link to `/stand/2.1_unix`; a run with the booted kernel's own symbols is still to come.
 - The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated 2.1c bench image (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 
 - The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync

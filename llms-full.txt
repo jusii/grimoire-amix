@@ -2103,7 +2103,10 @@ image, whose `/stand/unix` is not the kernel it boots, `netstat -rn` prints
 `read error on routehash` and exits 1 (four runs over three boots), and `netstat -in` exits 0 with
 only its header line ✅. `netstat` reads the kernel through `/dev/kmem` at addresses taken from
 `/stand/unix` ([quirk 80](quirks.md#80-namelist-stand-unix)), so a namelist that does not match the
-running kernel is the leading explanation 🟡; a run with a matching namelist is pending. Boxes whose
+running kernel is the leading explanation 🟡. On that image `netstat -s` also counts no IP packets
+while `ifconfig` shows the interfaces up ✅, naming `/stand/unix` explicitly changes nothing ✅, and
+`/stand/unix` is an unbound ELF relocatable hard-linked to `/stand/2.1_unix` ✅; a run with the
+booted kernel's own symbols is the next test. Boxes whose
 `/stand/unix` is the booted kernel have shown both commands working
 ([quirk 26](quirks.md#26-three-diagnostic-tools-that-lie-or-do-not-work)). **Practical rule:** a
 script should not depend on `netstat -r` to read the routes; set them with `route` and keep its own
@@ -2613,7 +2616,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
-- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30); a matching-namelist run is pending.
+- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30). The follow-up runs (first-party record, 2026-10-30) ✅: `netstat -rn /stand/unix` and `netstat -rn /stand/unix /dev/kmem` fail alike, `netstat -in` in both forms prints its header only, `netstat -s` counts 0 IP packets received while `ifconfig aen0`/`lo0` show both up, and `od -x` and `ls -li` show `/stand/unix` as an `ET_REL` hard link to `/stand/2.1_unix`; a run with the booted kernel's own symbols is still to come.
 - The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated 2.1c bench image (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 
 - The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync
@@ -3587,7 +3590,8 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back. The 040/060 port fixes it in `kzero` (verified in emulation and on a real 68060); the 68030 line has the same fix, verified in emulation | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
 | 91 | **A shrink to an earlier block, then a sparse regrow, reads the old bytes back — from disk** — on stock 2.1c and both kernel lines, `F_FREESP` from N to an unaligned M in an earlier 8 KiB block (both past the direct blocks) returns cleanly, but after writing one byte at N−1 the file holds its old data in `[roundup(M, PAGESIZE), roundup(M, 8192))`, or in all of `[M, roundup(M, 8192))` if the file was not cached. No crash. Fixed on both lines in emulation. Write real zeros through the gap, or cut block-aligned | ✅ | [Quirks §91](#91-shrink-regrow-stale-data) |
 | 92 | **A failed STREAMS open can leave a freed queue on the run list, and stock 2.1c then panics in `queuerun`** — `qattach` undoes the failed open with `qdetach(q, 0)`, whose short path frees an already-enabled queue without taking it off `qhead`; the next `queuerun` calls `qi_srvp` through freed memory. Signature: `KERNEL FAULT`, vector `0x4` or `0xB`, pc in the kernel heap, backtrace `ureturn` → `queuerun`. Found with `prngd` exhausting a small swap's reservation. Fixed on the 68030 line in emulation | ✅ | [Quirks §92](#92-queuerun-panic) |
-| 93 | **`netstat -rn` fails with `read error on routehash`, and `netstat -in` lists no interfaces**, on an image whose `/stand/unix` is not the booted kernel. Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
+| 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel. Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
+| 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
 
 The rest of this page expands each item.
 
@@ -4436,7 +4440,9 @@ from the console, not from the ring.
 `/dev/ksyms` ✅. They look up addresses by name in that file and read them through `/dev/kmem`, so if
 `/stand/unix` is not the kernel that is running — a relinked kernel booted from elsewhere, or a hard
 link left pointing at the stock kernel — they read the wrong addresses silently ✅. Keep `/stand/unix`
-the booted kernel's bound image.
+the booted kernel's bound image. On the project's 2.1c bench image `/stand/unix` is an ELF
+relocatable (`ET_REL`, entry 0), a hard link to `/stand/2.1_unix` ✅, whose symbol values are offsets
+rather than load addresses ([§93](#93-netstat-rn-routehash)).
 
 ## Driver-authoring quirks
 
@@ -5041,9 +5047,17 @@ kernel with cdfs and the A3091/A4091 drivers linked in (its text is about 72 KB 
 link), and its `/stand/unix` is a different file ✅ (a 1475108-byte relocatable, `sum -r` 55482,
 against a 1252347-byte executable for the booted kernel). `netstat` looks its symbols up in
 `/stand/unix` and reads them through `/dev/kmem` ([§80](#80-namelist-stand-unix)). If the two
-kernels' layouts differ, it reads the wrong addresses. That is the leading explanation for both
-failures 🟡; a run with an explicit, matching namelist is pending. Boxes whose
-`/stand/unix` is the booted kernel have run both commands ([§26](#26-three-diagnostic-tools-that-lie-or-do-not-work)).
+kernels' layouts differ, it reads the wrong addresses. More of that image's `netstat` is wrong ✅:
+`netstat -s` reports 0 IP packets received on a box being driven over the network, while `ifconfig
+aen0` and `ifconfig lo0` show both interfaces up with their addresses. Naming the namelist
+(`netstat -rn /stand/unix`, and with `/dev/kmem`) changes nothing ✅, as expected, since that is the
+default. The image's `/stand/unix` is an ELF relocatable (`ET_REL`, entry 0), hard-linked to
+`/stand/2.1_unix` ✅. Its symbol values are offsets, not the addresses the kernel was loaded at
+([reverse engineering](../drivers/kernel-reverse-engineering.md#step-3-read-a-running-kernel-from-a-savestate)).
+So the namelist `netstat` reads is neither the booted kernel's nor bound to a load address. That is
+the leading explanation for all three failures 🟡; a run with the booted kernel's own bound symbols
+is the next test. Boxes whose `/stand/unix` is the booted kernel have run `-in` and `-rn`
+([§26](#26-three-diagnostic-tools-that-lie-or-do-not-work)).
 **Practical rule:** check that `/stand/unix` is the kernel that booted before trusting `netstat`,
 `ifconfig` or `crash`. A script that must know its routes should set them with `route add` and keep
 its own record of them ([networking](networking.md#static-ip-configuration-no-dhcp)).
@@ -5117,6 +5131,26 @@ from what it read can empty it — `inittab` included. Separately, a `while read
 blanks from each line ✅ (both on the real 2.1 `sh`). Rule: one redirection per pass. See also
 [§12](#12-binsh-is-pre-posix).
 
+### 94. Four 2.1 `/bin/sh` facts for scripts that run background jobs ✅ {#94-sh-background-jobs}
+
+Measured on the stock 2.1c userland (emulated A3000, 2026-10-30):
+
+- **`wait <pid>` loses the status of a child that has already ended** ✅.
+  `sh -c 'exit 3' & p=$!; wait $p; echo $?` prints 0, at top level, in a subshell and in a function.
+  A child still running when `wait` is called reports its status correctly (4 for `sleep 2; exit 4`).
+  Don't take `wait`'s status as the job's unless the job is known to be still running.
+- **Two long-lived jobs appending to one file with `>>` overwrite each other's bytes** ✅. One job's
+  `slow-started` line was overwritten by the other's output. Short-lived `echo … >> log` per line did
+  not collide in the same runs. The likely mechanism is that `>>` opens without `O_APPEND` 🟡. Rule:
+  give each job its own output file.
+- **A shell waiting for a foreground child does not die of `SIGTERM` until that child ends** ✅.
+  `kill` of `sh -c "…; sleep 20; …"` left it running, and `kill -9` ended it at once (status 137); a
+  plain binary such as `sleep` dies of `SIGTERM` at once (status 143). To stop a shell job on time,
+  follow `TERM` with `KILL` after a grace period.
+- **`sh -c 'cmd' a b c` sets `$0=a`, `$1=b`, `$2=c`** ✅, the POSIX convention.
+
+See also [§12](#12-binsh-is-pre-posix) and [§81](#81-sh-read-buffer).
+
 ### 86. Swap is not optional, and its node must exist ✅ {#86-swap-not-optional}
 
 With no swap device added, the stock kernel's anonymous-memory reservation refuses every request and
@@ -5141,6 +5175,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
   (first-party record); detail and citations on [networking](networking.md#sources).
 - The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — quirk 93: see the matching Sources entry on [the networking page](networking.md#static-ip-configuration-no-dhcp). The bench image's kernel (first-party record, 2026-10-30) ✅: the k30 kernel work's comparison of the booted kernel with the image's `/stand/unix` (size, `sum -r`, cdfs and A3091 strings, text size against the stock link).
+- The **2.1 `/bin/sh` background-job facts** (first-party record, 2026-10-30) ✅ (the `O_APPEND` mechanism 🟡) — quirk 94: the amix base station's shell tests on the emulated 2.1c bench image's stock userland (`wait` on a finished and a running child, at top level, in a subshell and in a function; two background jobs appending to one log; `TERM` then `KILL` of a shell job and of `sleep`; `sh -c` operands). The base package's `rc_bg` is built around them and its comments record them ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/rc/rc.subr`, `8ee48af`).
 - The **`queuerun` panic** (first-party record, 2026-10-30) ✅ — quirk 92: the amix-packages `prngd` 0.9.29 port's runs on the emulated 2.1c bench image (three panics captured on the console with their backtraces, symbolised by the k30 kernel work; the survived loads and the two `prngd`-free reproducers); the recipe in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`). The cause (first-party record, 2026-10-30) ✅: the k30 kernel work's disassembly of the stock `qattach`, `qdetach`, `freeq` and `strclose`; its runs of the stock 2.1c link on an emulated A3000 (16 MB bank) with `freeq` instrumentation (two catches, one panic with observation only), the `bufcall`/callout counts, and the `anoninfo` reservation figures; the fix [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/k30` `f4aef26` (`src/freeqguard030.c`, `tools/freeqguard-retarget.py`, on `master`). The package-test runs on three kernels (first-party record, 2026-10-31) 🟡: the amix-packages `prngd` port's smoke test and loads on the emulated bench image, a 2.1c kernel with only the guard, and the project's 68030 test kernel, one boot each; results in the recipe's README ([amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd`, `fd96cc7`; the bench-image panic left unconfirmed as quirk 92 in `7349c19`, the guard-only row's empty reads in `3208937`).
 - The **wider SIGSYS set on an FPU-less 68030** (first-party record, 2026-10-30) 🟡 — quirk 31: the k30 kernel work's runs on an Amiberry 68030 with MMU and `fpu_model=0` under the signal-gated 68030 kernel: stock `mkfs -F ufs` and the gcc14-built GNU `cp` and `gtar` exit 140 with `Bad System Call`; `dd`, `cmp`, `sh`, `sleep` and stock `cp` run.
 - The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).
