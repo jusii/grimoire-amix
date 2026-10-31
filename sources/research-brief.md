@@ -427,7 +427,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   `make`; the disk holds no kernel; stock kernels by sha256 (2.1 `97ae253a…`, 2.1c `80a1204f…`) ✅
   (the patch disk's own lists; a cleanly installed 2.1c `/usr`; `amigaux/amix` `system/`) →
   `docs/boot-disks/anatomy-patch-adf.md`, `docs/reference/versions.md`. `amigaux/amix-system` not
-  created yet 🔴.
+  created yet 🔴 (public since 2026-10-30, see below).
 - **Boot** → `docs/how-it-works/boot-process.md`: strap checks `DOS` + checksum only, `UNI\0` = no
   bootblock (96 emulated cells) ✅; AN_BootError loop behind the Z3660 ROM chain ✅ (emulation); CD boot
   node from the A4091 ROM mounter (priority 2 for `AMIGA BOOT`/`CDTV`, no boot blocks, Rock Ridge first)
@@ -559,3 +559,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   broadcast leaves as the directed one; `/dev/aen1` with one board fails at once (no-board 🔴).
   Amiberry's A2065 rewrites the MAC except inside DHCP options ✅ (same MAC every board 🟡). New
   quirk 95. Source: amix `userland/base/docs/dhcp-probe.md` `8ee48af`; Amiberry `a2065.cpp`.
+- 2026-10-31 — `amigaux/amix-system` is public ✅ (GitHub API; `7cba961`, pushed 2026-10-30): both
+  stock kernels, the installed 2.1c `/usr` at 2.1p2a with the kernel and driver sources under
+  `usr/sys`, the stock `/etc`, the three 2.1 floppies. Pages citing stock sources now link them there
+  (`aen.c`, the boot sources, the SCSI, console and RAM-disk sources, `support.c`, `kernel.c`).

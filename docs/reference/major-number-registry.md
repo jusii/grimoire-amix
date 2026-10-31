@@ -286,6 +286,7 @@ friendliest pattern for a shared kernel and the one this project recommends.
 - [Writing a character driver](../drivers/writing-a-char-driver.md) / [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md).
 
 ## Sources
+- **Stock sources, public** ✅ — the stock RAM disk in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/driver/ram.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/ram.c).
 
 - `usr/sys/master.d/kernel.c` — `cdevsw[]` (rows 0–69) and `bdevsw[]` (rows 0–31) read byte-exact
   from two independent trees: [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix)

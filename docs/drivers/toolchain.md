@@ -170,8 +170,8 @@ its `usr/include` and `make` are the pre-patch versions ✅; how the mix arose i
 module kit built against a cleanly installed 2.1c `/usr` differed from one built against that mixed
 sysroot only in those three headers (measured on both kernel lines, 2026-10-29) ✅. Build against one
 installed 2.1c `/usr`, and record which. The project's reference sysroot is the `usr/` tree of the
-planned public `amigaux/amix-system` repository, AMIX 2.1c at patch level 2a as installed, listed by
-sha256 in `amigaux/amix` `system/MANIFEST.sha256` ✅ (the repository itself is not created yet, 2026-10-29).
+public [`amigaux/amix-system`](https://github.com/amigaux/amix-system) repository, AMIX 2.1c at patch
+level 2a as installed, listed by sha256 in `amigaux/amix` `system/MANIFEST.sha256` ✅.
 
 ### The assembler-fixup family: .swbeg, fcmp — and the tdivs divide-with-remainder bug ✅
 

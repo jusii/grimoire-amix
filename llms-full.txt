@@ -1588,6 +1588,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - [Device list reference](../reference/device-list.md) — the SCSI `/dev` major/minor scheme behind `cN d0 sN`.
 
 ## Sources
+- **Stock sources, public** ✅ — the stock bootstrap in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/boot/boot1.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot1.c), [`usr/sys/amiga/boot/boot2.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot2.c), [`usr/sys/amiga/boot/bootinfo.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/bootinfo.h), [`usr/sys/amiga/boot/bootdata.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/bootdata.h).
 
 - The **boot node vs root** split (2026-10-03) ✅ — the stock `amiga/boot/boot1.c` (`main(iob, …)`, `readblocks(iob)` for the info block and `boot2`), `boot2.c` (every read through the same `iob`), `bootinfo.h` / `bootdata.h` (no boot-device field), read from a stock 2.1c source tree; the Z3660 sources (`scsi/scsi.c`: per-partition bootable flag and RDB priority, `-128` when not bootable; `z3660-drivers/scsi/bootrom.asm`: `MakeDosNode` + `AddBootNode` with that priority); and a first-party A4000T run with two bootable disks on the Z3660 boot ROM (first-party record, 2026-10-03).
 - The **`fssm_Device` NUL count** (2026-10-07) ✅ — disassembly of `expansion.library`
@@ -2656,6 +2657,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
+- **Stock sources, public** ✅ — the stock A2065 driver in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/driver/aen/aen.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.c).
 - The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
 - The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30). The follow-up runs (first-party record, 2026-10-30) ✅: `netstat -rn /stand/unix` and `netstat -rn /stand/unix /dev/kmem` fail alike, `netstat -in` in both forms prints its header only, `netstat -s` counts 0 IP packets received while `ifconfig aen0`/`lo0` show both up, and `od -x` and `ls -li` show `/stand/unix` as an `ET_REL` hard link to `/stand/2.1_unix`; a run with the booted kernel's own symbols is still to come.
 - The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated 2.1c bench image (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
@@ -9418,6 +9420,7 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
 - [Boot process](../how-it-works/boot-process.md) — how the bootstrap loads the kernel you wrote.
 
 ## Sources
+- **Stock sources, public** ✅ — the stock SCSI and console sources in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/alien/a3091.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/a3091.c), [`usr/sys/amiga/alien/a2091.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/a2091.c), [`usr/sys/amiga/alien/dd.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/dd.c), [`usr/sys/amiga/alien/sdpart.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/sdpart.c), [`usr/sys/amiga/alien/scsi.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/scsi.c), [`usr/sys/amiga/console/scrdev.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/console/scrdev.c), [`usr/sys/amiga/console/c0.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/console/c0.c), [`usr/sys/amiga/console/screen.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/console/screen.c).
 - The public 68040/68060 port, `asokero/amix-040-060-port` @ `upstream/main` (2026-09-29): `STATUS.md` (the A3000 + accelerator rig with RAM and load base at `0x08000000`; the hardware-verified "DMA coherence (A3091 / SDMAC)" row; rows `68040-260906-06` and `68040-260928-05`), `docs/REALHW-Z3-040-260906.md`, `docs/REALHW-ISSUE54-STAGED-260830-06.md` (the `sac=96D99F0` line) and `docs/contracts/A3091-PHASE-MISMATCH-RESUME-AUDIT.md` (the chip-RAM bounce is the A2091's) ✅ — <https://github.com/asokero/amix-040-060-port>.
 
 - The **super-DMAC reach refutation** (2026-10-02) ✅ — the `64119` row of the kernel table on this page (stock `a3091`, RDB buffer above `0x07000000`, boots) and Amiberry's `src/a2091.cpp` (the A3000 super-DMAC initialised with the 24-bit DMA mask off; `dma24bit` applies only to the add-on cards), read in the Amiberry source. The stale-cache explanation is a hypothesis 🔴.
@@ -9711,6 +9714,7 @@ Neither is committed work; the family-kernel convention above deliberately avoid
 - [How Amix boots](../how-it-works/boot-process.md) — why `pkgadd` alone never changes the running kernel.
 
 ## Sources
+- **Stock sources, public** ✅ — the stock selector, its macros and `autocon()` in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/alien/sd.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/sd.c), [`usr/sys/amiga/alien/sd.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/sd.h), [`usr/sys/amiga/kernel/support.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/kernel/support.c).
 
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
 - The **super-DMAC reach refutation** (2026-10-02) ✅ — the `64119` row of the kernel table on [building a kernel](kernel-build.md) (stock `a3091`, RDB buffer above `0x07000000`, boots) and Amiberry's `src/a2091.cpp` (the A3000 super-DMAC initialised with the 24-bit DMA mask off; `dma24bit` applies only to the add-on cards), read in the Amiberry source. The stale-cache explanation is a hypothesis 🔴.
@@ -10962,6 +10966,7 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 - [Device list reference](../reference/device-list.md) — known major/minor and `cdevsw` slot assignments.
 
 ## Sources
+- **Stock sources, public** ✅ — the stock A2065 driver in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/driver/aen/aen.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.c), [`usr/sys/amiga/driver/aen/aen.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h), [`usr/sys/amiga/driver/aen/lance.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/lance.h).
 - The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
 
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 (the brief's "from amigaunix.com" attribution is 🔴, unsourced — see toolchain.md), `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; cross-toolchain via `gcc-cross-amix`), §13 (cross-toolchain now public via `gcc-cross-amix`; native on-box still simplest).
@@ -11681,8 +11686,8 @@ its `usr/include` and `make` are the pre-patch versions ✅; how the mix arose i
 module kit built against a cleanly installed 2.1c `/usr` differed from one built against that mixed
 sysroot only in those three headers (measured on both kernel lines, 2026-10-29) ✅. Build against one
 installed 2.1c `/usr`, and record which. The project's reference sysroot is the `usr/` tree of the
-planned public `amigaux/amix-system` repository, AMIX 2.1c at patch level 2a as installed, listed by
-sha256 in `amigaux/amix` `system/MANIFEST.sha256` ✅ (the repository itself is not created yet, 2026-10-29).
+public [`amigaux/amix-system`](https://github.com/amigaux/amix-system) repository, AMIX 2.1c at patch
+level 2a as installed, listed by sha256 in `amigaux/amix` `system/MANIFEST.sha256` ✅.
 
 ### The assembler-fixup family: .swbeg, fcmp — and the tdivs divide-with-remainder bug ✅
 
@@ -12361,6 +12366,7 @@ These are the practical traps the repo documents — useful for anyone writing o
 - [Device list reference](../../reference/device-list.md) — char major 68 and other known device numbers.
 
 ## Sources
+- **Stock sources, public** ✅ — the stock console files and `kernel.c` that the driver modifies in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/console/scrdev.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/console/scrdev.c), [`usr/sys/amiga/console/c0.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/console/c0.c), [`usr/sys/amiga/console/screen.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/console/screen.c), [`usr/sys/master.d/kernel.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/master.d/kernel.c).
 
 - `asokero/va2000-amix` repo (README + `va2000.c` source): <https://github.com/asokero/va2000-amix> — device node, char major 68, AutoConfig mfr `0x6D6E`/product `0x01`, 4 MB window split, modes, native `cc` build, the six patched kernel files, install sequence, `(base+off)>>11` page frame, and the shell/`extern`/stale-object gotchas.
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (modern driver repos — va2000 entry), §5 (device-driver model, `cdevsw[]`/`io_init[]`/`init_tbl[]`, `autocon()`/`uiomove()`/`copyin`/`copyout`), §4 (monolithic kernel, no loadable modules, `kernel.c` in source), §2 (Zorro II only), §11 (pre-POSIX `/bin/sh`).
@@ -13808,6 +13814,7 @@ Zorro III DMA impossible for the A4091/A4092 as well.
   stack.
 
 ## Sources
+- **Stock sources, public** ✅ — the stock SCSI layer in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/alien/sd.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/sd.c), [`usr/include/sys/sd.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/include/sys/sd.h), [`usr/sys/amiga/alien/dd.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/dd.c), [`usr/sys/amiga/kernel/support.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/kernel/support.c).
 
 - The Z3660 CPLD's `SNOOP` drive — `z3660-firmware/CPLD/DMA _WIP/z3660.vhd` line 459 (`nSNOOP` low when `DMA_BUSY` or on an ARM bus grant; `DMA_BUSY` set whenever the CPLD's DMA state machine is not idle, line 424) and the firmware `CHANGES.md`, v1.03 beta 2 ✅. The 68060 snoop semantics are 🟡: the MC68060 User's Manual is not among this project's sources.
 - The **first Zorro III DMA metal run into a Z3660's RAM** ✅ — first-party record, 2026-10-02 (A4000D, Z3660 68LC060, an A4092 with CPLD 1.4.21 at `0x40000000`; valid RDB at LBA 0, repeatable `sum -r` over 4 MB and 32 MB raw reads across power-cycled boots with copyback on, coherence invariants over ~72 MB), and the host-truth compare that closed the read side (the disk image pulled to the host, sha256 `ec8d8d24…`, every 8 MiB piece CRC-matched to the device, `sum -r` 49574 / 09482 and block 0 equal to the Amix reads).
@@ -15193,6 +15200,7 @@ Expected SHA-256: `0d8af1c06b524411cc43d33c4a156afe6216ec895f50188747d0f3a6bed65
 - [Kernel architecture](../how-it-works/kernel-architecture.md) — the monolithic SVR4 kernel + HAT/MMU layer referenced in the strings.
 
 ## Sources
+- **Stock sources, public** ✅ — the Commodore boot source in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/boot/infoblock.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/infoblock.h), [`usr/sys/amiga/boot/makeiblk.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/makeiblk.c), [`usr/sys/amiga/boot/chksum.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/chksum.c), [`usr/sys/amiga/boot/boot1.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot1.c), [`usr/sys/amiga/boot/boot2.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot2.c), [`usr/sys/amiga/boot/decompress.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/decompress.c).
 
 - `amix_21_boot.adf` analysis via [`tools/inspect-adf.sh`](https://github.com/Jusii/grimoire-amix/blob/master/tools/inspect-adf.sh) — bootblock hex dump, `DOS\0` magic + checksum, bootstrap/kernel strings, `xdftool` "Invalid Root Block @880", binwalk false-positive "JBOOT" hits (reproduced locally; SHA-256 `0d8af1c0…65272`, see `sources/CHECKSUMS.txt`).
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §3 ("What the real boot.adf contains") and §10 ("boot.adf").
@@ -15954,6 +15962,7 @@ see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 - [Building & installing a kernel](../drivers/kernel-build.md) — producing the kernel you compress.
 
 ## Sources
+- **Stock sources, public** ✅ — the Commodore boot source in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/boot/infoblock.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/infoblock.h), [`usr/sys/amiga/boot/makeiblk.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/makeiblk.c), [`usr/sys/amiga/boot/chksum.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/chksum.c), [`usr/sys/amiga/boot/boot1.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot1.c), [`usr/sys/amiga/boot/boot2.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot2.c), [`usr/sys/amiga/boot/decompress.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/decompress.c).
 - Primary analysis of `amix_21_boot.adf` (2026-06): `tools/inspect-adf.sh`, entropy mapping, `gzip`/`zcat`
   LZW decompression, capstone M68K disassembly; round-trip via `tools/extract-kernel.sh` +
   `tools/build-bootfloppy.sh`. Recorded in the research brief §3, §10, §13 — [`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
@@ -16723,7 +16732,7 @@ correct 2.1c kernels can differ. The two stock kernels the amigaux build uses, b
 
 The port's upstream pins a different, equally valid 2.1c link (`7d26cb6f…`) 🟡. Both kernels, the
 installed `usr/` tree and the three 2.1 floppies are listed by sha256 in `amigaux/amix`
-`system/MANIFEST.sha256`, for the planned public `amigaux/amix-system` repository ✅.
+`system/MANIFEST.sha256`; the files themselves are public in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`kernels/2.1/unix`, `kernels/2.1c/unix`, `usr/`, `floppies/2.1/`) ✅.
 
 **Why the version check matters for this matrix:** the `^2\.1` pattern is positive evidence that the
 *patched* system still reports a `2.1`-prefixed version string — consistent with "2.1c" being a 2.1
@@ -17336,6 +17345,7 @@ friendliest pattern for a shared kernel and the one this project recommends.
 - [Writing a character driver](../drivers/writing-a-char-driver.md) / [Writing a STREAMS driver](../drivers/writing-a-streams-driver.md).
 
 ## Sources
+- **Stock sources, public** ✅ — the stock RAM disk in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/driver/ram.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/ram.c).
 
 - `usr/sys/master.d/kernel.c` — `cdevsw[]` (rows 0–69) and `bdevsw[]` (rows 0–31) read byte-exact
   from two independent trees: [`isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix)
@@ -17862,7 +17872,7 @@ around one monorepo ✅. What is public, and where:
 |---|---|---|
 | [`amigaux/amix`](https://github.com/amigaux/amix) | The monorepo that is to build the whole system (MIT; marked work in progress). Today it holds `kernel/dlm` (the [loadable-module](../drivers/loadable-modules.md) loader, core, `kbootset`, ABI kit and spec) and `kernel/modules` (`monsw`, `ramdisk`) with their history kept; `toolchain/` (both cross compilers pinned by commit, a reproducible build container); `system/` (the sha256 manifest of the Commodore system files); CI (a privacy check and the host tests). Other directories hold only a README until their project moves in | ✅ |
 | [`amigaux/amix-040-060-port`](https://github.com/amigaux/amix-040-060-port) | The organisation's fork of Antti Sokero's [68040/68060 port](../how-it-works/68040-68060-status.md); its `k46-module` branch carries the module-kernel chain, and `amigaux/amix` pins a commit of it (`kernel/port/port.pin`) | ✅ |
-| `amigaux/amix-system` | Planned public home of the Commodore system files (both stock kernels, the relink kit, headers, libraries, X11, the three 2.1 floppies); not created yet — `amigaux/amix` already lists its contents by sha256 | 🔴 planned |
+| [`amigaux/amix-system`](https://github.com/amigaux/amix-system) | The Commodore AMIX 2.1/2.1c system files, public since 2026-10-30: both stock kernels (`kernels/`), the installed 2.1c `/usr` tree at 2.1p2a with the relink kit and the kernel and driver sources under `usr/sys`, the stock `/etc` (`etc/`, with `etc.md` for what git cannot hold), and the three retail 2.1 floppies (`floppies/2.1/`). Unchanged by the project; `amigaux/amix` lists its contents by sha256 | ✅ |
 | [`jusii/gcc-cross-amix`](https://github.com/jusii/gcc-cross-amix) | The fork of [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) that `amigaux/amix` pins for kernel space | ✅ |
 | [`asokero/gcc14-cross-amix`](https://github.com/asokero/gcc14-cross-amix) | Antti Sokero's GCC 14 cross compiler, the project's userland compiler ([toolchain](../drivers/toolchain.md#the-userland-compiler-gcc14-cross-amix-gcc-14)) | ✅ |
 | [`jusii/Z3660-amix`](https://github.com/jusii/Z3660-amix) | The project's fork of the Z3660 firmware ([`shanshe/Z3660`](https://github.com/shanshe/Z3660)) | ✅ |
@@ -18022,6 +18032,7 @@ so a reader (human or agent) can resolve and reproduce them:
 - [AGENTS.md](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — the grounding, tagging, and licensing contract that this list serves.
 
 ## Sources
+- `amigaux/amix-system` (2026-10-31) ✅: the GitHub API (public, default branch `master`) and the repository @ `7cba961` `README.md` (layout).
 
 - Research brief §14 (bibliography seed) and §0 (local primary artifacts) — `sources/research-brief.md`.
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (held
@@ -18043,7 +18054,7 @@ so a reader (human or agent) can resolve and reproduce them:
 - WinUAE / FS-UAE documentation; BlitterStudio/amiberry issue #1376
   (<https://github.com/BlitterStudio/amiberry/issues/1376>).
 - The `llms.txt` convention — Jeremy Howard, Answer.AI, September 2024 (<https://llmstxt.org/>).
-- The amigaux repositories (2026-10-29) ✅: the GitHub API for the `amigaux` organisation and each repository listed (existence, visibility, fork parent; `amigaux/amix-system` not found); `amigaux/amix` @ `95bf2f3` `README.md`, `kernel/port/port.pin`, `toolchain/*.pin`, `kernel/drivers/README.md`, `system/README.md`.
+- The amigaux repositories (2026-10-29) ✅: the GitHub API for the `amigaux` organisation and each repository listed (existence, visibility, fork parent; `amigaux/amix-system` not found then); `amigaux/amix` @ `95bf2f3` `README.md`, `kernel/port/port.pin`, `toolchain/*.pin`, `kernel/drivers/README.md`, `system/README.md`.
 
 
 ================================================================================

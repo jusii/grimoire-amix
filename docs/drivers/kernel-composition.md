@@ -215,6 +215,7 @@ Neither is committed work; the family-kernel convention above deliberately avoid
 - [How Amix boots](../how-it-works/boot-process.md) — why `pkgadd` alone never changes the running kernel.
 
 ## Sources
+- **Stock sources, public** ✅ — the stock selector, its macros and `autocon()` in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/alien/sd.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/sd.c), [`usr/sys/amiga/alien/sd.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/sd.h), [`usr/sys/amiga/kernel/support.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/kernel/support.c).
 
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
 - The **super-DMAC reach refutation** (2026-10-02) ✅ — the `64119` row of the kernel table on [building a kernel](kernel-build.md) (stock `a3091`, RDB buffer above `0x07000000`, boots) and Amiberry's `src/a2091.cpp` (the A3000 super-DMAC initialised with the 24-bit DMA mask off; `dma24bit` applies only to the add-on cards), read in the Amiberry source. The stale-cache explanation is a hypothesis 🔴.

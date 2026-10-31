@@ -105,7 +105,7 @@ around one monorepo ✅. What is public, and where:
 |---|---|---|
 | [`amigaux/amix`](https://github.com/amigaux/amix) | The monorepo that is to build the whole system (MIT; marked work in progress). Today it holds `kernel/dlm` (the [loadable-module](../drivers/loadable-modules.md) loader, core, `kbootset`, ABI kit and spec) and `kernel/modules` (`monsw`, `ramdisk`) with their history kept; `toolchain/` (both cross compilers pinned by commit, a reproducible build container); `system/` (the sha256 manifest of the Commodore system files); CI (a privacy check and the host tests). Other directories hold only a README until their project moves in | ✅ |
 | [`amigaux/amix-040-060-port`](https://github.com/amigaux/amix-040-060-port) | The organisation's fork of Antti Sokero's [68040/68060 port](../how-it-works/68040-68060-status.md); its `k46-module` branch carries the module-kernel chain, and `amigaux/amix` pins a commit of it (`kernel/port/port.pin`) | ✅ |
-| `amigaux/amix-system` | Planned public home of the Commodore system files (both stock kernels, the relink kit, headers, libraries, X11, the three 2.1 floppies); not created yet — `amigaux/amix` already lists its contents by sha256 | 🔴 planned |
+| [`amigaux/amix-system`](https://github.com/amigaux/amix-system) | The Commodore AMIX 2.1/2.1c system files, public since 2026-10-30: both stock kernels (`kernels/`), the installed 2.1c `/usr` tree at 2.1p2a with the relink kit and the kernel and driver sources under `usr/sys`, the stock `/etc` (`etc/`, with `etc.md` for what git cannot hold), and the three retail 2.1 floppies (`floppies/2.1/`). Unchanged by the project; `amigaux/amix` lists its contents by sha256 | ✅ |
 | [`jusii/gcc-cross-amix`](https://github.com/jusii/gcc-cross-amix) | The fork of [`isoriano1968/gcc-cross-amix`](https://github.com/isoriano1968/gcc-cross-amix) that `amigaux/amix` pins for kernel space | ✅ |
 | [`asokero/gcc14-cross-amix`](https://github.com/asokero/gcc14-cross-amix) | Antti Sokero's GCC 14 cross compiler, the project's userland compiler ([toolchain](../drivers/toolchain.md#the-userland-compiler-gcc14-cross-amix-gcc-14)) | ✅ |
 | [`jusii/Z3660-amix`](https://github.com/jusii/Z3660-amix) | The project's fork of the Z3660 firmware ([`shanshe/Z3660`](https://github.com/shanshe/Z3660)) | ✅ |
@@ -265,6 +265,7 @@ so a reader (human or agent) can resolve and reproduce them:
 - [AGENTS.md](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md) — the grounding, tagging, and licensing contract that this list serves.
 
 ## Sources
+- `amigaux/amix-system` (2026-10-31) ✅: the GitHub API (public, default branch `master`) and the repository @ `7cba961` `README.md` (layout).
 
 - Research brief §14 (bibliography seed) and §0 (local primary artifacts) — `sources/research-brief.md`.
 - Michael Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference (held
@@ -286,4 +287,4 @@ so a reader (human or agent) can resolve and reproduce them:
 - WinUAE / FS-UAE documentation; BlitterStudio/amiberry issue #1376
   (<https://github.com/BlitterStudio/amiberry/issues/1376>).
 - The `llms.txt` convention — Jeremy Howard, Answer.AI, September 2024 (<https://llmstxt.org/>).
-- The amigaux repositories (2026-10-29) ✅: the GitHub API for the `amigaux` organisation and each repository listed (existence, visibility, fork parent; `amigaux/amix-system` not found); `amigaux/amix` @ `95bf2f3` `README.md`, `kernel/port/port.pin`, `toolchain/*.pin`, `kernel/drivers/README.md`, `system/README.md`.
+- The amigaux repositories (2026-10-29) ✅: the GitHub API for the `amigaux` organisation and each repository listed (existence, visibility, fork parent; `amigaux/amix-system` not found then); `amigaux/amix` @ `95bf2f3` `README.md`, `kernel/port/port.pin`, `toolchain/*.pin`, `kernel/drivers/README.md`, `system/README.md`.

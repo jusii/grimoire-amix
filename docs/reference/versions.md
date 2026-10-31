@@ -104,7 +104,7 @@ correct 2.1c kernels can differ. The two stock kernels the amigaux build uses, b
 
 The port's upstream pins a different, equally valid 2.1c link (`7d26cb6f…`) 🟡. Both kernels, the
 installed `usr/` tree and the three 2.1 floppies are listed by sha256 in `amigaux/amix`
-`system/MANIFEST.sha256`, for the planned public `amigaux/amix-system` repository ✅.
+`system/MANIFEST.sha256`; the files themselves are public in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`kernels/2.1/unix`, `kernels/2.1c/unix`, `usr/`, `floppies/2.1/`) ✅.
 
 **Why the version check matters for this matrix:** the `^2\.1` pattern is positive evidence that the
 *patched* system still reports a `2.1`-prefixed version string — consistent with "2.1c" being a 2.1

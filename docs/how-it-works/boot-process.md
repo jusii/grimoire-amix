@@ -424,6 +424,7 @@ For the full byte offsets, the equivalent root/patch-disk findings, and how to r
 - [Device list reference](../reference/device-list.md) — the SCSI `/dev` major/minor scheme behind `cN d0 sN`.
 
 ## Sources
+- **Stock sources, public** ✅ — the stock bootstrap in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/boot/boot1.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot1.c), [`usr/sys/amiga/boot/boot2.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot2.c), [`usr/sys/amiga/boot/bootinfo.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/bootinfo.h), [`usr/sys/amiga/boot/bootdata.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/bootdata.h).
 
 - The **boot node vs root** split (2026-10-03) ✅ — the stock `amiga/boot/boot1.c` (`main(iob, …)`, `readblocks(iob)` for the info block and `boot2`), `boot2.c` (every read through the same `iob`), `bootinfo.h` / `bootdata.h` (no boot-device field), read from a stock 2.1c source tree; the Z3660 sources (`scsi/scsi.c`: per-partition bootable flag and RDB priority, `-128` when not bootable; `z3660-drivers/scsi/bootrom.asm`: `MakeDosNode` + `AddBootNode` with that priority); and a first-party A4000T run with two bootable disks on the Z3660 boot ROM (first-party record, 2026-10-03).
 - The **`fssm_Device` NUL count** (2026-10-07) ✅ — disassembly of `expansion.library`

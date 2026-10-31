@@ -189,6 +189,7 @@ see [Adding Drivers to a Custom Boot Disk](adding-drivers-to-boot-disk.md).
 - [Building & installing a kernel](../drivers/kernel-build.md) — producing the kernel you compress.
 
 ## Sources
+- **Stock sources, public** ✅ — the Commodore boot source in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/boot/infoblock.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/infoblock.h), [`usr/sys/amiga/boot/makeiblk.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/makeiblk.c), [`usr/sys/amiga/boot/chksum.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/chksum.c), [`usr/sys/amiga/boot/boot1.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot1.c), [`usr/sys/amiga/boot/boot2.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/boot2.c), [`usr/sys/amiga/boot/decompress.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/boot/decompress.c).
 - Primary analysis of `amix_21_boot.adf` (2026-06): `tools/inspect-adf.sh`, entropy mapping, `gzip`/`zcat`
   LZW decompression, capstone M68K disassembly; round-trip via `tools/extract-kernel.sh` +
   `tools/build-bootfloppy.sh`. Recorded in the research brief §3, §10, §13 — [`../../sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md).
