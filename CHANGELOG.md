@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — stock sources linked in amigaux/amix-system (c2308b2)
+
+Stock sources linked in the now-public amigaux/amix-system (pinned to 7cba961): aen, the bootstrap, the SCSI layer, the
+console, the RAM disk, support.c and kernel.c, from the 10 pages that cite them. The bibliography, versions and
+toolchain pages no longer call the repository planned or not created.
+
 ## 2026-10-31 — networking: raw DLPI on aen0 for a DHCP client; quirk 95 (4c3cf20)
 
 Raw DLPI on aen0 for a DHCP client (Style 1, silent DL_ATTACH_REQ, reused slots open bound with stale frames, +14-byte
