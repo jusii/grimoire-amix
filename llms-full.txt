@@ -2974,6 +2974,31 @@ Installing a package is a **database edit plus a file copy**. On `pkgadd`:
 
 `pkgrm` reverses this: it parses `contents`, removes the package's objects, and rewrites the DB — which is why a **`contents` file it cannot parse stops removal dead** ([F7](#the-space-in-a-pathname-defect)). ✅
 
+## ⚠ A `BASEDIR` line in `pkginfo` stops the stock `pkgadd` ✅ {#basedir-stops-stock-pkgadd}
+
+The stock `/usr/sbin/pkgadd` will not install a package whose `pkginfo` carries a `BASEDIR` line,
+even when nothing in the package is relocatable ✅. `pkgadd -n -a <admin> -d <pkg> <PKG>` prints
+"Installation of this package requires a base directory." and then "Installation of <PKG> was
+suspended (interaction required). No changes were made to the system.", with exit status 5. The
+test packages differed by one line. With `BASEDIR=/` or `BASEDIR=/usr` they failed, and without the
+line the same package installed (exit 0). Every object path in them was absolute (emulated 2.1c,
+stock userland, 2026-10-31).
+
+- **The admin file does not change it** ✅. Admin files with `basedir=default`, with `basedir=/`,
+  with no `basedir=` line, and with `instance=unique` (every check otherwise `nocheck`) all failed
+  the same way under `-n`. Answering the question interactively (without `-n`) was not tried 🔴.
+- **`i copyright` and a long `DESC` are not the cause** ✅. A package with an `i copyright` entry and no
+  `BASEDIR` installs. A real package's `pkginfo` (a long `DESC`, `VENDOR`, `PSTAMP` and extra
+  fields) installs once its `BASEDIR=/` line is removed, and fails with it, with or without
+  `i copyright`.
+- **The project's engine installs both forms** ✅. APKGENG's `/usr/apkg/bin/pkgadd` installed a
+  `BASEDIR=/` package on the same system (exit 0). On a Linux host the heirloom `pkgadd -R` installs
+  the test packages with and without `BASEDIR` to the same files and the same `contents` lines.
+
+**Practical rule:** a package that must install with the stock `pkgadd`, on a box without APKGENG,
+carries no `BASEDIR`. With only absolute object paths it needs none. The amix catalog generator
+(`gen-catalog.py`) warns about a package that has one. Seen in emulation only; not yet on hardware.
+
 ## Stock packages are pure payloads ✅
 
 Every package installed on the stock image is a **plain file payload** — no logic:
@@ -3049,6 +3074,7 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 - [amigaunix.com — more_software](https://www.amigaunix.com/doku.php/more_software) and **AmixBP** (`amixbp.sourceforge.net`) — the community `.pkg` collection and distribution practice (🟡).
 
 ## Sources
+- The **`BASEDIR` refusal** (first-party record, 2026-10-31) ✅ — the pkgtools station's runs of the stock `/usr/sbin/pkgadd` on an emulated 2.1c system, with test packages that differ by one `pkginfo` line and with four admin-file variants; APKGENG's `pkgadd` on the same system, and the heirloom `pkgadd -R` on the host. Written up in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/pkgtools/docs/stock-pkg-system.md` §5, with the `gen-catalog.py` warning (`494d477`, on `master`).
 - The **`pkg*` man pages** (first-party record, 2026-10-30) ✅ — the packages station's probe on the emulated stock 2.1c 68030: `ls /usr/catman/1m/pkg*` (`pkgadd`, `pkgask`, `pkgchk`, `pkgrm`), `man pkgadd` displaying `pkgadd(1M)`, and `No manual entry for contents` in section 4.
 
 - amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): the pkgadd -R altroot SIGSEGV root cause (adb on the in-altroot core; nhash HASH), engine rebuilt + re-verified 4/4 on the bench box 2026-07-20/21.

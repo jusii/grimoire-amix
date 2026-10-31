@@ -539,3 +539,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   (heap pc, vector `0x4`) but not confirmed as it 🟡 — the booted kernel has no symbol table, so its
   backtrace cannot be resolved; it came after the smoke test's no-socket check, exact step not logged.
   Source: amix-packages `recipes/prngd` README `7349c19`, `3208937`.
+- 2026-10-31 — the stock `pkgadd` refuses a `pkginfo` with `BASEDIR` ✅: "requires a base directory …
+  suspended (interaction required)", exit 5, with `/` or `/usr`, all object paths absolute; four admin
+  variants fail alike under `-n` ✅ (interactive untried 🔴); `i copyright` and a long `DESC` are not the
+  cause ✅; APKGENG's `pkgadd` and the host heirloom `pkgadd -R` install both forms ✅. Source: amix
+  `userland/pkgtools` `494d477` (`docs/stock-pkg-system.md` §5, `gen-catalog.py` warning).
