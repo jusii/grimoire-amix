@@ -2,6 +2,11 @@
 
 Started 2026-09-26.
 
+## 2026-10-31 — Public text cleanup (1709d0c)
+
+Sources name the amix directory or project behind a measurement; the licensing and publishing text states outcomes
+without attribution; local tool files leave .gitignore. No fact or confidence tag changed.
+
 ## 2026-10-31 — aen DLPI: a short DL_UNITDATA_REQ fails with ERANGE (fe88b0b)
 
 Raw DLPI on the stock A2065 `aen` driver: a `DL_UNITDATA_REQ` whose data part is under 60 bytes fails at the stream
