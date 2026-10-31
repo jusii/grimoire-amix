@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — aen DLPI: a short DL_UNITDATA_REQ fails with ERANGE (fe88b0b)
+
+Raw DLPI on the stock A2065 `aen` driver: a `DL_UNITDATA_REQ` whose data part is under 60 bytes fails at the stream
+head with `ERANGE`, because the driver's `module_info` minimum (`AEN_MIN`, 64 − CRC) counts the 14-byte header. Pad
+ARP and other short frames to 60 bytes (✅). Added to networking, writing a STREAMS driver, and quirk 95.
+
 ## 2026-10-31 — stock userland: grep \|, pkgadd's ? minor, unlisted classes (ac4eeea)
 
 `grep -v 'a\|b'` passes every line, so such a filter changes nothing (✅, commands cheatsheet). Stock `pkgadd` records a
