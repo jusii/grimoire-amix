@@ -1,6 +1,6 @@
 ---
 title: "Package Management: the stock SVR4 pkg system on Amix"
-summary: How Amix's stock SVR4 packaging works on disk — the /var/sadm contents database, the contents(4) record grammar, directory vs datastream media, how pkgadd mutates the DB, and a space-in-a-pathname defect that breaks pkgrm and pkginfo on the shipped image.
+summary: How Amix's stock SVR4 packaging works on disk — the /var/sadm contents database, the contents(4) record grammar, directory vs datastream media, how pkgadd mutates the DB, and a space-in-a-pathname defect that breaks pkgrm and pkginfo on the shipped image, the ? recorded for a minor of 0, and the silent skip of a class CLASSES does not list.
 status: draft
 ---
 
@@ -56,6 +56,16 @@ A bookkeeping comment near the top records the **last writer**: `# Last modified
 
 Because the format has **no quoting**, a pathname is assumed to contain no whitespace — an assumption the stock image violates, with consequences ([F7](#the-space-in-a-pathname-defect)).
 
+### A minor number of 0 is recorded as `?` ✅ {#minor-zero-recorded-as-question-mark}
+
+When the stock `pkgadd` installs a device node with minor 0, it makes the node correctly (`c 99,0`) but writes `?`
+in the minor field of its `contents` line: a `pkgmap` entry `c devtst /dev/devtst0 99 0 0600 root
+sys` becomes `/dev/devtst0 c devtst 99 ? 0600 root sys devtst`. Module packages show the same for
+every node with minor 0, while their nodes with minors 1 and 2 are recorded as `1` and `2`. The
+stock system's own `core` records carry `0`, not `?`: a fresh install from the amigaux 1.1 medium
+has no `?` in any `c` or `b` record. A tool that reads device records from `contents` must take
+`?` as 0 (the amix base boot step `devnodes` does).
+
 ## Package media: directory vs datastream ✅
 
 A package exists in one of two on-disk forms — the same two SVR4 defines:
@@ -102,6 +112,15 @@ Installing a package is a **database edit plus a file copy**. On `pkgadd`:
 5. The `# Last modified by …` marker is rewritten to `pkgadd`.
 
 `pkgrm` reverses this: it parses `contents`, removes the package's objects, and rewrites the DB — which is why a **`contents` file it cannot parse stops removal dead** ([F7](#the-space-in-a-pathname-defect)). ✅
+
+### An object whose class is not in `CLASSES` is skipped without a word ✅ {#unlisted-class-skipped}
+
+The stock `pkgadd` installs only the classes that `pkginfo`'s `CLASSES` line lists. A test package
+with `CLASSES=none` and one device object in class `devtst` printed "Installation of <PKG> was
+successful" (exit 0), yet neither the node nor its `contents` line was made. With
+`CLASSES=none devtst` the same object was made and recorded, and `pkgrm` removed both. So every
+class used in the `pkgmap` belongs in `CLASSES`; the amix packaging gate refuses a package that
+breaks this (`pkgmk` only warns).
 
 ## ⚠ A `BASEDIR` line in `pkginfo` stops the stock `pkgadd` ✅ {#basedir-stops-stock-pkgadd}
 
@@ -203,6 +222,8 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 - [amigaunix.com — more_software](https://www.amigaunix.com/doku.php/more_software) and **AmixBP** (`amixbp.sourceforge.net`) — the community `.pkg` collection and distribution practice (🟡).
 
 ## Sources
+
+- The **`?` minor and the unlisted-class skip** (first-party record, 2026-10-31) ✅ — the amix base station's runs of the stock `/usr/sbin/pkgadd -n` on the emulated 2.1c bench image (stock userland) with two test packages that differ only in `CLASSES`; the packages station's module packages for the same `?`; and a fresh amigaux 1.1 install for the `core` records. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/rc/devnodes`, which reads `?` as 0 (`d1cf84c`, on `master`), and the `build/pkg` class gate (`e9f43c6`, on `master`).
 - The **`BASEDIR` refusal** (first-party record, 2026-10-31) ✅ — the pkgtools station's runs of the stock `/usr/sbin/pkgadd` on an emulated 2.1c system, with test packages that differ by one `pkginfo` line and with four admin-file variants; APKGENG's `pkgadd` on the same system, and the heirloom `pkgadd -R` on the host. Written up in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/pkgtools/docs/stock-pkg-system.md` §5, with the `gen-catalog.py` warning (`494d477`, on `master`).
 - The **`pkg*` man pages** (first-party record, 2026-10-30) ✅ — the packages station's probe on the emulated stock 2.1c 68030: `ls /usr/catman/1m/pkg*` (`pkgadd`, `pkgask`, `pkgchk`, `pkgrm`), `man pkgadd` displaying `pkgadd(1M)`, and `No manual entry for contents` in section 4.
 

@@ -22,6 +22,9 @@ admin conventions apply. But a few SVR4-isms bite hard:
   exactly the wrong conclusion when you are, say, checking whether a de-instrumented kernel still
   carries a diagnostic. Use **one simple pattern per `grep`, or `egrep`**. (Root-caused on a real
   A4000 + Z3660 where `nm /stand/unix | grep 'a\|b'` returned empty for two symbols that both exist.)
+  The mirror case bites too: `grep -v 'a\|b'` passes **every** line, so a filter written that way
+  leaves its input unchanged ✅ (the pattern is one literal that no line contains). Use
+  `egrep -v 'a|b'`.
 
 Commands below assume you are `root` unless noted.
 
@@ -370,6 +373,7 @@ Measured on the stock 2.1c install (emulated 68030), 2026-10-30.
   `make bootpart KERNEL=relocunix`, `mknod /dev/va2000 c 68 0`, pre-POSIX `/bin/sh` note.
 - `isoriano1968/hydra-amix` repo — `slink addaen /dev/hya0 hya0`, native `make` / `make force`, `mknod /dev/hya0 c 47 0`, STREAMS `cdevsw` slot 47.
 - SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660 (first-party record, 2026-07-12) ✅.
+- `grep -v 'a\|b'` passing every line (first-party record, 2026-10-31) ✅ — the amix base station's DHCP-client soak on the emulated 2.1c bench image (stock userland): `grep -v` with a three-way `\|` pattern over a 239-line log printed all 239 lines, the lines it was meant to drop among them.
 - The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
 - The **amix-packagemanager** repo tooling (`tools/repo/publish.sh`, `gen-catalog.py`) — the HTTP package-repo `pkgs/`-segment URL layout, verified live 2026-07-22 ✅.

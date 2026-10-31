@@ -575,3 +575,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   candidate; 7 guarded emulated runs clean (A4000/060, 16 MB) ✅, but the freed-queue event never
   occurred (spin did not start) — the save on 040/060 untested 🔴; hardware 🔴. Source: port ISSUE-109,
   `k46-module` `17501b9`, `a1418bb`.
+- 2026-10-31 — stock userland on the emulated 2.1c bench image, amix base station: `grep -v 'a\|b'`
+  passes every line (239 of 239) ✅; stock `pkgadd` writes `?` for a minor of 0 in `contents` while
+  making the node at 0, and `core`'s own records carry `0` ✅; an object of a class `CLASSES` does not
+  list is skipped (no node, no `contents` line) while `pkgadd` reports success, exit 0 ✅. Source: amix
+  `userland/base` `d1cf84c` (`rc/devnodes`), `build/pkg` `e9f43c6`.
