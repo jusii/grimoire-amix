@@ -105,7 +105,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 90 | **`ftruncate` that shrinks a file past its 12 direct blocks to an unaligned EOF in the old last block can panic the kernel (`KERNEL FAULT`, bus error)**, on stock 2.1c and on the 040/060 line, when that block ends past the page holding the old EOF — e.g. 110017 → 110000 bytes on an 8 KiB-block ufs panics both. Cut at the block boundary below the new EOF, then write the tail back. The 040/060 port fixes it in `kzero` (verified in emulation and on a real 68060); the 68030 line has the same fix, verified in emulation | ✅ | [Quirks §90](#90-ftruncate-shrink-panics), [Toolchain](../drivers/toolchain.md#more-gaps-and-traps-from-the-2026-10-ports) |
 | 91 | **A shrink to an earlier block, then a sparse regrow, reads the old bytes back — from disk** — on stock 2.1c and both kernel lines, `F_FREESP` from N to an unaligned M in an earlier 8 KiB block (both past the direct blocks) returns cleanly, but after writing one byte at N−1 the file holds its old data in `[roundup(M, PAGESIZE), roundup(M, 8192))`, or in all of `[M, roundup(M, 8192))` if the file was not cached. No crash. Fixed on both lines in emulation. Write real zeros through the gap, or cut block-aligned | ✅ | [Quirks §91](#91-shrink-regrow-stale-data) |
 | 92 | **A failed STREAMS open can leave a freed queue on the run list, and stock 2.1c then panics in `queuerun`** — `qattach` undoes the failed open with `qdetach(q, 0)`, whose short path frees an already-enabled queue without taking it off `qhead`; the next `queuerun` calls `qi_srvp` through freed memory. Signature: `KERNEL FAULT`, vector `0x4` or `0xB`, pc in the kernel heap, backtrace `ureturn` → `queuerun`. Found with `prngd` exhausting a small swap's reservation. Fixed on the 68030 line in emulation | ✅ | [Quirks §92](#92-queuerun-panic) |
-| 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel. Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
+| 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel (on the bench image it is the retail 2.1 kernel ✅). Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
 | 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram. Attach only on Style 2, check the state, trust the IP length | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
 
@@ -956,9 +956,9 @@ from the console, not from the ring.
 `/dev/ksyms` ✅. They look up addresses by name in that file and read them through `/dev/kmem`, so if
 `/stand/unix` is not the kernel that is running — a relinked kernel booted from elsewhere, or a hard
 link left pointing at the stock kernel — they read the wrong addresses silently ✅. Keep `/stand/unix`
-the booted kernel's bound image. On the project's 2.1c bench image `/stand/unix` is an ELF
-relocatable (`ET_REL`, entry 0), a hard link to `/stand/2.1_unix` ✅, whose symbol values are offsets
-rather than load addresses ([§93](#93-netstat-rn-routehash)).
+the booted kernel's bound image. On the project's 2.1c bench image `/stand/unix` is the **retail
+2.1 kernel**, byte for byte, while the image boots a different 2.1c link ✅
+([§93](#93-netstat-rn-routehash)): every namelist reader there gets retail 2.1 symbols.
 
 ## Driver-authoring quirks
 
@@ -1560,19 +1560,24 @@ On the project's 2.1c **bench image**, `netstat -rn` prints `read error on route
 (four times over three boots). On the same box `netstat -in` exits 0 but prints only its header line,
 with no interface rows, while the box is being driven over `aen0` ✅. That image boots a 2.1c
 kernel with cdfs and the A3091/A4091 drivers linked in (its text is about 72 KB larger than the stock
-link), and its `/stand/unix` is a different file ✅ (a 1475108-byte relocatable, `sum -r` 55482,
-against a 1252347-byte executable for the booted kernel). `netstat` looks its symbols up in
+link). Its `/stand/unix` is **the retail 2.1 kernel** ✅ (read offline from the image file): one inode
+with `/stand/2.1_unix`, byte-identical to `kernels/2.1/unix` in
+[`amigaux/amix-system`](https://github.com/amigaux/amix-system) (1,475,108 bytes, sha256
+`97ae253a…`, [versions](../reference/versions.md)), and `/stand` holds no other kernel. The booted
+kernel is a different, larger link: its load image is 1,252,347 bytes, against 1,171,216 bytes for
+`/stand/unix` converted by `elf2brel`, and it carries no symbol table. `netstat` looks its symbols up in
 `/stand/unix` and reads them through `/dev/kmem` ([§80](#80-namelist-stand-unix)). If the two
 kernels' layouts differ, it reads the wrong addresses. More of that image's `netstat` is wrong ✅:
 `netstat -s` reports 0 IP packets received on a box being driven over the network, while `ifconfig
 aen0` and `ifconfig lo0` show both interfaces up with their addresses. Naming the namelist
 (`netstat -rn /stand/unix`, and with `/dev/kmem`) changes nothing ✅, as expected, since that is the
-default. The image's `/stand/unix` is an ELF relocatable (`ET_REL`, entry 0), hard-linked to
-`/stand/2.1_unix` ✅. Its symbol values are offsets, not the addresses the kernel was loaded at
+default. That file is an ELF relocatable (`ET_REL`, entry 0) ✅, so its symbol values are offsets,
+not the addresses the kernel was loaded at
 ([reverse engineering](../drivers/kernel-reverse-engineering.md#step-3-read-a-running-kernel-from-a-savestate)).
-So the namelist `netstat` reads is neither the booted kernel's nor bound to a load address. That is
-the leading explanation for all three failures 🟡; a run with the booted kernel's own bound symbols
-is the next test. Boxes whose `/stand/unix` is the booted kernel have run `-in` and `-rn`
+So on that image `netstat`, `ifconfig`, `crash` and any `/dev/kmem` lookup by name get retail 2.1
+symbols, neither the running kernel's nor bound to a load address ✅. That this is what breaks the
+three `netstat` views is the leading explanation 🟡; a run with the booted kernel's own bound
+symbols is the next test, and the image has none on disk. Boxes whose `/stand/unix` is the booted kernel have run `-in` and `-rn`
 ([§26](#26-three-diagnostic-tools-that-lie-or-do-not-work)).
 **Practical rule:** check that `/stand/unix` is the kernel that booted before trusting `netstat`,
 `ifconfig` or `crash`. A script that must know its routes should set them with `route add` and keep

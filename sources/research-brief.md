@@ -563,3 +563,9 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   stock kernels, the installed 2.1c `/usr` at 2.1p2a with the kernel and driver sources under
   `usr/sys`, the stock `/etc`, the three 2.1 floppies. Pages citing stock sources now link them there
   (`aen.c`, the boot sources, the SCSI, console and RAM-disk sources, `support.c`, `kernel.c`).
+- 2026-10-31 — quirk 93 ✅ (read offline from the bench image file, k30 kernel work): `/stand/unix` =
+  `/stand/2.1_unix` (one inode) is byte-identical to the retail 2.1 kernel (`amigaux/amix-system`
+  `kernels/2.1/unix`, 1,475,108 B, sha256 `97ae253a…`); `/stand` holds no other kernel; the booted
+  2.1c link's load image is 1,252,347 B (no symbol table) against 1,171,216 B for `/stand/unix` via
+  `elf2brel`. Namelist readers on that image get retail 2.1 symbols ✅; that this causes the `netstat`
+  failures stays 🟡.
