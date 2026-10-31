@@ -2,6 +2,12 @@
 
 Started 2026-09-26; entries are written after the owner's review.
 
+## 2026-10-31 — quirk 92 on the 040/060 line (edbd05a)
+
+The 68040/68060 kernel has the stock 2.1c STREAMS code and the same five freeq call sites (✅, byte compare), and the
+68030 guard, unchanged, is bound in its cut candidate. Seven guarded emulated runs were clean, but the freed queue never
+occurred in them, so the save on 040/060 is untested (🔴), as is hardware.
+
 ## 2026-10-31 — quirk 93: the bench image's /stand/unix is the retail 2.1 kernel (dfe92d7)
 
 The 2.1c bench image's /stand/unix (one inode with /stand/2.1_unix) is byte-identical to the retail 2.1 kernel in
