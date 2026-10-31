@@ -107,7 +107,7 @@ The Amix operating system, its install media (ADFs/HDFs/tapes), and Commodore's 
 **Commodore-Amiga material**. **Licensing status, 2026-09-23:** Mike Battilana, CEO of Amiga
 Corporation, approved this project on the Amiga side (in person at the Saku event on 2026-09-19,
 confirmed by email on 2026-09-23) — the Commodore Amiga binaries may be distributed — and the project
-owner rules that this lifts the restriction on releasing Amiga UNIX to the public. *History:* until
+takes this to lift the restriction on releasing Amiga UNIX to the public. *History:* until
 2026-09-23 this repo treated the material as abandonware, not licensed for redistribution. The media
 are still **not** included here — this is a text knowledge hub; the tooling operates on
 **user-supplied** images, and we only cite and analyze them. Download them yourself from

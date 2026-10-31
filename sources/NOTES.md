@@ -21,15 +21,15 @@ manuals are **Commodore-Amiga material**, mirrored at amigaunix.com and the Inte
 
 **Licensing status (2026-09-23).** Mike Battilana, CEO of Amiga Corporation, approved this project on
 the Amiga side — in person at the Saku event on 2026-09-19, confirmed by email on 2026-09-23: the
-Commodore Amiga binaries may be distributed. The project owner rules (2026-09-23) that this also lifts
-the restriction on releasing Amiga UNIX to the public. The trademark disclaimer that approval asked
+Commodore Amiga binaries may be distributed. The project takes this approval (2026-09-23) to lift
+the restriction on releasing Amiga UNIX to the public as well. The trademark disclaimer that approval asked
 for is published on amigaux.org. *History:* until 2026-09-23 this project treated the material as
 abandonware, not licensed for redistribution.
 
 This repo's own policy is unchanged by the outcome, because it is a text knowledge hub:
 
-- We do **not** redistribute these files in this repo (publication of media, if any, is a separate
-  per-action owner decision made elsewhere).
+- We do **not** redistribute these files in this repo (publication of media, if any, is decided
+  separately, release by release, outside this repo).
 - We **cite, link, and analyze** them, and quote short excerpts (string fingerprints, script
   snippets) for documentation and interoperability.
 - All tooling in `../tools/` operates on **user-supplied** images.

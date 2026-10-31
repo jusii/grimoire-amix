@@ -58,7 +58,7 @@ SHA-256 of all four: see `sources/CHECKSUMS.txt`. Inspect any ADF with `tools/in
 
 ### Minimums / hard limits
 - ✅ **68020 or 68030 with a real MMU** + **68881/68882 FPU** (both mandatory; no soft-float; 68000 and MMU-less 68EC020/030 cannot run Amix).
-- 🟡 **4 MB Fast RAM min; "16 MB Fast RAM MAX"** — no primary source was ever named for the ceiling or the "mis-mapped SCSI drive" failure, and no first-party observation exists; **retracted 2026-09-15**: 32/64 MB run on stock kernels, the owner reports the stock 030 line at ≥ 80 MB, and the 040/060 kernels run at 128 MB on real silicon (the real limit is describable RAM, see the RAM-ceiling page).
+- 🟡 **4 MB Fast RAM min; "16 MB Fast RAM MAX"** — no primary source was ever named for the ceiling or the "mis-mapped SCSI drive" failure, and no first-party observation exists; **retracted 2026-09-15**: 32/64 MB run on stock kernels, a first-party report puts the stock 030 line at ≥ 80 MB, and the 040/060 kernels run at 128 MB on real silicon (the real limit is describable RAM, see the RAM-ceiling page).
 - **Tape must be ID 4** ✅ — hard-coded literal `/dev/rmt/4h` in the install scripts. **Disk is ID 6 by convention** 🟡 — the installer *prompts* for the disk target and templates `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}` from `$SCSI` (only target 4 is reserved, for the tape), so Amix installs on other targets; but the chosen ID is baked into device names in `/etc/vfstab` + the boot partition, so it can't be changed post-install without editing those. (Verified against the installer's disk-selection loop + amigaunix.com — "preferably … ID 6" for the disk but "won't look anywhere else than SCSI4" for the tape; corrects an earlier "disk hard-coded in kernel" overclaim.)
 - ✅ **No 68040/68060 in stock Amix** (kernel predates 68040 MMU) → **A4000 cannot officially run stock Amix**. Since 2026-09-19 the public `asokero/amix-040-060-port` relinks the user's own stock kernel for 68040/68060/68LC060 (see the 68040-68060-status page, `docs/how-it-works/68040-68060-status.md`); ✅ metal-proven first-party: Amix 2.1c boots to `login:` on a real 68LC060 on a Z3660 in an A4000T, 060-direct, 2026-09-25, card preset 6 (Z3660 fork `docs/investigations/a4000t-bench-2026-09.md`).
 - ✅ **Stock drivers are Zorro II only** — Zorro III space lies outside the kernel's identity-mapped low 1 GB, so a stock driver that dereferences the `autocon()` address reaches only Zorro II boards; a driver that maps the board with `sptalloc()` reaches Zorro III (A4091 project; see the zorro-autoconfig correction). *Corrected:* this line used to read "No Zorro III — memory-mapping layer can't address Zorro III space; source not shipped, can't be community-fixed".
@@ -446,7 +446,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
 - **Repositories** → `docs/reference/bibliography.md`, `docs/reference/versions.md`: the `amigaux`
   organisation, `amigaux/amix` (work in progress), `amigaux/amix-040-060-port` ✅ (GitHub API,
   2026-10-29); amigaux 1.1 ≠ Commodore Amix 1.1 ✅.
-- **RAM per CPU line (owner correction, 2026-10-29)**: the ≈128 MB describable-RAM limit belongs to the
+- **RAM per CPU line (correction, 2026-10-29)**: the ≈128 MB describable-RAM limit belongs to the
   4 KiB-page 040/060 kernel line, not to the 68060 — the 68040 and 68060 MMUs have no 2 KiB page, so
   the kernel uses 4 KiB pages on both (port `k46-module` @ `587c18a`: `NBPP == 4096` asserted) ✅;
   measured at 128 MB on a 68060 ✅, the 68040 not yet measured 🟡; the stock 68030 kernel (2 KiB pages)
@@ -511,15 +511,15 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   directory (default `/usr/share/man`), `CATPATH` default `/usr/catman`; lookup through `whatis`;
   SVR4 base pages formatted only, Amiga sections as compressed `nroff` source formatted on first view
   by `/usr/ucb/nroff` ✅ (corrects "pre-formatted only, cannot reformat"); `man1/` layout not found;
-  `MANPATH` without `CATPATH` writes into, and shadows, the stock cat tree ✅. Source: the packages
-  station's probe runs on the emulated stock 2.1c 68030.
+  `MANPATH` without `CATPATH` writes into, and shadows, the stock cat tree ✅. Source: the amix-packages
+  project's probe runs on the emulated stock 2.1c 68030.
   Follow-up: `pkgadd`/`pkgask`/`pkgchk`/`pkgrm` pages in `/usr/catman/1m`, no `pkginfo`/`pkgmk`/
   `pkgtrans`/`pkgproto` page, no `contents(4)` ✅ (corrects "no `pkg*` man pages" in
   `package-management.md` and the cheat sheet); `/usr/ucb/eqn` and `neqn` present ✅.
 - **`netstat -rn` on stock 2.1c (2026-10-30)** → `networking.md`, `quirks.md` §93, the cheat sheet:
   `read error on routehash`, exit 1, four runs over three boots of the stock image; `netstat -in`
   header only, exit 0 ✅; the booted kernel equal to `/stand/unix` (wrong, corrected 2026-10-31: it is not); cause 🔴 (namelist lead,
-  untested). Source: the amix base station's emulator runs.
+  untested). Source: the amix `userland/base` emulator runs.
 - **Quirk 92's cause and the bench image's kernel (2026-10-31)** → `quirks.md` §92, §93,
   `networking.md`: a failed STREAMS open is undone by `qdetach(q, 0)`, whose short path frees an
   enabled queue left on `qhead`; `queuerun` then calls `qi_srvp` through freed memory ✅ (stock
@@ -550,7 +550,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   🟡 (namelist neither the booted kernel's nor bound); the booted kernel's own symbols are the next test.
   New quirk 94 ✅: 2.1 `/bin/sh` `wait` loses a finished child's status; two long-lived `>>` writers
   collide (no `O_APPEND` 🟡); a shell waiting on a foreground child outlives `SIGTERM`; `sh -c` sets
-  `$0` from the first operand. Source: the amix base station's runs; `userland/base/rc/rc.subr` `8ee48af`.
+  `$0` from the first operand. Source: the amix `userland/base` runs; `userland/base/rc/rc.subr` `8ee48af`.
 - 2026-10-30 — raw DLPI on `aen0` (2.1c bench image, emulated A2065) ✅: Style 1, fresh stream unbound
   with no address; `DL_ATTACH_REQ` and unknown primitives get no reply (stock `aenproto` agrees); the
   MAC in `DL_BIND_ACK`; a second SAP-0x0800 stream gets a copy of every IP frame; a reused slot opens
@@ -575,12 +575,12 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   candidate; 7 guarded emulated runs clean (A4000/060, 16 MB) ✅, but the freed-queue event never
   occurred (spin did not start) — the save on 040/060 untested 🔴; hardware 🔴. Source: port ISSUE-109,
   `k46-module` `17501b9`, `a1418bb`.
-- 2026-10-31 — stock userland on the emulated 2.1c bench image, amix base station: `grep -v 'a\|b'`
+- 2026-10-31 — stock userland on the emulated 2.1c bench image, amix `userland/base`: `grep -v 'a\|b'`
   passes every line (239 of 239) ✅; stock `pkgadd` writes `?` for a minor of 0 in `contents` while
   making the node at 0, and `core`'s own records carry `0` ✅; an object of a class `CLASSES` does not
   list is skipped (no node, no `contents` line) while `pkgadd` reports success, exit 0 ✅. Source: amix
   `userland/base` `d1cf84c` (`rc/devnodes`), `build/pkg` `e9f43c6`.
-- 2026-10-31 — stock `aen` raw DLPI, amix base station, emulated 2.1c bench image (stock userland):
+- 2026-10-31 — stock `aen` raw DLPI, amix `userland/base`, emulated 2.1c bench image (stock userland):
   a `DL_UNITDATA_REQ` with a data part under 60 bytes fails at the stream head with `ERANGE` (errno
   34 at 28 and 46 bytes; sent at 60) ✅. Stock `aen.h` `AEN_MIN` = 64 − CRC = 60 is `aen_minfo`'s
   minimum and counts the 14-byte header; the transmit path lengthens short frames itself (source).

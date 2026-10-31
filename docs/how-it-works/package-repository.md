@@ -1,6 +1,6 @@
 ---
 title: The Amix Package Repository Format
-summary: How the Amix package repository is laid out, served and consumed — the canonical public host pkg.amigaux.org, the static tree, the pipe-delimited catalog v1 grammar and names.conf, the md5 integrity model, the apkg client's three sources (HTTP / mounted medium / raw slice), and the publish gates (the owner's hand, the payload-licence gate, the kernel-package gate) plus the catalog-regenerate trap.
+summary: How the Amix package repository is laid out, served and consumed — the canonical public host pkg.amigaux.org, the static tree, the pipe-delimited catalog v1 grammar and names.conf, the md5 integrity model, the apkg client's three sources (HTTP / mounted medium / raw slice), and the publish gates (the manual publish, the payload-licence gate, the kernel-package gate) plus the catalog-regenerate trap.
 status: draft
 ---
 
@@ -20,7 +20,7 @@ building packages in the first place, see [toolchain and packaging](../drivers/t
 
 > **Licensing note (updated 2026-09-23).** The format is open. The Amix distribution packages are
 > Commodore material; since 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's
-> approval, the project owner's ruling — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)), so repackaged
+> approval — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)), so repackaged
 > stock packages may be served publicly. The publish tooling still enforces its own refusals
 > (below); everything else is on the operator.
 
@@ -250,12 +250,12 @@ must lean on the planned catalog signature for authenticity rather than on the t
 
 ## Publishing
 
-Publishing is `rsync` plus verification, in a deliberate order, behind two gates: the **owner's own
-hand** and the **licence gates** ✅.
+Publishing is `rsync` plus verification, in a deliberate order, behind two gates: a **manual,
+per-change publish** and the **licence gates** ✅.
 
-### Gate 1: every publish is the owner's decision, run by the owner ✅
+### Gate 1: every publish is a manual, per-change action ✅
 
-Publishing to `pkg.amigaux.org` is a manual, per-change owner action; no automation uploads.
+Publishing to `pkg.amigaux.org` is run by hand for each change; no automation uploads.
 
 ### The publish sequence ✅
 
@@ -319,7 +319,7 @@ public repository may not ship, and what stock Amix object code does it embed?* 
 packages?* It refuses, unconditionally, to push **kernel packages** ✅. Those packages carry
 a whole `/stand/unix` plus the second-stage boot loader — our own kernel mints — and the gate's
 contract is that those never reach the public catalog. It predates, and is independent of, the
-2026-09-23 licensing outcome: publishing a kernel is a separate owner decision, not something a
+2026-09-23 licensing outcome: publishing a kernel is a separate, deliberate decision, not something a
 publish run may do by accident.
 
 Two details make the gate trustworthy rather than decorative:
@@ -365,7 +365,7 @@ Two details make the gate trustworthy rather than decorative:
 - The amix-packagemanager **`NOTES.md`** — the format and publish authority ✅: the `pkg.amigaux.org`
   move and its client contract (plain HTTP on port 80, name-based vhost, the hosts-file path;
   2026-09-14); the payload-licence gate and why it exists (2026-09-16); the `names.conf` first use and
-  the catalog-regenerate trap (2026-09-16 publish log); owner-run publishing (2026-09-16); the
+  the catalog-regenerate trap (2026-09-16 publish log); manual publishing (2026-09-16); the
   39-entry live catalog, 27 stock + 12 own, and the stock packages' exposure posture (2026-09-26).
 - The 2026-09-23 licensing outcome — [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) ✅.
 - The **live catalog** `http://pkg.amigaux.org/catalog`, read 2026-10-14 ✅: 41 rows — `stock/` (27),

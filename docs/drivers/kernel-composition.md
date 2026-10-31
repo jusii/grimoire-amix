@@ -117,8 +117,8 @@ kernel image is Commodore-derived**, no matter whose drivers it carries ✅. *Hi
 "universal public install medium" was impossible on licensing grounds alone; the publishable artifact
 was the **recipe** (driver source, build instructions, configuration — the va2000/hydra/zz9000
 pattern), and each licensed Amix owner linked their own kernel. **Since 2026-09-23** that licensing
-bar is lifted — Amiga Corporation's approval and the project owner's ruling, see
-[`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) — so publishing a kernel or an install medium is now a per-release owner
+bar is lifted — Amiga Corporation's approval, see
+[`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) — so publishing a kernel or an install medium is now a per-release
 decision, not a licensing impossibility. The recipe-first pattern remains how the community
 driver repos publish.
 

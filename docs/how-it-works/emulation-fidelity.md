@@ -301,7 +301,7 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   mandatory `cycle_exact=false`.
 
 ## Sources
-- The **A2065 address rewrite** (first-party record, 2026-10-30) ✅ (same address on every emulated board 🟡) — the amix base station's DLPI probe saw `00:80:10:ff:ff:ff` in the guest while the test DHCP server saw the configured address ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md`, `8ee48af`); Amiberry's `a2065.cpp` (`mungepacket`) does the rewrite.
+- The **A2065 address rewrite** (first-party record, 2026-10-30) ✅ (same address on every emulated board 🟡) — the amix `userland/base` DLPI probe saw `00:80:10:ff:ff:ff` in the guest while the test DHCP server saw the configured address ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md`, `8ee48af`); Amiberry's `a2065.cpp` (`mungepacket`) does the rewrite.
 
 - The **relink-corruption measurement** under emulation (first-party record, 2026-07-20/21): a 20-round relink measurement; the mechanism and figures are on [building a kernel](../drivers/kernel-build.md#the-d245-boot-breaker-an-intermittent-ld-corruption).
 - The **Amiberry `MOVES` page-split report** 🟡 — third-party: [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) `docs/findings.md` ("Emulation (Amiberry)"), fixed upstream in [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) commit `845af02`; not reproduced here.

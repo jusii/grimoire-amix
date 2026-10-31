@@ -2666,10 +2666,10 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
 - [amigaunix.com networking notes](https://www.amigaunix.com/doku.php/networking) — end-user network setup (the community source for the DNS/resolver procedure).
 
 ## Sources
-- The **short `DL_UNITDATA_REQ` refusal** (first-party record, 2026-10-31) ✅ — the amix base station's ARP check in its DHCP client on the emulated 2.1c bench image (stock userland): a SAP `0x0806` stream on `/dev/aen0`, `putmsg` errno 34 with a 28-byte and a 46-byte data part, sent with 60. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/dhcpc/dhcpc.c` `arpcheck` (`88954e7`, on `master`). The minimum is `AEN_MIN` in the stock `aen.h`, used by `aen_minfo` in `aen.c` ([`amigaux/amix-system`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h)).
+- The **short `DL_UNITDATA_REQ` refusal** (first-party record, 2026-10-31) ✅ — the amix `userland/base` ARP check in its DHCP client on the emulated 2.1c bench image (stock userland): a SAP `0x0806` stream on `/dev/aen0`, `putmsg` errno 34 with a 28-byte and a 46-byte data part, sent with 60. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/dhcpc/dhcpc.c` `arpcheck` (`88954e7`, on `master`). The minimum is `AEN_MIN` in the stock `aen.h`, used by `aen_minfo` in `aen.c` ([`amigaux/amix-system`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h)).
 - **Stock sources, public** ✅ — the stock A2065 driver in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/driver/aen/aen.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.c).
-- The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
-- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix base station's runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30). The follow-up runs (first-party record, 2026-10-30) ✅: `netstat -rn /stand/unix` and `netstat -rn /stand/unix /dev/kmem` fail alike, `netstat -in` in both forms prints its header only, `netstat -s` counts 0 IP packets received while `ifconfig aen0`/`lo0` show both up, and `od -x` and `ls -li` show `/stand/unix` as an `ET_REL` hard link to `/stand/2.1_unix`; a run with the booted kernel's own symbols is still to come. The image-file read (first-party record, 2026-10-31) ✅: the k30 kernel work's offline read of the bench image: `/stand/unix` and `/stand/2.1_unix` one inode, byte-identical to [`amigaux/amix-system`](https://github.com/amigaux/amix-system) `kernels/2.1/unix` (sha256 `97ae253a…`), no other kernel in `/stand`; the booted load image 1,252,347 bytes against 1,171,216 for `/stand/unix` through `elf2brel`.
+- The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix `userland/base` DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
+- The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — the amix `userland/base` runs on the emulated 2.1c bench image (A3000) over three boots: `netstat -rn` → `read error on routehash`, exit 1; `netstat -in` header only, exit 0; `/stand/unix` 1475108 bytes and no `/unix`. The booted kernel is not `/stand/unix` (the k30 kernel work's comparison, 2026-10-30). The follow-up runs (first-party record, 2026-10-30) ✅: `netstat -rn /stand/unix` and `netstat -rn /stand/unix /dev/kmem` fail alike, `netstat -in` in both forms prints its header only, `netstat -s` counts 0 IP packets received while `ifconfig aen0`/`lo0` show both up, and `od -x` and `ls -li` show `/stand/unix` as an `ET_REL` hard link to `/stand/2.1_unix`; a run with the booted kernel's own symbols is still to come. The image-file read (first-party record, 2026-10-31) ✅: the k30 kernel work's offline read of the bench image: `/stand/unix` and `/stand/2.1_unix` one inode, byte-identical to [`amigaux/amix-system`](https://github.com/amigaux/amix-system) `kernels/2.1/unix` (sha256 `97ae253a…`), no other kernel in `/stand`; the booted load image 1,252,347 bytes against 1,171,216 for `/stand/unix` through `elf2brel`.
 - The **`AF_UNIX` socket path** (first-party record, 2026-10-30) ✅ — the amix-packages `prngd` 0.9.29 port's GCC 14 test program on the emulated 2.1c bench image (mode `010000` after `bind()`, `connect()` at three lengths, `ENOTSOCK` after `chmod`) and its rerun (mode 000 under umask 000, 022 and 077; a client dropped to uid 2 with `setgid`/`setuid` connects and reads); its patch 02 in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`).
 
 - The **dotted-quad `gethostbyname()`** ✅ — first-party record, 2026-10-30: the amix-packages rsync
@@ -3150,9 +3150,9 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 
 ## Sources
 
-- The **`?` minor and the unlisted-class skip** (first-party record, 2026-10-31) ✅ — the amix base station's runs of the stock `/usr/sbin/pkgadd -n` on the emulated 2.1c bench image (stock userland) with two test packages that differ only in `CLASSES`; the packages station's module packages for the same `?`; and a fresh amigaux 1.1 install for the `core` records. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/rc/devnodes`, which reads `?` as 0 (`d1cf84c`, on `master`), and the `build/pkg` class gate (`e9f43c6`, on `master`).
-- The **`BASEDIR` refusal** (first-party record, 2026-10-31) ✅ — the pkgtools station's runs of the stock `/usr/sbin/pkgadd` on an emulated 2.1c system, with test packages that differ by one `pkginfo` line and with four admin-file variants; APKGENG's `pkgadd` on the same system, and the heirloom `pkgadd -R` on the host. Written up in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/pkgtools/docs/stock-pkg-system.md` §5, with the `gen-catalog.py` warning (`494d477`, on `master`).
-- The **`pkg*` man pages** (first-party record, 2026-10-30) ✅ — the packages station's probe on the emulated stock 2.1c 68030: `ls /usr/catman/1m/pkg*` (`pkgadd`, `pkgask`, `pkgchk`, `pkgrm`), `man pkgadd` displaying `pkgadd(1M)`, and `No manual entry for contents` in section 4.
+- The **`?` minor and the unlisted-class skip** (first-party record, 2026-10-31) ✅ — the amix `userland/base` runs of the stock `/usr/sbin/pkgadd -n` on the emulated 2.1c bench image (stock userland) with two test packages that differ only in `CLASSES`; the amix-packages module packages for the same `?`; and a fresh amigaux 1.1 install for the `core` records. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/rc/devnodes`, which reads `?` as 0 (`d1cf84c`, on `master`), and the `build/pkg` class gate (`e9f43c6`, on `master`).
+- The **`BASEDIR` refusal** (first-party record, 2026-10-31) ✅ — the amix `userland/pkgtools` runs of the stock `/usr/sbin/pkgadd` on an emulated 2.1c system, with test packages that differ by one `pkginfo` line and with four admin-file variants; APKGENG's `pkgadd` on the same system, and the heirloom `pkgadd -R` on the host. Written up in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/pkgtools/docs/stock-pkg-system.md` §5, with the `gen-catalog.py` warning (`494d477`, on `master`).
+- The **`pkg*` man pages** (first-party record, 2026-10-30) ✅ — the amix-packages project's probe on the emulated stock 2.1c 68030: `ls /usr/catman/1m/pkg*` (`pkgadd`, `pkgask`, `pkgchk`, `pkgrm`), `man pkgadd` displaying `pkgadd(1M)`, and `No manual entry for contents` in section 4.
 
 - amix-kerntools brief `tdivs-cross-assembler-miscompile` (2026-07-21): the pkgadd -R altroot SIGSEGV root cause (adb on the in-altroot core; nhash HASH), engine rebuilt + re-verified 4/4 on the bench box 2026-07-20/21.
 - **Firsthand, reproduced live** (✅): a clean **Amix 2.1c** image (`UNIX_System_V … 4.0 2.1c 0800430 … m68k`) under WinUAE, driven over telnet/ftp, 2026-07-01 (the **amix-packagemanager** project; command transcripts retained there). Specifically: `ls -l /usr/{bin,sbin}/pkg*` + the `No such file or directory` for `pkgask`/`removef`/`amixpkg` (F1); `ls -laR /var/sadm`, `/var/sadm/install/admin/default`, `pkginfo -x`, `/var/sadm/pkg/*/pkginfo` (F2); `head`/`grep` of `/var/sadm/install/contents` (F3); an on-box throwaway package built with `pkgmk`/`pkgtrans` and its `pkgmap` + `.pkg` header dissected with `od -c` (F4); a before/after `diff` of `contents` across a controlled `pkgadd` (F5); `find /var/sadm/pkg -type f` showing only `pkginfo` + `*.mi` (F6); the `pkgrm`/`pkginfo -l` abort, the offending `contents` record, and its removal-and-retry (F7); the `# Last modified by amixpkg …` marker with `amixpkg` absent from the filesystem (F8).
@@ -3171,7 +3171,7 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 
 ---
 title: The Amix Package Repository Format
-summary: How the Amix package repository is laid out, served and consumed — the canonical public host pkg.amigaux.org, the static tree, the pipe-delimited catalog v1 grammar and names.conf, the md5 integrity model, the apkg client's three sources (HTTP / mounted medium / raw slice), and the publish gates (the owner's hand, the payload-licence gate, the kernel-package gate) plus the catalog-regenerate trap.
+summary: How the Amix package repository is laid out, served and consumed — the canonical public host pkg.amigaux.org, the static tree, the pipe-delimited catalog v1 grammar and names.conf, the md5 integrity model, the apkg client's three sources (HTTP / mounted medium / raw slice), and the publish gates (the manual publish, the payload-licence gate, the kernel-package gate) plus the catalog-regenerate trap.
 status: draft
 ---
 
@@ -3191,7 +3191,7 @@ building packages in the first place, see [toolchain and packaging](../drivers/t
 
 > **Licensing note (updated 2026-09-23).** The format is open. The Amix distribution packages are
 > Commodore material; since 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's
-> approval, the project owner's ruling — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)), so repackaged
+> approval — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)), so repackaged
 > stock packages may be served publicly. The publish tooling still enforces its own refusals
 > (below); everything else is on the operator.
 
@@ -3421,12 +3421,12 @@ must lean on the planned catalog signature for authenticity rather than on the t
 
 ## Publishing
 
-Publishing is `rsync` plus verification, in a deliberate order, behind two gates: the **owner's own
-hand** and the **licence gates** ✅.
+Publishing is `rsync` plus verification, in a deliberate order, behind two gates: a **manual,
+per-change publish** and the **licence gates** ✅.
 
-### Gate 1: every publish is the owner's decision, run by the owner ✅
+### Gate 1: every publish is a manual, per-change action ✅
 
-Publishing to `pkg.amigaux.org` is a manual, per-change owner action; no automation uploads.
+Publishing to `pkg.amigaux.org` is run by hand for each change; no automation uploads.
 
 ### The publish sequence ✅
 
@@ -3490,7 +3490,7 @@ public repository may not ship, and what stock Amix object code does it embed?* 
 packages?* It refuses, unconditionally, to push **kernel packages** ✅. Those packages carry
 a whole `/stand/unix` plus the second-stage boot loader — our own kernel mints — and the gate's
 contract is that those never reach the public catalog. It predates, and is independent of, the
-2026-09-23 licensing outcome: publishing a kernel is a separate owner decision, not something a
+2026-09-23 licensing outcome: publishing a kernel is a separate, deliberate decision, not something a
 publish run may do by accident.
 
 Two details make the gate trustworthy rather than decorative:
@@ -3536,7 +3536,7 @@ Two details make the gate trustworthy rather than decorative:
 - The amix-packagemanager **`NOTES.md`** — the format and publish authority ✅: the `pkg.amigaux.org`
   move and its client contract (plain HTTP on port 80, name-based vhost, the hosts-file path;
   2026-09-14); the payload-licence gate and why it exists (2026-09-16); the `names.conf` first use and
-  the catalog-regenerate trap (2026-09-16 publish log); owner-run publishing (2026-09-16); the
+  the catalog-regenerate trap (2026-09-16 publish log); manual publishing (2026-09-16); the
   39-entry live catalog, 27 stock + 12 own, and the stock packages' exposure posture (2026-09-26).
 - The 2026-09-23 licensing outcome — [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) ✅.
 - The **live catalog** `http://pkg.amigaux.org/catalog`, read 2026-10-14 ✅: 41 rows — `stock/` (27),
@@ -5283,7 +5283,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
   (first-party record); detail and citations on [networking](networking.md#sources).
 - The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — quirk 93: see the matching Sources entry on [the networking page](networking.md#static-ip-configuration-no-dhcp). The bench image's kernel (first-party record, 2026-10-30) ✅: the k30 kernel work's comparison of the booted kernel with the image's `/stand/unix` (size, `sum -r`, cdfs and A3091 strings, text size against the stock link).
-- The **2.1 `/bin/sh` background-job facts** (first-party record, 2026-10-30) ✅ (the `O_APPEND` mechanism 🟡) — quirk 94: the amix base station's shell tests on the emulated 2.1c bench image's stock userland (`wait` on a finished and a running child, at top level, in a subshell and in a function; two background jobs appending to one log; `TERM` then `KILL` of a shell job and of `sleep`; `sh -c` operands). The base package's `rc_bg` is built around them and its comments record them ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/rc/rc.subr`, `8ee48af`).
+- The **2.1 `/bin/sh` background-job facts** (first-party record, 2026-10-30) ✅ (the `O_APPEND` mechanism 🟡) — quirk 94: the amix `userland/base` shell tests on the emulated 2.1c bench image's stock userland (`wait` on a finished and a running child, at top level, in a subshell and in a function; two background jobs appending to one log; `TERM` then `KILL` of a shell job and of `sleep`; `sh -c` operands). The base package's `rc_bg` is built around them and its comments record them ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/rc/rc.subr`, `8ee48af`).
 - The **`queuerun` panic** (first-party record, 2026-10-30) ✅ — quirk 92: the amix-packages `prngd` 0.9.29 port's runs on the emulated 2.1c bench image (three panics captured on the console with their backtraces, symbolised by the k30 kernel work; the survived loads and the two `prngd`-free reproducers); the recipe in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`). The cause (first-party record, 2026-10-30) ✅: the k30 kernel work's disassembly of the stock `qattach`, `qdetach`, `freeq` and `strclose`; its runs of the stock 2.1c link on an emulated A3000 (16 MB bank) with `freeq` instrumentation (two catches, one panic with observation only), the `bufcall`/callout counts, and the `anoninfo` reservation figures; the fix [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/k30` `f4aef26` (`src/freeqguard030.c`, `tools/freeqguard-retarget.py`, on `master`). The package-test runs on three kernels (first-party record, 2026-10-31) 🟡: the amix-packages `prngd` port's smoke test and loads on the emulated bench image, a 2.1c kernel with only the guard, and the project's 68030 test kernel, one boot each; results in the recipe's README ([amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd`, `fd96cc7`; the bench-image panic left unconfirmed as quirk 92 in `7349c19`, the guard-only row's empty reads in `3208937`). The 040/060 line (first-party record, 2026-10-31) ✅/🟡: the port's `ISSUE-109` in `KNOWN-ISSUES.md` ([`amigaux/amix-040-060-port`](https://github.com/amigaux/amix-040-060-port) `k46-module`: the guard and its binding at `17501b9`, the write-up at `a1418bb`) — the byte comparison against the stock 2.1c link, seven guarded runs and four controls in emulation.
 - The **wider SIGSYS set on an FPU-less 68030** (first-party record, 2026-10-30) 🟡 — quirk 31: the k30 kernel work's runs on an Amiberry 68030 with MMU and `fpu_model=0` under the signal-gated 68030 kernel: stock `mkfs -F ufs` and the gcc14-built GNU `cp` and `gtar` exit 140 with `Bad System Call`; `dd`, `cmp`, `sh`, `sleep` and stock `cp` run.
 - The **no-FPU signal panic** (2026-10-14) ✅ — quirk 74: the console capture from a real A1200 with an FPU-less 68030 card (Kickstart 3.1) and its reproduction in Amiberry with `fpu_model=0` (first-party record, 2026-10-14); the stock `stand/unix` symbol `frestore @ 0x0000012a` in [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) `docs/68040-68060-support-analysis.md` §2.4; the eleven FP-state call sites, ten gated in stock and `sendsig+0x1f8` → `fpu_setup` the one ungated, in the same repository's `docs/060-F1-M2-GATE-CENSUS-260824.md` §3; `src/fpu060.s` (every FP-state body issues FSAVE or FRESTORE, an F-line exception in supervisor mode on a part with no FPU) and `src/fpuinit060.s` (`fpu_setup_gated`, the 68060 gate at the `sendsig` site).
@@ -5817,7 +5817,7 @@ The lesson that "on an emulated 68k, *the machine hung* ≠ *your driver hung*" 
   mandatory `cycle_exact=false`.
 
 ## Sources
-- The **A2065 address rewrite** (first-party record, 2026-10-30) ✅ (same address on every emulated board 🟡) — the amix base station's DLPI probe saw `00:80:10:ff:ff:ff` in the guest while the test DHCP server saw the configured address ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md`, `8ee48af`); Amiberry's `a2065.cpp` (`mungepacket`) does the rewrite.
+- The **A2065 address rewrite** (first-party record, 2026-10-30) ✅ (same address on every emulated board 🟡) — the amix `userland/base` DLPI probe saw `00:80:10:ff:ff:ff` in the guest while the test DHCP server saw the configured address ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md`, `8ee48af`); Amiberry's `a2065.cpp` (`mungepacket`) does the rewrite.
 
 - The **relink-corruption measurement** under emulation (first-party record, 2026-07-20/21): a 20-round relink measurement; the mechanism and figures are on [building a kernel](../drivers/kernel-build.md#the-d245-boot-breaker-an-intermittent-ld-corruption).
 - The **Amiberry `MOVES` page-split report** 🟡 — third-party: [hmlio/amix-x11-aga](https://github.com/hmlio/amix-x11-aga) `docs/findings.md` ("Emulation (Amiberry)"), fixed upstream in [BlitterStudio/amiberry](https://github.com/BlitterStudio/amiberry) commit `845af02`; not reproduced here.
@@ -7761,8 +7761,8 @@ the A3000 SCSI disk + tape Amix needs. There is no working QEMU recipe 🟡. For
 see [installing on real hardware](real-hardware.md).
 
 > **Licensing:** the boot/root/patch floppies and the distribution are Commodore material. Since
-> 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's approval, the project owner's
-> ruling — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); until then this project
+> 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's
+> approval — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); until then this project
 > treated them as abandonware, not licensed for redistribution. This repo does not ship them.
 > Obtain the images yourself from [amigaunix.com](https://www.amigaunix.com/doku.php/home) /
 > archive.org. Verify them against `sources/CHECKSUMS.txt` before use.
@@ -9473,7 +9473,7 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
 
 - The **super-DMAC reach refutation** (2026-10-02) ✅ — the `64119` row of the kernel table on this page (stock `a3091`, RDB buffer above `0x07000000`, boots) and Amiberry's `src/a2091.cpp` (the A3000 super-DMAC initialised with the 24-bit DMA mask off; `dma24bit` applies only to the add-on cards), read in the Amiberry source. The stale-cache explanation is a hypothesis 🔴.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
-- amix-kerntools briefs `boot2-d245-trap` (2026-07-16), `e2-relink-corruption-measured` + `tdivs-cross-assembler-miscompile` (2026-07-21): relsim scope correction, bootchain-verify gate, measured 85% relink corruption, tdivs blast-radius map, __udivdi3 metal closure (2026-07-21).
+- amix-kerntools first-party records (2026-07-16, 2026-07-21): relsim scope correction, bootchain-verify gate, measured 85% relink corruption, tdivs blast-radius map, __udivdi3 metal closure (2026-07-21).
 - Ditto, *Writing Amix Device Drivers*, **1990 European Amiga Developer's Conference** (project PDF;
   see [bibliography](../reference/bibliography.md)) — `/usr/sys` object libraries, `kernel.c`
   switch tables, the "Adding a device driver" procedure, `rdbunix` image name, keep-old-`/unix`
@@ -9664,8 +9664,8 @@ kernel image is Commodore-derived**, no matter whose drivers it carries ✅. *Hi
 "universal public install medium" was impossible on licensing grounds alone; the publishable artifact
 was the **recipe** (driver source, build instructions, configuration — the va2000/hydra/zz9000
 pattern), and each licensed Amix owner linked their own kernel. **Since 2026-09-23** that licensing
-bar is lifted — Amiga Corporation's approval and the project owner's ruling, see
-[`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) — so publishing a kernel or an install medium is now a per-release owner
+bar is lifted — Amiga Corporation's approval, see
+[`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary) — so publishing a kernel or an install medium is now a per-release
 decision, not a licensing impossibility. The recipe-first pattern remains how the community
 driver repos publish.
 
@@ -11018,9 +11018,9 @@ Putting it together — the STREAMS-specific deltas on top of the generic [add-a
 - [Device list reference](../reference/device-list.md) — known major/minor and `cdevsw` slot assignments.
 
 ## Sources
-- The **short `DL_UNITDATA_REQ` refusal** (first-party record, 2026-10-31) ✅ — the amix base station's ARP check in its DHCP client on the emulated 2.1c bench image (stock userland): a SAP `0x0806` stream on `/dev/aen0`, `putmsg` errno 34 with a 28-byte and a 46-byte data part, sent with 60. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/dhcpc/dhcpc.c` `arpcheck` (`88954e7`, on `master`). The minimum is `AEN_MIN` in the stock `aen.h`, used by `aen_minfo` in `aen.c` ([`amigaux/amix-system`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h)).
+- The **short `DL_UNITDATA_REQ` refusal** (first-party record, 2026-10-31) ✅ — the amix `userland/base` ARP check in its DHCP client on the emulated 2.1c bench image (stock userland): a SAP `0x0806` stream on `/dev/aen0`, `putmsg` errno 34 with a 28-byte and a 46-byte data part, sent with 60. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/dhcpc/dhcpc.c` `arpcheck` (`88954e7`, on `master`). The minimum is `AEN_MIN` in the stock `aen.h`, used by `aen_minfo` in `aen.c` ([`amigaux/amix-system`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h)).
 - **Stock sources, public** ✅ — the stock A2065 driver in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/driver/aen/aen.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.c), [`usr/sys/amiga/driver/aen/aen.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/aen.h), [`usr/sys/amiga/driver/aen/lance.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/driver/aen/lance.h).
-- The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix base station's DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
+- The **`aen` DLPI measurements** (first-party record, 2026-10-30) ✅ (🟡/🔴 where tagged) — the amix `userland/base` DLPI probe on the emulated 2.1c bench image (A3000, 68030, A2065 as `/dev/aen0`, IP already linked on it) against a one-client test DHCP server on the host bridge, eight runs over two boots, plus `/dev/aen1` open tests; the probe, the test server and the write-up are in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/docs/dhcp-probe.md` and `userland/base/dhcpc/probe/` (`8ee48af`). The silent `DL_ATTACH_REQ` and the state left by `aenclose` agree with the stock driver source (`aen.c`: `aenproto`, `aenopen`, `aenclose`).
 
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §6 (`isoriano1968/hydra-amix`: `cdevsw` slot 47 `hya`, `hydraopen`/`hydrawput`/`hydraintr`/`setup_ne2000`, DLPI `DL_INFO_REQ`/`DL_BIND_REQ`/`DL_UNITDATA_REQ`, three-method autoconfig detect (autocon/bootinfo + Zorro II I/O-slot + memory probe; A2065 fallback removed), init split (boot `init_tbl`/`hydrainit` probe + full init on open), mirrors `aen/` LANCE, **native** `make`/`make force` build with GCC 2.7.2.3 (the brief's "from amigaunix.com" attribution is 🔴, unsourced — see toolchain.md), `slink` bring-up (no `ifconfig plumb`), Hydra rev 1.2a / AutoConfig `0x08490001` / DP8390 at `base+0xffe1` / MAC PROM `base+0xffc0` step-2 / 16 KB SRAM / 10Base2 + 10BaseT, the `hya` tool), §5 (STREAMS as a third driver kind, `cdevsw` `d_str`/`nostr`, `int2_tbl[]`, naming convention), §11 (networking: STREAMS TCP/IP, `aen0`), §7 (toolchain: native GCC 2.7.2.3, `m68k-cbm-sysv4` triple; cross-toolchain via `gcc-cross-amix`), §13 (cross-toolchain now public via `gcc-cross-amix`; native on-box still simplest).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of the brief (STREAMS = special char driver with a `streamtab`; `int2_tbl[]`; entry-point prefix convention).
@@ -17789,7 +17789,7 @@ Measured on the stock 2.1c install (emulated 68030), 2026-10-30.
   historical material (we cross-link rather than duplicate it).
 
 ## Sources
-- The **stock `man(1)` mechanics** (first-party record, 2026-10-30) ✅ — the packages station's four probe runs on the emulated stock 2.1c 68030: `ls -l` of the binaries and trees, `strings` of `/usr/bin/man` (the default paths, the `egrep` lookup, the format pipeline), `whatis` excerpts, planted pages in each layout, the `MANPATH` colon test, `-M`, and the `CATPATH` shadowing run.
+- The **stock `man(1)` mechanics** (first-party record, 2026-10-30) ✅ — the amix-packages project's four probe runs on the emulated stock 2.1c 68030: `ls -l` of the binaries and trees, `strings` of `/usr/bin/man` (the default paths, the `egrep` lookup, the format pipeline), `whatis` excerpts, planted pages in each layout, the `MANPATH` colon test, `-M`, and the `CATPATH` shadowing run.
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - The stock-`init` shutdown stall over telnet — first-party, eight discriminating runs, 2026-09-29
   (`amix-gayle-ide/README.md`) ✅.
@@ -17811,7 +17811,7 @@ Measured on the stock 2.1c install (emulated 68030), 2026-10-30.
   `make bootpart KERNEL=relocunix`, `mknod /dev/va2000 c 68 0`, pre-POSIX `/bin/sh` note.
 - `isoriano1968/hydra-amix` repo — `slink addaen /dev/hya0 hya0`, native `make` / `make force`, `mknod /dev/hya0 c 47 0`, STREAMS `cdevsw` slot 47.
 - SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660 (first-party record, 2026-07-12) ✅.
-- `grep -v 'a\|b'` passing every line (first-party record, 2026-10-31) ✅ — the amix base station's DHCP-client soak on the emulated 2.1c bench image (stock userland): `grep -v` with a three-way `\|` pattern over a 239-line log printed all 239 lines, the lines it was meant to drop among them.
+- `grep -v 'a\|b'` passing every line (first-party record, 2026-10-31) ✅ — the amix `userland/base` DHCP-client soak on the emulated 2.1c bench image (stock userland): `grep -v` with a three-way `\|` pattern over a 239-line log printed all 239 lines, the lines it was meant to drop among them.
 - The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
 - The **amix-packagemanager** repo tooling (`tools/repo/publish.sh`, `gen-catalog.py`) — the HTTP package-repo `pkgs/`-segment URL layout, verified live 2026-07-22 ✅.
@@ -17846,7 +17846,7 @@ catalogue, so it is lightly tagged.
 **Licensing note (read before downloading anything).** ✅ The Amix distribution, the boot/root/patch
 floppy images, the hardfiles, tape images, and the scanned manuals are **Commodore material**. On
 2026-09-23, following the approval of Mike Battilana (CEO, Amiga Corporation — Saku event 2026-09-19,
-email 2026-09-23), the project owner ruled the Amix release restriction lifted: the Commodore Amiga
+email 2026-09-23), the Amix release restriction is lifted: the Commodore Amiga
 binaries may be distributed and Amiga UNIX released to the public ([`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)).
 *History:* until 2026-09-23 this project treated them as abandonware, not licensed for
 redistribution. We still never commit them to this repository (they are `.gitignore`d; it is a text
@@ -18301,7 +18301,7 @@ These are the conventions that let a model (and a human) jump straight to the ri
 
 ## The licensing boundary
 
-The Amix distribution, the boot/root/patch ADFs, the HDFs/tape images, and the scanned manuals are **Commodore material** and are `.gitignore`d. Since 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's approval, the project owner's ruling — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); until then this project treated them as abandonware, not licensed for redistribution. The repo policy is unchanged: **never commit them** — this is a text knowledge hub, and publishing media is a separate owner decision. Refer to them by name + checksum (`sources/CHECKSUMS.txt`) plus a pointer to [amigaunix.com](https://www.amigaunix.com/doku.php/home) or archive.org. Tooling must operate on **user-supplied** images. Quoting short script snippets or string excerpts for documentation is fine; bulk-reproducing files is not. ✅
+The Amix distribution, the boot/root/patch ADFs, the HDFs/tape images, and the scanned manuals are **Commodore material** and are `.gitignore`d. Since 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's approval — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); until then this project treated them as abandonware, not licensed for redistribution. The repo policy is unchanged: **never commit them** — this is a text knowledge hub, and publishing media is a separate, per-release decision. Refer to them by name + checksum (`sources/CHECKSUMS.txt`) plus a pointer to [amigaunix.com](https://www.amigaunix.com/doku.php/home) or archive.org. Tooling must operate on **user-supplied** images. Quoting short script snippets or string excerpts for documentation is fine; bulk-reproducing files is not. ✅
 
 ## A checklist for AI contributors
 

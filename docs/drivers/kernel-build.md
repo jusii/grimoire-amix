@@ -737,7 +737,7 @@ the pre-POSIX shell warning in Step 2. One-line checklist entry:
 
 - The **super-DMAC reach refutation** (2026-10-02) ✅ — the `64119` row of the kernel table on this page (stock `a3091`, RDB buffer above `0x07000000`, boots) and Amiberry's `src/a2091.cpp` (the A3000 super-DMAC initialised with the 24-bit DMA mask off; `dma24bit` applies only to the add-on cards), read in the Amiberry source. The stale-cache explanation is a hypothesis 🔴.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
-- amix-kerntools briefs `boot2-d245-trap` (2026-07-16), `e2-relink-corruption-measured` + `tdivs-cross-assembler-miscompile` (2026-07-21): relsim scope correction, bootchain-verify gate, measured 85% relink corruption, tdivs blast-radius map, __udivdi3 metal closure (2026-07-21).
+- amix-kerntools first-party records (2026-07-16, 2026-07-21): relsim scope correction, bootchain-verify gate, measured 85% relink corruption, tdivs blast-radius map, __udivdi3 metal closure (2026-07-21).
 - Ditto, *Writing Amix Device Drivers*, **1990 European Amiga Developer's Conference** (project PDF;
   see [bibliography](../reference/bibliography.md)) — `/usr/sys` object libraries, `kernel.c`
   switch tables, the "Adding a device driver" procedure, `rdbunix` image name, keep-old-`/unix`

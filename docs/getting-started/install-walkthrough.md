@@ -19,8 +19,8 @@ the A3000 SCSI disk + tape Amix needs. There is no working QEMU recipe 🟡. For
 see [installing on real hardware](real-hardware.md).
 
 > **Licensing:** the boot/root/patch floppies and the distribution are Commodore material. Since
-> 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's approval, the project owner's
-> ruling — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); until then this project
+> 2026-09-23 the Amix release restriction is lifted (Amiga Corporation's
+> approval — see [`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)); until then this project
 > treated them as abandonware, not licensed for redistribution. This repo does not ship them.
 > Obtain the images yourself from [amigaunix.com](https://www.amigaunix.com/doku.php/home) /
 > archive.org. Verify them against `sources/CHECKSUMS.txt` before use.

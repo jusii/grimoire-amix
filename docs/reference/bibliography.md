@@ -22,7 +22,7 @@ catalogue, so it is lightly tagged.
 **Licensing note (read before downloading anything).** ✅ The Amix distribution, the boot/root/patch
 floppy images, the hardfiles, tape images, and the scanned manuals are **Commodore material**. On
 2026-09-23, following the approval of Mike Battilana (CEO, Amiga Corporation — Saku event 2026-09-19,
-email 2026-09-23), the project owner ruled the Amix release restriction lifted: the Commodore Amiga
+email 2026-09-23), the Amix release restriction is lifted: the Commodore Amiga
 binaries may be distributed and Amiga UNIX released to the public ([`AGENTS.md` §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md#5-respect-the-licensing-boundary)).
 *History:* until 2026-09-23 this project treated them as abandonware, not licensed for
 redistribution. We still never commit them to this repository (they are `.gitignore`d; it is a text

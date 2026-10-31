@@ -351,7 +351,7 @@ Measured on the stock 2.1c install (emulated 68030), 2026-10-30.
   historical material (we cross-link rather than duplicate it).
 
 ## Sources
-- The **stock `man(1)` mechanics** (first-party record, 2026-10-30) ✅ — the packages station's four probe runs on the emulated stock 2.1c 68030: `ls -l` of the binaries and trees, `strings` of `/usr/bin/man` (the default paths, the `egrep` lookup, the format pipeline), `whatis` excerpts, planted pages in each layout, the `MANPATH` colon test, `-M`, and the `CATPATH` shadowing run.
+- The **stock `man(1)` mechanics** (first-party record, 2026-10-30) ✅ — the amix-packages project's four probe runs on the emulated stock 2.1c 68030: `ls -l` of the binaries and trees, `strings` of `/usr/bin/man` (the default paths, the `egrep` lookup, the format pipeline), `whatis` excerpts, planted pages in each layout, the `MANPATH` colon test, `-M`, and the `CATPATH` shadowing run.
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap)).
 - The stock-`init` shutdown stall over telnet — first-party, eight discriminating runs, 2026-09-29
   (`amix-gayle-ide/README.md`) ✅.
@@ -373,7 +373,7 @@ Measured on the stock 2.1c install (emulated 68030), 2026-10-30.
   `make bootpart KERNEL=relocunix`, `mknod /dev/va2000 c 68 0`, pre-POSIX `/bin/sh` note.
 - `isoriano1968/hydra-amix` repo — `slink addaen /dev/hya0 hya0`, native `make` / `make force`, `mknod /dev/hya0 c 47 0`, STREAMS `cdevsw` slot 47.
 - SVR4 `grep` has no `\|` alternation and no `grep -w` (a multi-pattern grep silently matches nothing and exits 1), root-caused on a real A4000 + Z3660 (first-party record, 2026-07-12) ✅.
-- `grep -v 'a\|b'` passing every line (first-party record, 2026-10-31) ✅ — the amix base station's DHCP-client soak on the emulated 2.1c bench image (stock userland): `grep -v` with a three-way `\|` pattern over a 239-line log printed all 239 lines, the lines it was meant to drop among them.
+- `grep -v 'a\|b'` passing every line (first-party record, 2026-10-31) ✅ — the amix `userland/base` DHCP-client soak on the emulated 2.1c bench image (stock userland): `grep -v` with a three-way `\|` pattern over a 239-line log printed all 239 lines, the lines it was meant to drop among them.
 - The **amix-cdfs** project @ `31e8c3b` (`6f727b1`+`d3beca7`, `platform/amix/mount.c`) — the `/usr/lib/fs/<fstype>/mount` helper requirement, `/etc/mnttab` being userland-maintained (`O_APPEND`), and `umount(1M)` matching by the *special* field (so a device-less fs records its mount point there), measured on a real A4000 + Z3660 + stock-kernel precedent (`/proc`, `/dev/fd`), 2026-07-13 ✅. See [the driver model](../drivers/driver-model.md#writing-an-in-kernel-filesystem-the-svr4-vfs_mount-contract).
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) — networking, patch-disk, y2k-dst, tape-creation, downloads pages (community-reported items above).
 - The **amix-packagemanager** repo tooling (`tools/repo/publish.sh`, `gen-catalog.py`) — the HTTP package-repo `pkgs/`-segment URL layout, verified live 2026-07-22 ✅.

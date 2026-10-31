@@ -1,6 +1,6 @@
 # Changelog
 
-Started 2026-09-26; entries are written after the owner's review.
+Started 2026-09-26.
 
 ## 2026-10-31 — aen DLPI: a short DL_UNITDATA_REQ fails with ERANGE (fe88b0b)
 
@@ -285,10 +285,9 @@ wrong driver/platform facts (z3660 bounce, spl6/splx, autocon() signature, VPOSR
 one canonical stock-only loadable-module caveat; quirks 72 (AF_UNIX under memory pressure) and 73 (Amiberry MOVES
 before 845af02); amix-x11-aga and manx in the bibliography; llms-full regenerated.
 
-## 2026-10-11 — quirks 71; station notes local-only (0d766a2, b77b04a)
+## 2026-10-11 — quirks 71 (0d766a2, b77b04a)
 
-boot-process, quirks 71: fssm_Device's BSTR length counts the NUL. The station notes file is untracked and ignored
-with .claude/ (owner rule 2026-10-10).
+boot-process, quirks 71: fssm_Device's BSTR length counts the NUL.
 
 ## 2026-10-05 — 040/060, Z3660, A4092, quirks 58-70, the content review
 
