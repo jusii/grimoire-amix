@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-01 — quirk 96: tar formats on the 68030 module-kernel test image (7e6ab05)
+
+On an emulated 68030 module-kernel test image, tar xf of a GNU or ustar archive from host GNU tar dies with SIGSEGV; v7 headers extract (🟡). The 68040/060 test image takes all three (🟡). Cause not examined. Staging rule: a v7 archive of regular files, owner 0, group 3; the per-file passwd/owner messages are harmless (✅).
+
 ## 2026-11-01 — kernel memory at first use: HZ 60, the allocator at 32 MB, small KM_SLEEP (1069b1c)
 
 On the 1.1 module kernels (emulated, 32 MB): HZ is 60 on both lines (✅, CIA-A clock). After multi-user the kernel
