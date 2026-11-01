@@ -2,6 +2,13 @@
 
 Started 2026-09-26.
 
+## 2026-11-01 — kernel memory at first use: HZ 60, the allocator at 32 MB, small KM_SLEEP (1069b1c)
+
+On the 1.1 module kernels (emulated, 32 MB): HZ is 60 on both lines (✅, CIA-A clock). After multi-user the kernel
+allocator holds about 2.36 MB on k46 and 1.57 MB on k30, and cdfs keeps 4–12 % of it (✅). A 4096-byte KM_SLEEP on an
+empty allocator sleeps until memory is freed (✅) and once missed its wakeup (✅, mechanism 🔴). New processes wait
+while the allocator is empty (🟡).
+
 ## 2026-11-01 — kernel probing on 1.1: adb reads live values through the namelist (d4f6bc5)
 
 On a 1.1 module kernel, kbootset keeps /stand/unix as the booted generation's namelist at runtime addresses, so
