@@ -2,6 +2,12 @@
 
 Started 2026-09-26.
 
+## 2026-11-01 — kernel probing on 1.1: adb reads live values through the namelist (d4f6bc5)
+
+On a 1.1 module kernel, kbootset keeps /stand/unix as the booted generation's namelist at runtime addresses, so
+`adb -k /stand/unix /dev/kmem` reads live `freemem`, `availrmem` and `physmem` (✅). `sar -r` and `crash` still
+fail there, with the messages recorded (✅). Quirks 26, 44 and 80 updated; the stock-kernel adb re-checks stay 🟡.
+
 ## 2026-10-31 — Public text cleanup (1709d0c)
 
 Sources name the amix directory or project behind a measurement; the licensing and publishing text states outcomes
