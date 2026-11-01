@@ -600,3 +600,9 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   187–198 KB mounted ✅; a 4096-byte `KM_SLEEP` on an empty allocator sleeps until a free (3 of 4) ✅
   and once missed its wakeup for 57 149 ticks ✅ (mechanism 🔴); new processes wait while it is empty
   🟡. Source: amix `kernel/dlm/tests/bench/lowmem/`, README "Low memory at first use", `53624e5`.
+- 2026-11-01 — `tar` formats on the module-kernel test images, amix `kernel/dlm` staging runs
+  (archives from host GNU tar, checked with `sum -r`, then `tar xf`): on an emulated 68030 test
+  image GNU and ustar archives die with `SIGSEGV`, exit 139 (three runs), v7 extracts 🟡; the
+  68040/060 test image takes GNU, ustar and v7, exit 0 (five runs) 🟡. Neither the `tar` binary
+  nor the cause was examined. With owner 0/3 the guest `tar` prints `problem reading passwd entry`
+  and `owner not changed` per file and lays the files ✅.

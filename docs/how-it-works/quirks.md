@@ -108,6 +108,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel (on the bench image it is the retail 2.1 kernel ✅). Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
 | 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram; a `DL_UNITDATA_REQ` with under 60 data bytes fails with `ERANGE`. Attach only on Style 2, check the state, trust the IP length, pad short frames to 60 | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
+| 96 | **On an emulated 68030 module-kernel test image, `tar xf` of a GNU or ustar archive from host GNU tar dies with `SIGSEGV` before laying a file; v7 headers extract**. The 68040/060 test image takes all three. Cause not examined, not seen on a stock kernel. Stage files as a v7 archive of regular files, owner 0, group 3 | 🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
 
 The rest of this page expands each item.
 
@@ -1209,6 +1210,32 @@ the outputs.
 **Rule:** use an Amiberry build that contains `845af02`; with an older build, set
 `cpu_compatible=false` and leave `cpu_memory_cycle_exact` off, since it forces the mode back on.
 
+### 96. On a 68030 module-kernel test image, `tar xf` of a GNU or ustar archive dies; v7 headers extract 🟡 {#96-tar-formats-68030-test-image}
+
+Staging files into an emulated guest with an archive made by host GNU tar 🟡:
+
+- **68030:** an A4000 emulation with a 68030, running a 68030 module kernel under test. There, `tar xf`
+  of a GNU-format or POSIX ustar archive died with `SIGSEGV` (exit 139) before it laid any file, in all
+  three runs. The same files in v7 headers extracted, every file laid.
+- **68040/060:** an emulated 68LC060 image with a 68040/060 module kernel under test. There, `tar xf`
+  took GNU, ustar and v7 archives alike, exit 0 in all five runs.
+
+The archives were about 2.3 MB, the largest member 1.5 MB. Neither the guest's `tar` binary nor the
+cause was examined. Nobody checked whether the two images carry the same `tar`, or whether the fault
+belongs to `tar` or to the kernel under test, and it has not been seen on a stock kernel. Treat it as a
+bench observation, not a property of the 2.1 `tar`.
+
+With numeric owner 0 and group 3, the guest's `tar` still prints `problem reading passwd entry` and
+`owner not changed` for each file, on both images, and lays the files all the same ✅.
+
+**Rule for staging files into a guest:** build a v7 archive of regular files only, owner 0, group 3
+(`sys`), from a sorted list:
+
+```sh
+find . -type f | sort |
+  tar cf stage.tar --format=v7 --owner=0 --group=3 --numeric-owner --no-recursion -T -
+```
+
 ## Time & Y2K quirks
 
 ### 7. Y2K and the battery clock: a `setclk` bug, not a kernel cap ✅/🟡 {#7-y2k-setclk-and-the-kernels-1999-date-cap}
@@ -1724,6 +1751,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
+- The **`tar` formats on the module-kernel test images** (first-party record, 2026-11-01) 🟡, the passwd and owner messages ✅ — quirk 96: the amix `kernel/dlm` bench runs that staged files into emulated guests with host GNU tar and checked each archive with `sum -r` before `tar xf`. On the 68030 image, GNU format and ustar gave exit 139 (three runs) and v7 exit 0. On the 68040/060 image, GNU format twice, ustar twice and v7 once gave exit 0, and the next build read the laid files.
 - The **`aen` DLPI traps** (first-party record, 2026-10-30; the short-frame refusal 2026-10-31) ✅ — quirk 95: see the matching Sources entries on [the networking page](networking.md#raw-dlpi-aen).
 
 - The **4 KB TCP lower-read queue** (2026-10-21) ✅ — quirk 75: the stock kernel's `ipintr` /
