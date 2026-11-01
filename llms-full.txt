@@ -1056,6 +1056,65 @@ filesystem may talk to the CD unit — never `dd` or `fsck` its `/dev` node, bec
 of a 2048-byte CD wedges the A4092 bus until power-off 🟡 (one machine). A Z3660 `isoN` image also
 presents as a read-only CD-ROM ([quirk §60](quirks.md#60-z3660-iso-slot-equals-target)).
 
+## The 040/060 user address space {#k46-user-address-space}
+
+Two defects of the port's own 68040/060 VM setup, both fixed in emulation and not yet in a release.
+The fix is (`4c6ea89`, on `k46-module`), with its companion (`c4058ad`, on `k46-module`). The port
+records them as `ISSUE-112` and `ISSUE-110` in its `KNOWN-ISSUES.md`. The 68030 line has neither:
+its kernel uses no transparent-translation registers
+([the identity map](../drivers/zorro-autoconfig.md#the-identity-map)).
+
+### Before the fix, ITT0 and DTT0 also matched user accesses ✅ {#k46-tt-user-access}
+
+**Affected:** every 68040/060 kernel of the port from its first 68040 bring-up up to `4c6ea89`. That
+includes the amigaux 1.0 68060 kernels and the 1.1 68040/060 module kernel.
+
+On those kernels the boot code loaded ITT0 `0x003fc000` and DTT0 `0x003fc060`. Both have E=1 and
+S=1x, so the function code's supervisor bit was ignored and the window matched user accesses to
+logical `0x00000000`–`0x3fffffff` as well. A user process could therefore read, write and execute
+physical memory below 1 GiB with no table walk ✅. In emulation (an A4000 with a 68LC060 on a Z3660)
+an ordinary user program:
+
+- read the chip-RAM vector at `0xC` (a Kickstart address) and wrote it back;
+- read VPOSR at `0xDFF004` live from the custom chips;
+- read kernel text, the same longword `adb` reads through `/dev/kmem`.
+
+A control access at `0x40000000`, outside the windows, got `SIGSEGV` ✅.
+
+**The fix** makes both registers supervisor-only (S=01): ITT0 `0x003fa000` and DTT0 `0x003fa060`, as
+DTT1 (`0x807fa060`) already was. The kernel keeps its 0–1 GiB identity window, still cache-inhibited
+for data. A user access there now walks the process's own page tables and faults where nothing is
+mapped, as on the 68030. Verified in emulation: every access above faults (`si_code` 1 unmapped, 2
+read-only), and the shared-library and exec tests pass ✅. Not yet verified on hardware or with X.
+
+Statements elsewhere that DTT0 cache-inhibits the whole low 1 GB stay true for kernel accesses.
+
+### The root page is claimed twice unless the legacy segment-table growth is off ✅ {#k46-shared-root-page}
+
+Making the TT windows supervisor-only (above) exposed a second defect. User pages now go through the
+page tables, and on the 68040/060 kernel those tables were wrong at the very top.
+
+- The per-process 68040 root table (128 four-byte entries) lives in a 4 KiB page.
+- The retained stock `hat_map` still grows a legacy 68030 segment table for each new segment.
+  `hat_growsdt` writes the 8-byte 030 section descriptor for quadrant *s* at root + *s* × 8, which
+  covers native root entries 2*s* and 2*s* + 1.
+- In an even entry, the descriptor's first long (limit and descriptor type) reads as a resident
+  pointer descriptor whose base is just above physical 0, that is, low chip RAM.
+
+So user pages at 0–256 MiB in root entries 0, 2, 4 and 6 were looked up through chip-RAM words.
+Measured in emulation ✅:
+- a write to a read-only page at `0x00100000` (or to the zero page, [quirk 97](quirks.md#97-zero-page-depends-on-linker)) looped in the fault path;
+- a page at `0x09000000` ended in `PANIC: hat_pt2ptdat: invalid pte ptr`.
+
+While DTT0 matched user accesses, the window hid all of this.
+
+**The fix** (`c4058ad`, on `k46-module`) stops `hat_map`'s legacy growth for user address spaces
+(the kernel's own keeps it) and retires the legacy teardown. All sixteen entries 0–15 then fault
+correctly ✅ (emulation; hardware pending). The two fixes ship together.
+
+**Rule for anyone touching the 040/060 VM:** the root page's first 32 bytes are claimed by both the
+native tree and the legacy 030 code unless the legacy growth is off.
+
 ## What this page does not claim
 
 Explicitly, so that nothing here gets quoted as more than it is:
@@ -1104,6 +1163,7 @@ through `/usr/apkg/bin/…` and treat the stock `pkgadd`/`pkgrm`/`installf`/`rem
 
 ## Sources
 
+- The **040/060 user address space** (first-party record, 2026-11-01) ✅ — the 68040/060 port's emulator runs on an A4000 with a 68LC060 on a Z3660: a user-mode probe program, one access per run, before and after the fix (chip-RAM vector, VPOSR, kernel text checked against `adb` on `/dev/kmem`, the `0x40000000` control), and the root-page walks at `0x00100000` and `0x09000000` with the panic message. Port `KNOWN-ISSUES.md` `ISSUE-112` and `ISSUE-110` (2026-11-01); `src/pstart040.s` and `src/hatmap_nosdt040.s`; (`4c6ea89`, on `k46-module`) and (`c4058ad`, on `k46-module`). Not yet in a release; hardware pending.
 - The stock `installf` crash on a 68060 kernel and the APKG workaround (2026-10-03) ✅ — see [quirks §70](quirks.md#70-stock-installf-060) (first-party record, 2026-10-03).
 - The **amigaux 1.0 kit** ✅ — the 1.0 hardware page and kernel table ([amigaux.org/hardware](https://amigaux.org/hardware/): the Z3660 real-68060 line supported on the A3000, A4000 and A4000T; the card's 68030 and emulated-68040 modes not supported, 68030 mode and the 68060-line Gotek route planned for 1.1; which 1.0 kernel carries the CD filesystem) and [amix-installng](https://github.com/jusii/amix-installng) `docs/release-notes-amigaux-1.0.md` (the K1 card, the CD route at `cdfs 1,3`, its limits).
 - [`asokero/amix-040-060-port`](https://github.com/asokero/amix-040-060-port) — public since
@@ -3689,6 +3749,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
 | 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram; a `DL_UNITDATA_REQ` with under 60 data bytes fails with `ERANGE`. Attach only on Style 2, check the state, trust the IP length, pad short frames to 60 | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
 | 96 | **On an emulated 68030 module-kernel test image, `tar xf` of a GNU or ustar archive from host GNU tar dies with `SIGSEGV` before laying a file; v7 headers extract**. The 68040/060 test image takes all three. Cause not examined, not seen on a stock kernel. Stage files as a v7 archive of regular files, owner 0, group 3 | 🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
+| 97 | **A NULL read returns 0 in 193 stock binaries and faults in gcc14-built ones**: SVR4 `ld` gave those stock executables a read-only zero page at vaddr 0, while gcc14 binaries have none. Code that passes as one kind of binary can crash as the other. Before an unreleased fix, the 040/060 kernels returned chip-RAM bytes instead | ✅ | [Quirks §97](#97-zero-page-depends-on-linker), [040/060 status](68040-68060-status.md#k46-user-address-space) |
 
 The rest of this page expands each item.
 
@@ -5322,6 +5383,20 @@ RAM disk and has no swap slice points swap at `/dev/fakeswap` — block major 19
 dummy disk, on which every I/O fails and nothing is paged — and the installer adds a real slice later
 with `swap -a` ✅ (emulation, both kernel lines).
 
+### 97. Whether a NULL read returns 0 or faults depends on the linker ✅ {#97-zero-page-depends-on-linker}
+
+193 of the 434 `ET_EXEC` files in the stock system tree carry a **read-only zero page**: a `PT_LOAD`
+at vaddr 0 with file size 0, memory size `0x1000` and flags `R` (for example `usr/lib/saf/listen`) ✅.
+Mapped, it reads as zeros and refuses writes. So in such a stock binary a NULL read returns 0 and a
+NULL write faults. Binaries built with the gcc14 cross toolchain carry no such segment, so a NULL read
+faults there too (its `nullread` test: reading address 12 gives `SIGSEGV`) ✅. A program that passes
+as one kind of binary can crash as the other.
+
+That holds on the 68030 line, and on the 68040/060 line since a fix that is not yet in a release.
+Before that fix, the 040/060 kernel's transparent-translation window covered the low 1 GiB for user
+accesses too, so a NULL read in either kind of binary returned chip-RAM bytes instead ✅
+([the 040/060 user address space](68040-68060-status.md#k46-tt-user-access)).
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -5331,6 +5406,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
+- The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
 - The **`tar` formats on the module-kernel test images** (first-party record, 2026-11-01) 🟡, the passwd and owner messages ✅ — quirk 96: the amix `kernel/dlm` bench runs that staged files into emulated guests with host GNU tar and checked each archive with `sum -r` before `tar xf`. On the 68030 image, GNU format and ustar gave exit 139 (three runs) and v7 exit 0. On the 68040/060 image, GNU format twice, ustar twice and v7 once gave exit 0, and the next build read the laid files.
 - The **`aen` DLPI traps** (first-party record, 2026-10-30; the short-frame refusal 2026-10-31) ✅ — quirk 95: see the matching Sources entries on [the networking page](networking.md#raw-dlpi-aen).
 
@@ -10304,6 +10380,26 @@ The other namelist readers do not follow ✅. On the same box `sar -r 1 1` fails
 `/stand/unix`, no symbol table) `crash` fails with `process slot out of bounds` and `sadc` with
 `Not enough space`. For live kernel variables on 1.1, use `adb`.
 
+### `modadmin -p` knows only the exported symbols; the 68040/060 load layout gives the rest ✅ {#modadmin-p-exported-only}
+
+On a test build of the 68040/060 module kernel, `modadmin -p kzero` prints an address, but `modadmin -p sptmap`,
+`availrmem` or `tune` answer `symbol not found` ✅. `modadmin` resolves the names the DDI exports
+(the boot's "208 kernel symbols"), not the kernel's whole symbol table. For the rest, use the
+namelist above or compute the address from the loader's layout ✅:
+
+1. The `ET_REL` kernel (`/stand/k46/unix`) is loaded with `.text` at `0x08000000`.
+2. `.data` follows `.text` immediately.
+3. `.bss` follows `.data` immediately, **with no alignment**: the loader puts `.bss` at the end of
+   `.data` as it is. The port's tree pads `.data` to a 4-byte multiple for that reason.
+4. Then come the COMMON symbols, in symbol-table order, each aligned to 4 and sized by its
+   `st_size`.
+
+That model reproduced ten addresses `modadmin` printed (five in `.data`, five COMMON), and `lbolt` on
+a build whose `.data` did not end on an 8-byte boundary ✅. In the `ET_REL` file itself a COMMON
+symbol's `st_value` is its size or alignment, and a `.data` or `.bss` value is a section offset, so
+neither is an address: the trap of the next section and of the `avenrun` story in
+[quirk 38](../how-it-works/quirks.md#38-uptime-and-w-do-not-report-the-machines-load).
+
 ## The COMMON-symbol trap: `nlist` succeeds and lies ✅
 
 The second, distinct reason a symbol lookup against `/stand/unix` hands you a bad address — and the
@@ -10428,6 +10524,7 @@ When the console is dead but a savestate still works ([Step 3](#step-3-read-a-ru
 
 ## Sources
 
+- The **`modadmin -p` scope and the 68040/060 load layout** (first-party record, 2026-11-01) ✅ — the 68040/060 port's emulator runs on a test build of its module kernel (A4000, 68LC060 on a Z3660): `modadmin -p` for exported and unexported names, ten printed addresses reproduced from the layout model, and `lbolt` on a build with an unaligned `.data` end; port `KNOWN-ISSUES.md` (2026-11-01) and the port tree's `.data` padding.
 - The **1.1 namelist reads** (first-party record, 2026-10-31) ✅ — the amix-kerntools project's runs on the emulated 1.1 68030 module kernel (A4000 + Z3660 in 68030 mode, 32 MB): the `adb -k /stand/unix /dev/kmem` values above, `kbootset status`, and the `sar`/`crash` messages there and on the 2.1c bench image's kernel. The namelist's form and writer: [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/docs/spec/40-generations-and-composer.md` §4.2.
 - Disassembly of the shipped kernel objects `usr/sys/fs/fs.exp` (`mount` @0x1814, `vfs_getvfssw` @0x2370, `vfsinit` @0x2446) and `usr/sys/os/exp` (`sysent` @0x6f8, `systrap` @0x1eaf6) via `m68k-cbm-sysv4-objdump -dr` / `-nm`, cross toolchain sysroot — reproduced locally ✅.
 - Live `vfssw[]` / `nfstype` read from an Amiberry `SAVESTATE` (`A3K1` chunk, identity base `0x07800000`), cross-checked against the disassembly ✅.
@@ -11220,6 +11317,12 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 **AMIX does not use the 68030's Transparent-Translation registers at all** ✅. On a running kernel both TT registers read **E = 0 (disabled)** — the boot path zeroes them — and the identity mapping of the low **1 GB** (`0x00000000`–`0x3FFFFFFF`) is produced by the MMU instead: a **section-0 early-termination page descriptor in the root table**, which maps that whole span 1:1 without a second-level table ✅ (measured on a running kernel). Everything at or below `0x3FFFFFFF` is therefore directly dereferenceable from kernel code; **`0x40000000`–`0x7FFFFFFF` is not mapped at all** ✅.
 
+> **The 040/060 contrast.** The 68040/060 port's kernel does use transparent translation for this
+> window (ITT0/DTT0, data cache-inhibited). Until a fix that is not yet in a release, those windows
+> also matched user accesses; since the fix they are supervisor-only, so a user access walks the
+> process's tables as on the 68030 ✅. See
+> [the 040/060 user address space](../how-it-works/68040-68060-status.md#k46-user-address-space).
+
 > **Note.** `amiga/ml/ttrap.s` contains `tt0 = 0x003F0143` / `tt1 = 0x807F0143`, but the running kernel does not load them. The identity map comes from the MMU root table, as described above ✅.
 
 A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`.
@@ -11416,6 +11519,7 @@ the binary or its root/swap stamped to card 1 instead.
 - `src/kernel-patches/support.c.patch` — the `autocon()` diff with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (A4091 product id `0x02020054`). The TT-register constants `tt0=0x003F0143` / `tt1=0x807F0143` read from `amiga/ml/ttrap.s` are **not** what the running kernel uses — see [the note above](#the-identity-map).
 - The stock `autocon()` signature ✅ — the stock Amix 2.1 kernel source `amiga/kernel/support.c` (the file `support.c.patch` applies to), read first-party: `autocon(pc, index, bp, np)`, `long pc; int index; long *bp; long *np;`, `*bp = cd_BoardAddr`, `*np = cd_BoardSize`, `index` counting matching boards; the caller in stock `amiga/alien/sd.c` `init()`.
 - The low-nibble VPOSR correction, 2026-09-28/29 ✅ — `amix-a4091` CHANGELOG 2026-09-29 and the current `src/kernel-patches/support.c.patch` (the id table and the `(id & 0x0F) >= 2` test), found in the review of the contributed `amix-gayle-ide` driver; the matching `amix-z3660scsi` CHANGELOG entry (2026-09-28); and amix-gayle-ide `docs/vposr-aga-gate.md` (<https://github.com/hmlio/amix-gayle-ide>; the OCS/ECS/AGA id table: bit 4 is the video standard, OCS PAL `0x00` / NTSC `0x10`).
+- The 040/060 TT contrast (first-party record, 2026-11-01) ✅: see the matching Sources entry on [the 040/060 status page](../how-it-works/68040-68060-status.md#k46-user-address-space).
 - First-party measurement on a running kernel, 2026-08-12/14: AMIX zeroes the 68030 TT registers (E = 0) and the low-1 GB identity map is a section-0 early-termination page descriptor in the MMU root table ✅.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx` SCRIPTS assembler).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model and kernel API context (see [bibliography](../reference/bibliography.md)).

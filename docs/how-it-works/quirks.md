@@ -109,6 +109,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
 | 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram; a `DL_UNITDATA_REQ` with under 60 data bytes fails with `ERANGE`. Attach only on Style 2, check the state, trust the IP length, pad short frames to 60 | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
 | 96 | **On an emulated 68030 module-kernel test image, `tar xf` of a GNU or ustar archive from host GNU tar dies with `SIGSEGV` before laying a file; v7 headers extract**. The 68040/060 test image takes all three. Cause not examined, not seen on a stock kernel. Stage files as a v7 archive of regular files, owner 0, group 3 | 🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
+| 97 | **A NULL read returns 0 in 193 stock binaries and faults in gcc14-built ones**: SVR4 `ld` gave those stock executables a read-only zero page at vaddr 0, while gcc14 binaries have none. Code that passes as one kind of binary can crash as the other. Before an unreleased fix, the 040/060 kernels returned chip-RAM bytes instead | ✅ | [Quirks §97](#97-zero-page-depends-on-linker), [040/060 status](68040-68060-status.md#k46-user-address-space) |
 
 The rest of this page expands each item.
 
@@ -1742,6 +1743,20 @@ RAM disk and has no swap slice points swap at `/dev/fakeswap` — block major 19
 dummy disk, on which every I/O fails and nothing is paged — and the installer adds a real slice later
 with `swap -a` ✅ (emulation, both kernel lines).
 
+### 97. Whether a NULL read returns 0 or faults depends on the linker ✅ {#97-zero-page-depends-on-linker}
+
+193 of the 434 `ET_EXEC` files in the stock system tree carry a **read-only zero page**: a `PT_LOAD`
+at vaddr 0 with file size 0, memory size `0x1000` and flags `R` (for example `usr/lib/saf/listen`) ✅.
+Mapped, it reads as zeros and refuses writes. So in such a stock binary a NULL read returns 0 and a
+NULL write faults. Binaries built with the gcc14 cross toolchain carry no such segment, so a NULL read
+faults there too (its `nullread` test: reading address 12 gives `SIGSEGV`) ✅. A program that passes
+as one kind of binary can crash as the other.
+
+That holds on the 68030 line, and on the 68040/060 line since a fix that is not yet in a release.
+Before that fix, the 040/060 kernel's transparent-translation window covered the low 1 GiB for user
+accesses too, so a NULL read in either kind of binary returned chip-RAM bytes instead ✅
+([the 040/060 user address space](68040-68060-status.md#k46-tt-user-access)).
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -1751,6 +1766,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
+- The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
 - The **`tar` formats on the module-kernel test images** (first-party record, 2026-11-01) 🟡, the passwd and owner messages ✅ — quirk 96: the amix `kernel/dlm` bench runs that staged files into emulated guests with host GNU tar and checked each archive with `sum -r` before `tar xf`. On the 68030 image, GNU format and ustar gave exit 139 (three runs) and v7 exit 0. On the 68040/060 image, GNU format twice, ustar twice and v7 once gave exit 0, and the next build read the laid files.
 - The **`aen` DLPI traps** (first-party record, 2026-10-30; the short-frame refusal 2026-10-31) ✅ — quirk 95: see the matching Sources entries on [the networking page](networking.md#raw-dlpi-aen).
 

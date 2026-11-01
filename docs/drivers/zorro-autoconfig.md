@@ -72,6 +72,12 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 **AMIX does not use the 68030's Transparent-Translation registers at all** ✅. On a running kernel both TT registers read **E = 0 (disabled)** — the boot path zeroes them — and the identity mapping of the low **1 GB** (`0x00000000`–`0x3FFFFFFF`) is produced by the MMU instead: a **section-0 early-termination page descriptor in the root table**, which maps that whole span 1:1 without a second-level table ✅ (measured on a running kernel). Everything at or below `0x3FFFFFFF` is therefore directly dereferenceable from kernel code; **`0x40000000`–`0x7FFFFFFF` is not mapped at all** ✅.
 
+> **The 040/060 contrast.** The 68040/060 port's kernel does use transparent translation for this
+> window (ITT0/DTT0, data cache-inhibited). Until a fix that is not yet in a release, those windows
+> also matched user accesses; since the fix they are supervisor-only, so a user access walks the
+> process's tables as on the 68030 ✅. See
+> [the 040/060 user address space](../how-it-works/68040-68060-status.md#k46-user-address-space).
+
 > **Note.** `amiga/ml/ttrap.s` contains `tt0 = 0x003F0143` / `tt1 = 0x807F0143`, but the running kernel does not load them. The identity map comes from the MMU root table, as described above ✅.
 
 A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`.
@@ -268,6 +274,7 @@ the binary or its root/swap stamped to card 1 instead.
 - `src/kernel-patches/support.c.patch` — the `autocon()` diff with the chipset-gated WD33C93 auto-detection replacing the phantom-A3000 special case (A4091 product id `0x02020054`). The TT-register constants `tt0=0x003F0143` / `tt1=0x807F0143` read from `amiga/ml/ttrap.s` are **not** what the running kernel uses — see [the note above](#the-identity-map).
 - The stock `autocon()` signature ✅ — the stock Amix 2.1 kernel source `amiga/kernel/support.c` (the file `support.c.patch` applies to), read first-party: `autocon(pc, index, bp, np)`, `long pc; int index; long *bp; long *np;`, `*bp = cd_BoardAddr`, `*np = cd_BoardSize`, `index` counting matching boards; the caller in stock `amiga/alien/sd.c` `init()`.
 - The low-nibble VPOSR correction, 2026-09-28/29 ✅ — `amix-a4091` CHANGELOG 2026-09-29 and the current `src/kernel-patches/support.c.patch` (the id table and the `(id & 0x0F) >= 2` test), found in the review of the contributed `amix-gayle-ide` driver; the matching `amix-z3660scsi` CHANGELOG entry (2026-09-28); and amix-gayle-ide `docs/vposr-aga-gate.md` (<https://github.com/hmlio/amix-gayle-ide>; the OCS/ECS/AGA id table: bit 4 is the video standard, OCS PAL `0x00` / NTSC `0x10`).
+- The 040/060 TT contrast (first-party record, 2026-11-01) ✅: see the matching Sources entry on [the 040/060 status page](../how-it-works/68040-68060-status.md#k46-user-address-space).
 - First-party measurement on a running kernel, 2026-08-12/14: AMIX zeroes the 68030 TT registers (E = 0) and the low-1 GB identity map is a section-0 early-termination page descriptor in the MMU root table ✅.
 - a4091.device open-source project: <https://github.com/A4091/a4091-software> (A4091 ROM + `ncr53cxxx` SCRIPTS assembler).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — driver model and kernel API context (see [bibliography](../reference/bibliography.md)).

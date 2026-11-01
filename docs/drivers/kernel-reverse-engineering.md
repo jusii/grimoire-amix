@@ -183,6 +183,26 @@ The other namelist readers do not follow ✅. On the same box `sar -r 1 1` fails
 `/stand/unix`, no symbol table) `crash` fails with `process slot out of bounds` and `sadc` with
 `Not enough space`. For live kernel variables on 1.1, use `adb`.
 
+### `modadmin -p` knows only the exported symbols; the 68040/060 load layout gives the rest ✅ {#modadmin-p-exported-only}
+
+On a test build of the 68040/060 module kernel, `modadmin -p kzero` prints an address, but `modadmin -p sptmap`,
+`availrmem` or `tune` answer `symbol not found` ✅. `modadmin` resolves the names the DDI exports
+(the boot's "208 kernel symbols"), not the kernel's whole symbol table. For the rest, use the
+namelist above or compute the address from the loader's layout ✅:
+
+1. The `ET_REL` kernel (`/stand/k46/unix`) is loaded with `.text` at `0x08000000`.
+2. `.data` follows `.text` immediately.
+3. `.bss` follows `.data` immediately, **with no alignment**: the loader puts `.bss` at the end of
+   `.data` as it is. The port's tree pads `.data` to a 4-byte multiple for that reason.
+4. Then come the COMMON symbols, in symbol-table order, each aligned to 4 and sized by its
+   `st_size`.
+
+That model reproduced ten addresses `modadmin` printed (five in `.data`, five COMMON), and `lbolt` on
+a build whose `.data` did not end on an 8-byte boundary ✅. In the `ET_REL` file itself a COMMON
+symbol's `st_value` is its size or alignment, and a `.data` or `.bss` value is a section offset, so
+neither is an address: the trap of the next section and of the `avenrun` story in
+[quirk 38](../how-it-works/quirks.md#38-uptime-and-w-do-not-report-the-machines-load).
+
 ## The COMMON-symbol trap: `nlist` succeeds and lies ✅
 
 The second, distinct reason a symbol lookup against `/stand/unix` hands you a bad address — and the
@@ -307,6 +327,7 @@ When the console is dead but a savestate still works ([Step 3](#step-3-read-a-ru
 
 ## Sources
 
+- The **`modadmin -p` scope and the 68040/060 load layout** (first-party record, 2026-11-01) ✅ — the 68040/060 port's emulator runs on a test build of its module kernel (A4000, 68LC060 on a Z3660): `modadmin -p` for exported and unexported names, ten printed addresses reproduced from the layout model, and `lbolt` on a build with an unaligned `.data` end; port `KNOWN-ISSUES.md` (2026-11-01) and the port tree's `.data` padding.
 - The **1.1 namelist reads** (first-party record, 2026-10-31) ✅ — the amix-kerntools project's runs on the emulated 1.1 68030 module kernel (A4000 + Z3660 in 68030 mode, 32 MB): the `adb -k /stand/unix /dev/kmem` values above, `kbootset status`, and the `sar`/`crash` messages there and on the 2.1c bench image's kernel. The namelist's form and writer: [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/docs/spec/40-generations-and-composer.md` §4.2.
 - Disassembly of the shipped kernel objects `usr/sys/fs/fs.exp` (`mount` @0x1814, `vfs_getvfssw` @0x2370, `vfsinit` @0x2446) and `usr/sys/os/exp` (`sysent` @0x6f8, `systrap` @0x1eaf6) via `m68k-cbm-sysv4-objdump -dr` / `-nm`, cross toolchain sysroot — reproduced locally ✅.
 - Live `vfssw[]` / `nfstype` read from an Amiberry `SAVESTATE` (`A3K1` chunk, identity base `0x07800000`), cross-checked against the disassembly ✅.

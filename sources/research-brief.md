@@ -606,3 +606,14 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   68040/060 test image takes GNU, ustar and v7, exit 0 (five runs) 🟡. Neither the `tar` binary
   nor the cause was examined. With owner 0/3 the guest `tar` prints `problem reading passwd entry`
   and `owner not changed` per file and lays the files ✅.
+- 2026-11-01 — the 040/060 user address space, the 68040/060 port's emulator runs (A4000, 68LC060
+  on a Z3660), port `KNOWN-ISSUES.md` `ISSUE-112`/`ISSUE-110`, fixes (`4c6ea89`, `c4058ad`, on
+  `k46-module`), fixed in emulation, not yet in a release: every port kernel up to `4c6ea89` loaded
+  ITT0 `0x003fc000` / DTT0 `0x003fc060` (S ignored), so user code read and wrote physical memory
+  below 1 GiB (chip-RAM vector, VPOSR, kernel text) ✅; now S=01 (`0x003fa000`/`0x003fa060`) ✅.
+  Exposed by it: the retained `hat_growsdt` writes 8-byte 030 section descriptors into the 040 root
+  page (root + s×8), so user pages at 0–256 MiB walked chip RAM; legacy growth off for user spaces ✅.
+  193 of 434 stock `ET_EXEC` files carry a read-only zero page (`PT_LOAD` vaddr 0, memsz `0x1000`,
+  R), gcc14 binaries none ✅. `modadmin -p` resolves only the DDI's exported symbols; the k46 load
+  layout (`.text` at `0x08000000`, `.data`, unaligned `.bss`, COMMON aligned 4 in symtab order)
+  reproduced ten addresses ✅.
