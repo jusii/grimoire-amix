@@ -593,3 +593,10 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   address`) and `crash` fails (`could not read namelist timestamp`) ✅; on the 2.1c bench image's
   kernel `crash` → `process slot out of bounds`, `sadc` → `Not enough space` ✅. The stock-kernel
   `adb` re-checks stay 🟡.
+- 2026-11-01 — kernel memory at first use, amix `kernel/dlm` low-memory runs on the 1.1 module
+  kernels (emulated A4000 + Z3660, 32 MB, multi-user): `HZ` 60 on both lines ✅ (stock `param.h`
+  `CLOCK 1`, CIA-A; `lbolt` ≈1250 ticks/21 s; `timeout(20*HZ)` after 1201–1202 ticks); the whole
+  allocator after multi-user ≈2.36 MB on k46, ≈1.57 MB on k30 ✅; cdfs keeps 85–94 KB unmounted,
+  187–198 KB mounted ✅; a 4096-byte `KM_SLEEP` on an empty allocator sleeps until a free (3 of 4) ✅
+  and once missed its wakeup for 57 149 ticks ✅ (mechanism 🔴); new processes wait while it is empty
+  🟡. Source: amix `kernel/dlm/tests/bench/lowmem/`, README "Low memory at first use", `53624e5`.

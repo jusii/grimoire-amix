@@ -172,6 +172,22 @@ under 256 KiB; each kmem request is at most 256 KiB; every `KM_NOSLEEP` result i
 module whose load needs more than about 160 KiB belongs in boot class, not demand class ✅. No metal
 number exists for these figures yet 🔴.
 
+#### At 32 MB the whole allocator is small ✅ {#kmem-at-32-mb}
+
+On a 32 MB box after multi-user,
+draining the allocator with `KM_NOSLEEP` pieces from 1 MiB down to 16 bytes, until even 16 bytes
+fails, yields about **2.36 MB on k46** (2 364 800 – 2 365 696 bytes) and **1.57 MB on k30**
+(1 564 288 – 1 567 296 bytes), repeatable within a few KB (emulated A4000 + Z3660, two kernels per
+line). A demand-class CD filesystem (cdfs 1.1.0-2) keeps 85–94 KB of that after `umount` and
+187–198 KB while mounted with a 1 MiB file read, about 4–6 % and 8–12 % of the allocator ✅.
+
+**A small `KM_SLEEP` is no safer than a large one** ✅. On an empty allocator a 4096-byte
+`KM_SLEEP` request sleeps until memory is freed, and it can miss that wakeup and sleep on long after
+memory is back (seen once in four runs; why is not known 🔴) ([the kmem allocator](../how-it-works/kernel-architecture.md#kmem-empty)). So code
+that runs in a user's process at first use (an open, a mount, a first exec) asks `KM_NOSLEEP` and
+fails with `ENOMEM`, whatever the size: the first-use rule of the driver-to-module contract
+(`kernel/dlm/docs/contracts/C3-6-driver-to-module.md` §1.1).
+
 ### Board windows and DMA
 
 - **Below `VSECT1` (0x40000000) the kernels map physical addresses one to one** (page-table early
@@ -190,6 +206,9 @@ number exists for these figures yet 🔴.
 
 ### Smaller traps
 
+- **`HZ` is 60 on both lines** ✅: the stock `sys/param.h` takes the clock from the CIA-A timer
+  (`CLOCK 1`), so it is 60 ticks a second on PAL and NTSC machines alike. In emulation `lbolt`
+  advanced about 1250 ticks in about 21 s, and a `timeout(…, 20 * HZ)` fired after 1201–1202 ticks.
 - **The kernel `printf` has no `l` modifier**: it takes `%s %d %u %x %o %c` only ✅ (`ddi.md`).
 - `<sys/systm.h>` declares `cputype` as a `short`, but the kernels define a `long`: read it through
   the kit's `DDI_CPUTYPE` ✅.
@@ -246,5 +265,12 @@ it for `ramdisk` ✅ (`kernel/modules/ramdisk/README.md`).
   both lines and the metal rows on two A4000-class machines with a Z3660 (68LC060 and 68060), the
   STREAMS-open level read from the stock `qattach`, the k46 heap mapping read from the port. Bench
   hosts and run numbers are project bookkeeping and are not reproduced here.
+- The **allocator at 32 MB, small `KM_SLEEP` and `HZ`** (first-party record, 2026-11-01) ✅ (🟡/🔴
+  where tagged): the amix `kernel/dlm` low-memory runs on the 1.1 module kernels of both lines
+  (emulated A4000 + Z3660, 32 MB, multi-user), with a test module that drains the allocator and
+  frees it from a 20 s `timeout`: [`amigaux/amix`](https://github.com/amigaux/amix)
+  `kernel/dlm/tests/bench/lowmem/` and `kernel/dlm/tests/bench/README.md` ("Low memory at first
+  use", `53624e5`, on `master`); `kernel/dlm/docs/contracts/C3-6-driver-to-module.md` §1.1; `HZ` from
+  the stock `usr/include/sys/param.h` in [`amigaux/amix-system`](https://github.com/amigaux/amix-system/blob/7cba961/usr/include/sys/param.h).
 - The public package catalog, `http://pkg.amigaux.org/catalog`, read 2026-10-29: catalog format 1,
   41 rows, no kernel-space block ✅.
