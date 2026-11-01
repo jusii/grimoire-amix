@@ -3748,7 +3748,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel (on the bench image it is the retail 2.1 kernel ✅). Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
 | 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram; a `DL_UNITDATA_REQ` with under 60 data bytes fails with `ERANGE`. Attach only on Style 2, check the state, trust the IP length, pad short frames to 60 | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
-| 96 | **On an emulated 68030 module-kernel test image, `tar xf` of a GNU or ustar archive from host GNU tar dies with `SIGSEGV` before laying a file; v7 headers extract**. The 68040/060 test image takes all three. Cause not examined, not seen on a stock kernel. Stage files as a v7 archive of regular files, owner 0, group 3 | 🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
+| 96 | **The stock `tar` (`/usr/sbin/tar`) crashes when root extracts a ustar or GNU archive whose owner or group name the box lacks** (an empty name counts, as GNU `--numeric-owner` writes): it prints `problem reading passwd entry` / `owner not changed`, then dereferences the NULL lookup and dies with `SIGSEGV` after the first file. Plain `tar` is this binary even with GNU tar installed. Use `tar xof`, a non-root user, `/opt/amix/bin/tar`, or v7 archives | ✅/🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
 | 97 | **A NULL read returns 0 in 193 stock binaries and faults in gcc14-built ones**: SVR4 `ld` gave those stock executables a read-only zero page at vaddr 0, while gcc14 binaries have none. Code that passes as one kind of binary can crash as the other. Before an unreleased fix, the 040/060 kernels returned chip-RAM bytes instead | ✅ | [Quirks §97](#97-zero-page-depends-on-linker), [040/060 status](68040-68060-status.md#k46-user-address-space) |
 
 The rest of this page expands each item.
@@ -4851,32 +4851,6 @@ the outputs.
 **Rule:** use an Amiberry build that contains `845af02`; with an older build, set
 `cpu_compatible=false` and leave `cpu_memory_cycle_exact` off, since it forces the mode back on.
 
-### 96. On a 68030 module-kernel test image, `tar xf` of a GNU or ustar archive dies; v7 headers extract 🟡 {#96-tar-formats-68030-test-image}
-
-Staging files into an emulated guest with an archive made by host GNU tar 🟡:
-
-- **68030:** an A4000 emulation with a 68030, running a 68030 module kernel under test. There, `tar xf`
-  of a GNU-format or POSIX ustar archive died with `SIGSEGV` (exit 139) before it laid any file, in all
-  three runs. The same files in v7 headers extracted, every file laid.
-- **68040/060:** an emulated 68LC060 image with a 68040/060 module kernel under test. There, `tar xf`
-  took GNU, ustar and v7 archives alike, exit 0 in all five runs.
-
-The archives were about 2.3 MB, the largest member 1.5 MB. Neither the guest's `tar` binary nor the
-cause was examined. Nobody checked whether the two images carry the same `tar`, or whether the fault
-belongs to `tar` or to the kernel under test, and it has not been seen on a stock kernel. Treat it as a
-bench observation, not a property of the 2.1 `tar`.
-
-With numeric owner 0 and group 3, the guest's `tar` still prints `problem reading passwd entry` and
-`owner not changed` for each file, on both images, and lays the files all the same ✅.
-
-**Rule for staging files into a guest:** build a v7 archive of regular files only, owner 0, group 3
-(`sys`), from a sorted list:
-
-```sh
-find . -type f | sort |
-  tar cf stage.tar --format=v7 --owner=0 --group=3 --numeric-owner --no-recursion -T -
-```
-
 ## Time & Y2K quirks
 
 ### 7. Y2K and the battery clock: a `setclk` bug, not a kernel cap ✅/🟡 {#7-y2k-setclk-and-the-kernels-1999-date-cap}
@@ -5383,6 +5357,62 @@ RAM disk and has no swap slice points swap at `/dev/fakeswap` — block major 19
 dummy disk, on which every I/O fails and nothing is paged — and the installer adds a real slice later
 with `swap -a` ✅ (emulation, both kernel lines).
 
+### 96. The stock `tar` crashes on a ustar or GNU archive whose owner or group the box lacks ✅/🟡 {#96-tar-formats-68030-test-image}
+
+The 2.1 `tar` is `/usr/sbin/tar` (45180 bytes, dated Feb 20 1992, SHA-256 `c5a04638…`); there is no
+`/usr/bin/tar` ✅. When it restores ownership from a header with the ustar magic (POSIX ustar or GNU
+format), it looks up the header's owner and group **names** with `getpwnam` and `getgrnam`. If a name
+does not exist on the box, it prints
+
+```text
+tar: problem reading passwd entry
+tar: <file>: owner not changed
+tar: problem reading group entry
+tar: <file>: group not changed
+```
+
+and then still reads the uid and gid through the NULL result to pass them to the ownership call. The
+process dies with `SIGSEGV` (exit 139) after laying the first file ✅ (a core and the disassembly of
+the binary). An **empty** name counts as missing, and that is what GNU tar's `--numeric-owner` writes ✅.
+The lookups are skipped when ownership is not restored (the `o` modifier, or a non-root user) and for
+v7 headers, which carry no names ✅.
+
+Measured on a 68030 module kernel in emulation (A4000, 64 MB), archives from host GNU tar ✅:
+
+| Archive | `tar xf` as root |
+|---|---|
+| v7 | extracts |
+| ustar or GNU with `--numeric-owner` (10 KB or 2.3 MB alike) | exit 139 after the first file |
+| ustar with owner `root`, group `sys` | extracts |
+| GNU with owner `jdoe`, group `users` (a typical Linux user's tarball) | exit 139 |
+| the same, `tar xof` as root | extracts, files owned by 0 |
+| the same, `tar xf` as a non-root user | extracts, files owned by that user |
+
+**Who hits it** 🟡: root running a plain `tar xf` on most tarballs made on another system. The default
+`PATH` lists `/usr/sbin` before `/opt/amix/bin`, so plain `tar` is the 1992 binary even when the GNU
+tar package (`/opt/amix/bin/tar`) is installed. A stock 2.1 kernel was not run; the fault is a user-space
+NULL read and needs only an unmapped page 0.
+
+**On the 68040/060 kernels before the TT fix** 🟡, the same `tar` prints the same messages and then
+carries on: exit 0, every file laid. Those kernels let user code read low physical memory
+([the 040/060 user address space](68040-68060-status.md#k46-tt-user-access)), so the NULL read
+returns a stray word instead of faulting. Whether that word becomes the files' owner was not checked.
+A 040/060 kernel with the fix should crash the same way as the 68030; that is inferred, not measured.
+
+**Workarounds** ✅:
+
+- as root, extract with `tar xof` (owner and group not restored);
+- or extract as a non-root user;
+- or use `/opt/amix/bin/tar`;
+- or build v7 archives, or ustar archives whose owner and group exist on the box (`root`, `sys`).
+
+For staging files into a guest, a v7 archive of regular files from a sorted list works on every kernel:
+
+```sh
+find . -type f | sort |
+  tar cf stage.tar --format=v7 --owner=0 --group=3 --numeric-owner --no-recursion -T -
+```
+
 ### 97. Whether a NULL read returns 0 or faults depends on the linker ✅ {#97-zero-page-depends-on-linker}
 
 193 of the 434 `ET_EXEC` files in the stock system tree carry a **read-only zero page**: a `PT_LOAD`
@@ -5397,6 +5427,8 @@ Before that fix, the 040/060 kernel's transparent-translation window covered the
 accesses too, so a NULL read in either kind of binary returned chip-RAM bytes instead ✅
 ([the 040/060 user address space](68040-68060-status.md#k46-tt-user-access)).
 
+The stock `tar` of [quirk 96](#96-tar-formats-68030-test-image) is one such case: it reads through a failed `getpwnam` result.
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -5407,7 +5439,7 @@ accesses too, so a NULL read in either kind of binary returned chip-RAM bytes in
 
 ## Sources
 - The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
-- The **`tar` formats on the module-kernel test images** (first-party record, 2026-11-01) 🟡, the passwd and owner messages ✅ — quirk 96: the amix `kernel/dlm` bench runs that staged files into emulated guests with host GNU tar and checked each archive with `sum -r` before `tar xf`. On the 68030 image, GNU format and ustar gave exit 139 (three runs) and v7 exit 0. On the 68040/060 image, GNU format twice, ustar twice and v7 once gave exit 0, and the next build read the laid files.
+- The **stock `tar` NULL owner lookup** (first-party record, 2026-11-01) ✅/🟡 — quirk 96: the amix `kernel/k30` runs in emulation, which pulled `/usr/sbin/tar` from the 68030 and 68LC060 images (one SHA-256 for all copies) and took a core on the 68030 (the faulting read through a zero address register). The disassembly of the binary shows the `getpwnam`/`getgrnam` results read after their failure messages, checked here against the pulled copy. The archive table (v7, ustar and GNU, named and numeric owners, `xof`, non-root) ran on two 68030 kernel builds; the 68LC060 run was on a 68040/060 kernel from before the TT fix. The first observation (exit 139 on ustar and GNU, v7 fine, the 68040/060 image unaffected) came from the amix `kernel/dlm` staging runs the same day.
 - The **`aen` DLPI traps** (first-party record, 2026-10-30; the short-frame refusal 2026-10-31) ✅ — quirk 95: see the matching Sources entries on [the networking page](networking.md#raw-dlpi-aen).
 
 - The **4 KB TCP lower-read queue** (2026-10-21) ✅ — quirk 75: the stock kernel's `ipintr` /

@@ -617,3 +617,11 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   R), gcc14 binaries none ✅. `modadmin -p` resolves only the DDI's exported symbols; the k46 load
   layout (`.text` at `0x08000000`, `.data`, unaligned `.bss`, COMMON aligned 4 in symtab order)
   reproduced ten addresses ✅.
+- 2026-11-01 — quirk 96's cause, amix `kernel/k30` emulator runs: both test images carry the same
+  `/usr/sbin/tar` (45180 bytes, Feb 20 1992, SHA-256 `c5a04638…`) ✅. Restoring ownership from a
+  ustar-magic header, it calls `getpwnam`/`getgrnam` on the header's names and, after printing
+  `owner not changed` / `group not changed`, reads the uid/gid through the NULL result: `SIGSEGV`
+  after the first file (core + disassembly) ✅; an empty name (GNU `--numeric-owner`) counts as
+  missing ✅; skipped with `xof`, as non-root, and for v7 ✅. Root's plain `tar xf` of foreign
+  tarballs hits it (`/usr/sbin` before `/opt/amix/bin`) 🟡; on 040/060 kernels before the TT fix
+  the NULL read does not fault 🟡. Supersedes the "cause not examined" of the entry above.
