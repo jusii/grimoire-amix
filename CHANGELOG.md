@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-01 — the 040/060 user address space (8861759)
+
+Port, fixed in emulation, not yet in a release: every 68040/060 kernel up to the fix loaded ITT0/DTT0 matching user accesses too, so user code could read, write and execute physical memory below 1 GiB (✅); now supervisor-only. The fix exposed a root page shared by the 040 tree and the legacy 030 section descriptors, which made user pages at 0–256 MiB walk chip RAM; legacy growth is now off for user spaces (✅). Quirk 97: 193 of 434 stock executables carry a read-only zero page, gcc14 binaries none (✅). modadmin -p resolves only exported symbols; the k46 load layout gives the rest (✅).
+
 ## 2026-11-01 — quirk 96: tar formats on the 68030 module-kernel test image (7e6ab05)
 
 On an emulated 68030 module-kernel test image, tar xf of a GNU or ustar archive from host GNU tar dies with SIGSEGV; v7 headers extract (🟡). The 68040/060 test image takes all three (🟡). Cause not examined. Staging rule: a v7 archive of regular files, owner 0, group 3; the per-file passwd/owner messages are harmless (✅).
