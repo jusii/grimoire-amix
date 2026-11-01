@@ -749,7 +749,8 @@ Recorded so nobody re-chases them, and so nobody plans a capture around them:
   **not** evidence of anything ✅. (`netstat -m` likewise answers
   `Memory information not currently supported`.) `netstat -in` and `netstat -rn` worked on the boxes
   of that soak; on an image whose `/stand/unix` is not the booted kernel they fail ([§93](#93-netstat-rn-routehash)).
-- **`sar -v` fails** with `sadc: Not enough space` ✅.
+- **`sar -v` fails** with `sadc: Not enough space` ✅. On an amigaux 1.1 module kernel `sar -r` fails
+  too, with `sadc cannot copy inode table: No such device or address` ✅.
 - **`ipcs -a` fails** with `read error: No such device or address` ✅.
 
 The last two are pre-existing tooling gaps on the stock image, not symptoms — don't budget on them
@@ -807,7 +808,10 @@ believing anything it prints.
 native link still carries its symbol table, so there it **doubles as its own `adb` namelist** ✅ —
 `adb -k /stand/unix /dev/mem` resolves correctly, and no separate namelist file is needed. So the
 invariant to check is not *which file* but *does this particular file still have a symtab*; the
-answer depends on how that kernel was produced.
+answer depends on how that kernel was produced. On an amigaux 1.1 module kernel `/stand/unix` is a
+namelist that `kbootset` writes at the booted generation's runtime addresses, so
+`adb -k /stand/unix /dev/kmem` reads live values there too ✅
+([kernel probing](../drivers/kernel-reverse-engineering.md#namelist-bound-1-1)).
 
 ### 45. Heavy raw `dd` to the boot slice can reboot the box 🟡 {#45-boot-slice-dd}
 
@@ -958,7 +962,10 @@ from the console, not from the ring.
 link left pointing at the stock kernel — they read the wrong addresses silently ✅. Keep `/stand/unix`
 the booted kernel's bound image. On the project's 2.1c bench image `/stand/unix` is the **retail
 2.1 kernel**, byte for byte, while the image boots a different 2.1c link ✅
-([§93](#93-netstat-rn-routehash)): every namelist reader there gets retail 2.1 symbols.
+([§93](#93-netstat-rn-routehash)): every namelist reader there gets retail 2.1 symbols. On an
+amigaux 1.1 module kernel `kbootset` keeps `/stand/unix` the booted generation's namelist ✅, and
+`adb -k` reads through it, though `crash` still fails there (`could not read namelist timestamp`)
+([kernel probing](../drivers/kernel-reverse-engineering.md#namelist-bound-1-1)).
 
 ## Driver-authoring quirks
 
@@ -1723,6 +1730,7 @@ with `swap -a` ✅ (emulation, both kernel lines).
   `putq` / `canput` disassembly against the USL SVR4 `netinet` source, the `tcpm_info` word read in
   the 2.1c `/stand/unix`, and the live-kernel and patched-kernel push rows on a real Z3660 box
   (first-party record); detail and citations on [networking](networking.md#sources).
+- The **1.1 namelist and the `sar`/`crash` messages** (first-party record, 2026-10-31) ✅ — quirks 26, 44, 80: see the matching Sources entry on [the kernel-probing page](../drivers/kernel-reverse-engineering.md#namelist-bound-1-1).
 - The **`netstat -rn` routehash failure** (first-party record, 2026-10-30) ✅/🟡 — quirk 93: see the matching Sources entry on [the networking page](networking.md#static-ip-configuration-no-dhcp). The bench image's kernel (first-party record, 2026-10-30) ✅: the k30 kernel work's comparison of the booted kernel with the image's `/stand/unix` (size, `sum -r`, cdfs and A3091 strings, text size against the stock link).
 - The **2.1 `/bin/sh` background-job facts** (first-party record, 2026-10-30) ✅ (the `O_APPEND` mechanism 🟡) — quirk 94: the amix `userland/base` shell tests on the emulated 2.1c bench image's stock userland (`wait` on a finished and a running child, at top level, in a subshell and in a function; two background jobs appending to one log; `TERM` then `KILL` of a shell job and of `sleep`; `sh -c` operands). The base package's `rc_bg` is built around them and its comments record them ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/base/rc/rc.subr`, `8ee48af`).
 - The **`queuerun` panic** (first-party record, 2026-10-30) ✅ — quirk 92: the amix-packages `prngd` 0.9.29 port's runs on the emulated 2.1c bench image (three panics captured on the console with their backtraces, symbolised by the k30 kernel work; the survived loads and the two `prngd`-free reproducers); the recipe in [amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd` (`cc61d24`). The cause (first-party record, 2026-10-30) ✅: the k30 kernel work's disassembly of the stock `qattach`, `qdetach`, `freeq` and `strclose`; its runs of the stock 2.1c link on an emulated A3000 (16 MB bank) with `freeq` instrumentation (two catches, one panic with observation only), the `bufcall`/callout counts, and the `anoninfo` reservation figures; the fix [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/k30` `f4aef26` (`src/freeqguard030.c`, `tools/freeqguard-retarget.py`, on `master`). The package-test runs on three kernels (first-party record, 2026-10-31) 🟡: the amix-packages `prngd` port's smoke test and loads on the emulated bench image, a 2.1c kernel with only the guard, and the project's 68030 test kernel, one boot each; results in the recipe's README ([amix-packages](https://github.com/jusii/amix-packages) `recipes/prngd`, `fd96cc7`; the bench-image panic left unconfirmed as quirk 92 in `7349c19`, the guard-only row's empty reads in `3208937`). The 040/060 line (first-party record, 2026-10-31) ✅/🟡: the port's `ISSUE-109` in `KNOWN-ISSUES.md` ([`amigaux/amix-040-060-port`](https://github.com/amigaux/amix-040-060-port) `k46-module`: the guard and its binding at `17501b9`, the write-up at `a1418bb`) — the byte comparison against the stock 2.1c link, seven guarded runs and four controls in emulation.

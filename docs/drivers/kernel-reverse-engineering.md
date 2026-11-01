@@ -66,6 +66,8 @@ The same reloc-annotated disassembly reaches well past the VFS/mount functions t
 The on-guest debuggers are unreliable here: `adb -k /stand/unix /dev/kmem` reads garbage because the
 **relocated runtime kernel does not match the `/stand/unix` namelist** (constants like `nfstype` read as
 0), and `crash` errors out on `/dev/mem` ✅. The dependable path is a host-side memory dump.
+That is a stock relocated kernel's problem: on an amigaux 1.1 module kernel the same `adb`
+invocation reads live values ([below](#namelist-bound-1-1)).
 
 Take an emulator snapshot (Amiberry: the `SAVESTATE` IPC verb) and pull globals out of the RAM chunk.
 On an A3000-fastmem machine the kernel lives in the **`A3K1` chunk, identity-mapped at physical base
@@ -138,6 +140,10 @@ garbage (`freemem` read back as `0xFFFFFFFF`). Drop the namelist and address by 
 > the working combination measured for kernel-mode reads is `-k` with **`/dev/mem`**, whereas the
 > failing invocation above used `/dev/kmem` — device-versus-bias was not isolated. Until re-run,
 > treat this paragraph's example (not its rule) as provisional.
+> *Narrowed 2026-10-31:* on an amigaux 1.1 module kernel, whose `/stand/unix` holds runtime
+> addresses, `adb -k /stand/unix /dev/kmem` reads `freemem` correctly ✅
+> ([below](#namelist-bound-1-1)), so `-k` on `/dev/kmem` works when the namelist is right. Both
+> re-checks on the stock relocated kernel are still open.
 
 ```
 runtime VA = (nm/adb symbol value) + kernel_load_base
@@ -152,6 +158,30 @@ known symbol before trusting any poke.)
 **For a `static`-scoped variable with no global symbol:** disassemble the function that touches it, read
 the operand address straight out of the **live instruction stream**, then poke *that* address — the same
 trick that recovers file-scoped statics from the `exp` objects, applied to the running image ✅.
+
+### On an amigaux 1.1 module kernel the namelist is already bound ✅ {#namelist-bound-1-1}
+
+On a 1.1 module kernel neither trap applies. `kbootset` writes `/stand/unix` as the booted
+generation's **namelist**: an `ET_EXEC` symbol table with no contents, each symbol at its address in
+this boot (the bind address plus its offset in the loader's layout, COMMON symbols included). It
+rewrites the file on every boot that reaches `mark-good`, and `kbootset status` names it
+("namelist: /stand/unix is generation N's, bound at 0x08000000"). The symbol values `adb` takes from
+it are runtime addresses, so no load-bias arithmetic is needed ✅:
+
+```sh
+echo "freemem/D\navailrmem/D\nphysmem/D" | adb -k /stand/unix /dev/kmem
+```
+
+Measured on the 1.1 68030 module kernel (emulated A4000 + Z3660 in 68030 mode, 32 MB fast RAM),
+the values are live and consistent ✅: `physmem` 16383 (2 KiB pages); `freemem` 11854 and 11851
+idle, 11746 with six extra processes running, 11832 after they exited; `availrmem` 14229, 14211,
+14213.
+
+The other namelist readers do not follow ✅. On the same box `sar -r 1 1` fails with
+`sadc cannot copy inode table: No such device or address`, and `/etc/crash` with
+`could not read namelist timestamp`. On the 2.1c bench image's kernel (booted kernel not
+`/stand/unix`, no symbol table) `crash` fails with `process slot out of bounds` and `sadc` with
+`Not enough space`. For live kernel variables on 1.1, use `adb`.
 
 ## The COMMON-symbol trap: `nlist` succeeds and lies ✅
 
@@ -277,6 +307,7 @@ When the console is dead but a savestate still works ([Step 3](#step-3-read-a-ru
 
 ## Sources
 
+- The **1.1 namelist reads** (first-party record, 2026-10-31) ✅ — the amix-kerntools project's runs on the emulated 1.1 68030 module kernel (A4000 + Z3660 in 68030 mode, 32 MB): the `adb -k /stand/unix /dev/kmem` values above, `kbootset status`, and the `sar`/`crash` messages there and on the 2.1c bench image's kernel. The namelist's form and writer: [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/docs/spec/40-generations-and-composer.md` §4.2.
 - Disassembly of the shipped kernel objects `usr/sys/fs/fs.exp` (`mount` @0x1814, `vfs_getvfssw` @0x2370, `vfsinit` @0x2446) and `usr/sys/os/exp` (`sysent` @0x6f8, `systrap` @0x1eaf6) via `m68k-cbm-sysv4-objdump -dr` / `-nm`, cross toolchain sysroot — reproduced locally ✅.
 - Live `vfssw[]` / `nfstype` read from an Amiberry `SAVESTATE` (`A3K1` chunk, identity base `0x07800000`), cross-checked against the disassembly ✅.
 - On-box reproduction on Amix 2.1c: `sysfs(GETFSIND,"cdfs")` and a string-form `mount(2)` probe, showing `errno 22` ⇔ fstype absent from the booted kernel's `vfssw[]` ✅.

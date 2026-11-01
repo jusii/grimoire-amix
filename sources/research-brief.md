@@ -585,3 +585,11 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   34 at 28 and 46 bytes; sent at 60) ✅. Stock `aen.h` `AEN_MIN` = 64 − CRC = 60 is `aen_minfo`'s
   minimum and counts the 14-byte header; the transmit path lengthens short frames itself (source).
   Source: amix `userland/base/dhcpc/dhcpc.c` `arpcheck` `88954e7`; amix-system `aen.h`/`aen.c`.
+- 2026-10-31 — 1.1 namelist, amix-kerntools runs on the emulated 1.1 68030 module kernel (A4000 +
+  Z3660 in 68030 mode, 32 MB): `adb -k /stand/unix /dev/kmem` reads live `freemem`/`availrmem`/
+  `physmem` (16383 2 KiB pages; freemem 11854/11851 idle, 11746 under load, 11832 after) ✅, since
+  `kbootset` writes `/stand/unix` as the booted generation's namelist at runtime addresses (amix
+  `kernel/dlm` spec 40 §4.2). On 1.1 `sar -r` fails (`sadc cannot copy inode table: No such device or
+  address`) and `crash` fails (`could not read namelist timestamp`) ✅; on the 2.1c bench image's
+  kernel `crash` → `process slot out of bounds`, `sadc` → `Not enough space` ✅. The stock-kernel
+  `adb` re-checks stay 🟡.
