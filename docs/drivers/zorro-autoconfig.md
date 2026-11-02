@@ -10,7 +10,7 @@ An Amix driver does **not** hard-code where its expansion board lives. The Amiga
 
 Two hard limits frame everything on this page:
 
-- **Stock drivers are Zorro II only.** Zorro III space lies outside the kernel's identity-mapped low 1 GB, so a driver that dereferences the `autocon()` base directly reaches only Zorro II boards; a driver that maps its board with `sptalloc()` reaches Zorro III as well ✅ — see [below](#zorro-iii-boards-and-the-real-zorro-ii-only-wall). See also [Hardware](../how-it-works/hardware.md).
+- **Stock drivers are Zorro II only.** AutoConfig puts Zorro III boards at `0x40000000` and above, outside the kernel's identity-mapped low 1 GB, so a driver that dereferences the `autocon()` base directly reaches only Zorro II boards; a driver that maps its board with `sptalloc()` reaches Zorro III as well ✅ — see [below](#zorro-iii-boards-and-the-real-zorro-ii-only-wall). See also [Hardware](../how-it-works/hardware.md).
 - **AutoConfig boards only.** RAM and accelerator boards with no AutoConfig ROM are invisible to this mechanism — `lszorro` cannot see them ✅.
 
 Grounding: this page is built from §2 and §6 of the [research brief](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md), the [Ditto driver paper](../reference/bibliography.md), and the `asokero/lszorro-amix` source. The `autocon()` signature is read from the stock kernel source, `amiga/kernel/support.c` ✅; the brief's community-tier form is kept below as history only.
@@ -66,7 +66,7 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 🔴 **"Zorro II only" is imprecise about `autocon()` itself.** `autocon()` searches the same `bootinfo.autocon[NAUTO]` table for *any* AutoConfig board and returns the assigned base for a matched product id — **including Zorro III boards** ✅ (first-party, from the A4091-on-Amix project; `autocon()` in `amiga/kernel/support.c`). The match is purely on `(er_Manufacturer, er_Product)`; nothing in the table search rejects a Zorro III address. So a Zorro III board *does* AutoConfigure and `autocon()` *does* hand back its base.
 
-🔴 **The actual wall is that Zorro III space falls outside the kernel's identity map, not `autocon()`.**
+🔴 **The actual wall is that AutoConfig places Zorro III boards outside the kernel's identity map, not `autocon()`.**
 
 ### How the low 1 GB is really mapped {#the-identity-map}
 
@@ -80,7 +80,7 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 > **Note.** `amiga/ml/ttrap.s` contains `tt0 = 0x003F0143` / `tt1 = 0x807F0143`, but the running kernel does not load them. The identity map comes from the MMU root table, as described above ✅.
 
-A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`. The bottom of Zorro III space, `0x10000000`–`0x3FFFFFFF`, is inside the identity map 🟡; a board placed there, such as the Z3660's fixed window at `0x10000000`, is dereferenced directly ✅ ([the address map](../how-it-works/hardware.md#address-map)).
+A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`. The bottom of Zorro III space, `0x10000000`–`0x3FFFFFFF`, is inside the identity map 🟡 (`VSECT1` is `0x40000000` in both the k30 and the k46 kit); a board placed there, such as the Z3660's fixed window at `0x10000000`, is dereferenced directly ✅ ([the address map](../how-it-works/hardware.md#address-map)).
 
 The fix is the kernel primitive **`sptalloc(npages, prot, pfn, flag)`**, which page-table-maps physical pages into kernel VA ✅. A Zorro III driver takes the `autocon()` base and `sptalloc`-maps it before any register access:
 
@@ -217,7 +217,7 @@ So `autocon()` (in-kernel) and `lszorro` (userspace) are two readers of the **sa
 
 ## See also
 
-- [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board brought up over the unmapped region above the identity map with `sptalloc()`; the auto-detection consumer of `autocon()`.
+- [The A4091/53C710 driver](a4091-53c710-driver.md) — a Zorro III board, placed by AutoConfig above the identity map, brought up with `sptalloc()`; the auto-detection consumer of `autocon()`.
 ## The phantom on a real A4000: a fabricated entry whose every I/O is fatal ✅
 
 On real A4000 metal the fabricated card-0 entry is worse than a mis-ordering. Nothing decodes

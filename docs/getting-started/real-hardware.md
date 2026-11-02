@@ -51,7 +51,7 @@ These are absolute and enforced by the kernel or the install scripts; you cannot
 | **Fast RAM** | **4 MB minimum**; on a stock kernel rooted on the A3000 SCSI, keep the motherboard bank at 16 MB | A bigger motherboard bank loads the stock kernel below `0x07000000` and loses the root disk ([quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)); kernels that probe for the controller run 64 MB, the 040/060 kernels 128 MB — above that, the describable-RAM limit ([RAM ceiling](../how-it-works/ram-ceiling.md)) |
 | **SCSI disk** | **ID 6** (convention) | Installer prompts for the disk target; ID 6 is the universal default, baked into device names once installed |
 | **SCSI tape** | **must be SCSI ID 4** | Hard-coded in install scripts (`/dev/rmt/4h`) |
-| **Zorro III** | **Stock drivers: Zorro II cards only** | Zorro III space lies outside the kernel's identity-mapped low 1 GB, so a stock driver that dereferences the `autocon()` address can't reach it; a driver that maps the board (`sptalloc()`) can — see [the Zorro III correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall) |
+| **Zorro III** | **Stock drivers: Zorro II cards only** | AutoConfig puts Zorro III boards at `0x40000000` and above, outside the kernel's identity-mapped low 1 GB, so a stock driver that dereferences the `autocon()` address can't reach the board; a driver that maps the board (`sptalloc()`) can — see [the Zorro III correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall) |
 
 For the full hardware story — supported SCSI/graphics/network/serial cards, the AUTOCONFIG mechanism, the RAM-ceiling failure mode — see [the hardware reference page](../how-it-works/hardware.md).
 

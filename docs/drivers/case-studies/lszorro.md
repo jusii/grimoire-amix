@@ -68,8 +68,8 @@ address ranges that have no board behind them.
 | Zorro II memory | `0x200000`–`0x9FFFFF` | memory-mapped boards (framebuffers, RAM apertures) |
 
 These are the standard Zorro II spaces; boards are placed there by the Amiga AUTOCONFIG mechanism at
-reset, and Amix inherits those assignments. Zorro III boards are AutoConfigured too, but their space
-lies outside the kernel's identity map, so only a driver that maps them (`sptalloc()`) can reach
+reset, and Amix inherits those assignments. Zorro III boards are AutoConfigured too, but at `0x40000000` and
+above, outside the kernel's identity map, so only a driver that maps them (`sptalloc()`) can reach
 them ✅ — see [the Zorro III correction](../zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall) and
 [Hardware](../../how-it-works/hardware.md).
 

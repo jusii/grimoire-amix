@@ -155,8 +155,8 @@ backed by a first-party measurement or source read on the linked page.
 ([the identity map](../drivers/zorro-autoconfig.md#the-identity-map)) covers `0x10000000`–`0x3FFFFFFF`,
 the bottom of Zorro III space. The Z3660's fixed window at `0x10000000` is reached through it ✅; the
 Zorro III boards AutoConfig placed in the measured setups landed at `0x40000000` and above, outside
-it ✅. So "Zorro III lies outside the identity map", on this site, means where boards land in
-practice, not the whole range.
+it ✅. So where this site says a Zorro III board lies outside the identity map, it means a board
+AutoConfig placed, not the whole range.
 
 **Empty space** ✅: the motherboard turns no unanswered local-I/O read into a bus error, and Gary
 ends an unanswered motherboard read with its timeout and wrong data

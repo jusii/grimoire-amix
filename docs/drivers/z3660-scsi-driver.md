@@ -461,8 +461,8 @@ digest tool built with the box's own `cc` ✅.
   combo board and firmware-mailbox model; the board, the Zynq SoC, and the `0x144B0001` identity are
   described there in full.
 - [A4091 / 53C710 SCSI driver](a4091-53c710-driver.md) — the *other* SCSI sibling and a true Zorro III
-  53C710 controller; contrast its SCRIPTS/DSA complexity and its `sptalloc` mapping across the
-  unmapped region above the identity map with this driver's ~5-poke mailbox.
+  53C710 controller; contrast its SCRIPTS/DSA complexity and its `sptalloc` mapping of a board
+  AutoConfig placed above the identity map with this driver's ~5-poke mailbox.
 - [The Amix device-driver model](driver-model.md) — block vs char vs STREAMS; the `sd.c`/`scsicard[]`
   SCSI-stack path this driver registers into.
 - [Building & installing a kernel](kernel-build.md) — the `make` → `relocunix` → `make bootpart` flow

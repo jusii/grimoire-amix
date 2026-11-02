@@ -150,7 +150,7 @@ The Ditto paper's `par.c` exercises the standard SVR4 DDI/DKI surface that an Am
 | `pollwakeup()` | notify `poll()` waiters of an event |
 | `autocon(product_id, dev, &board, &dummy)` | **Amix-specific** Zorro II board discovery 🟡 (repo-confirmed) |
 
-`autocon()` ties into the Amiga **AUTOCONFIG** mechanism that assigns Zorro II board addresses at reset; see [Zorro II autoconfig for drivers](zorro-autoconfig.md). Note that the **stock** drivers are **Zorro II only**: Zorro III space lies outside the kernel's identity-mapped low 1 GB, so dereferencing the `autocon()` base directly only works for Zorro II boards; a driver that maps its board with `sptalloc()` reaches Zorro III too ✅ — see [the Zorro III correction](zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall).
+`autocon()` ties into the Amiga **AUTOCONFIG** mechanism that assigns Zorro II board addresses at reset; see [Zorro II autoconfig for drivers](zorro-autoconfig.md). Note that the **stock** drivers are **Zorro II only**: AutoConfig puts Zorro III boards at `0x40000000` and above, outside the kernel's identity-mapped low 1 GB, so dereferencing the `autocon()` base directly only works for Zorro II boards; a driver that maps its board with `sptalloc()` reaches Zorro III too ✅ — see [the Zorro III correction](zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall).
 
 ## The Amix HBA/DMA driver contract (real hardware)
 

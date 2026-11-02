@@ -206,8 +206,8 @@ drives ✅. See the [install walkthrough](../getting-started/install-walkthrough
 
 ## Zorro II / III
 
-The Amiga expansion bus. **Stock** Amix drivers are **Zorro II only**: Zorro III space lies outside
-the kernel's identity-mapped low 1 GB, so a driver that dereferences the AutoConfig address reaches
+The Amiga expansion bus. **Stock** Amix drivers are **Zorro II only**: AutoConfig puts Zorro III boards at
+`0x40000000` and above, outside the kernel's identity-mapped low 1 GB, so a driver that dereferences the AutoConfig address reaches
 only Zorro II boards; a driver that maps the board with `sptalloc()` reaches Zorro III ✅ (see
 [the Zorro III correction](../drivers/zorro-autoconfig.md#zorro-iii-boards-and-the-real-zorro-ii-only-wall)). Board
 addresses are assigned by [AUTOCONFIG](#autoconfig) at reset ✅. See [hardware](hardware.md),
