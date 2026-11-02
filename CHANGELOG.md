@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-02 — stock accounts, remote logins and the first-boot system.setup (15eb3ed)
+
+First login: the stock 2.1 accounts ship without passwords, PASSREQ=NO, and inetd runs telnet and the r-services as root. The first boot runs Commodore's system.setup, whose "assign a password to all of the system accounts?" copies root's password to every system account but guest. The amixadm wording is corrected (it is a menu for later) in the install walkthrough, the cheat sheet and the kernel architecture page.
+
 ## 2026-11-02 — ddsize on the a3091 path; quirk 98, vfork and the signal table (4a1b551, c9ae68a)
 
 Disks: /etc/ddsize hangs for good on the A3000 onboard SCSI (a3091) in emulation; the miniroot can't bound it, and the 1.1 installer avoids it; other controllers unmeasured. Quirk 98: a vfork child that calls signal/sigset/sigaction rewrites the parent's libc handler table and kills it with SIGBUS (xinit on a real A4000D); vsyslog's LOG_CONS fallback does the same to SIGALRM (🟡); toolchain: the static vfork is a true vfork; Imake's HasVFork must be NO on SVR4.
