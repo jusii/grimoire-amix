@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-02 — loadable modules: how each line maps the low 1 GiB (b4dfc83)
+
+Loadable modules: the identity map below VSECT1 is a root-table early-termination descriptor on k30 and DTT0 on k46 (DTT1 also maps 0x80000000 up; only 0x40000000–0x7FFFFFFF needs page mapping).
+
 ## 2026-11-02 — Zorro III and the identity map, made precise (9ef6bc5)
 
 Zorro III wording made precise across 13 pages: the space starts at 0x10000000 and its bottom (to 0x3FFFFFFF) is inside the identity map; AutoConfig places Z3 boards at 0x40000000 and above (VSECT1 on both kernel lines), outside it.
