@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-02 — empty Zorro III reads per CPU path; /dev/scsi; probe facts (5c69b80)
+
+Quirk 66: an empty Zorro III read, measured per CPU path (real 68LC060: Buster's bus error after ~285 ms, caught by bprobe at any level; the Z3660's emulated 030 0xFF and Amiberry 0x00, no fault), so fixed-address probes still need an identity check; a bprobe above VSECT1 faults in the MMU. Device list: the stock /dev/scsi interface and limits. Gayle IDE: the slave is off by default. Z3660 SCSI: INQUIRY answers unmapped units as disks. A4091: the first command's bus reset is slow under Amiberry. Z3660 ethernet: MAC_HI is a 32-bit register.
+
 ## 2026-11-02 — stock accounts, remote logins and the first-boot system.setup (15eb3ed)
 
 First login: the stock 2.1 accounts ship without passwords, PASSREQ=NO, and inetd runs telnet and the r-services as root. The first boot runs Commodore's system.setup, whose "assign a password to all of the system accounts?" copies root's password to every system account but guest. The amixadm wording is corrected (it is a menu for later) in the install walkthrough, the cheat sheet and the kernel architecture page.
