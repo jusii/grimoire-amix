@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-02 — tar on four systems and heirtar; O_NDELAY connect and SVR4 ptys (e2eaf01)
+
+Quirk 96: the stock tar crashes on a 68060 kernel with the TT fix too, while the 1.1 image's 68060 kernel extracts and gives every file to 0/0; it reads no GNU long names or pax headers; heirtar is the first workaround. Quirk 12: ${1:?word} ends at the first blank. Toolchain: %llo through libc writes 0; new SVR4 pty section. Networking: non-blocking connect under O_NDELAY vs O_NONBLOCK. Package management: under -n the stock pkgadd stops at a path another package owns, whatever the admin file says (🟡 for a shared directory with a different owner).
+
 ## 2026-11-01 — quirk 96 explained: the stock tar and a failed owner lookup (bb48556)
 
 The stock /usr/sbin/tar (1992), restoring ownership from a ustar or GNU header, reads the uid and gid through a failed getpwnam/getgrnam result and dies with SIGSEGV after the first file whenever the owner or group name is missing on the box, including the empty names of GNU --numeric-owner (✅). Root's plain tar xf of foreign tarballs hits it (🟡). Workarounds: tar xof, a non-root user, /opt/amix/bin/tar, v7 archives (✅). The 68040/060 kernels before the TT fix don't fault on the NULL read (🟡).
