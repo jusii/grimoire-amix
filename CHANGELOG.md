@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-02 — the A3000/A4000 physical address map (01792fa)
+
+Hardware: the A3000/A4000 physical address map (secondary ranges at 🟡, first-party rows at ✅); Zorro III space begins at 0x10000000, inside the identity map, while AutoConfig'd Z3 boards land at 0x40000000 and above.
+
 ## 2026-11-02 — tar on four systems and heirtar; O_NDELAY connect and SVR4 ptys (e2eaf01)
 
 Quirk 96: the stock tar crashes on a 68060 kernel with the TT fix too, while the 1.1 image's 68060 kernel extracts and gives every file to 0/0; it reads no GNU long names or pax headers; heirtar is the first workaround. Quirk 12: ${1:?word} ends at the first blank. Toolchain: %llo through libc writes 0; new SVR4 pty section. Networking: non-blocking connect under O_NDELAY vs O_NONBLOCK. Package management: under -n the stock pkgadd stops at a path another package owns, whatever the admin file says (🟡 for a shared directory with a different owner).
