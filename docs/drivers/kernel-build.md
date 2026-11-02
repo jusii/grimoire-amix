@@ -437,6 +437,8 @@ onboard** SCSI driver (super-DMAC + WD33C93 at `0xDD0000`), it is in the stock `
 and it links into **every** kernel. It lives under `amix-a4091/src/kernel-patches/` only because that
 project did the work ✅.
 
+On the emulated A3000, `/etc/ddsize` on a disk behind this driver hung for good, after `a3091: 0x1 0 0x0` ✅ ([`ddsize` can hang](../how-it-works/filesystems-and-disks.md#ddsize-can-hang)).
+
 **`a3091.c.patch`** (commit `e70c1d7`; `patch -p0` on `amiga/alien/a3091.c`) adds a high-address DMA
 **bounce**: any buffer at or above `0x1000000` is copied through a per-unit chip-RAM buffer, which is
 always DMA-reachable. Stock `startdma()` sets `device->sac = cp->addr` — the caller's 32-bit buffer

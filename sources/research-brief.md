@@ -647,3 +647,8 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   Zorro III space `0x10000000`–`0x7FFFFFFF` and its AutoConfig space at `0xFF000000` 🟡. It lists a
   SCSI controller at `0xDD0000` for the A4000 without telling the A4000D from the A4000T (first-party:
   nothing answers there on the A4000D). Nothing on bus timeouts or bus errors.
+- 2026-11-02 — `/etc/ddsize`, Installer-NG (`1fad3eb`): on an emulated A3000 with the target on the
+  onboard WD33C93, `ddsize /dev/rdsk/c6d0s0` printed `a3091: 0x1 0 0x0` and never returned
+  (2026-08-11) ✅; the miniroot has no timeout tool, and the 1.1 installer's scan reads one block per
+  id and calls `ddsize` only when a profile allows it (none does) ✅. Other controller paths
+  unmeasured 🔴.
