@@ -2348,6 +2348,24 @@ emulation on the 2.1c bench image (stock userland; its kernel is described under
 its socket, so its own `--kill` and `prngd-ctl` could never reach it) need that call removed; `prngd`'s
 UnixWare `DONT_CHMOD_SOCKET` define was meant for exactly this but nothing in 0.9.29 read it.
 
+### Non-blocking `connect()`: use `O_NDELAY`, not `O_NONBLOCK` ✅ {#nonblocking-connect}
+
+A TCP `connect()` on a socket set non-blocking with `fcntl` behaves differently under the two flags
+(GCC 14 probe with the stock `libsocket`/`libnsl`, the 1.1 disks booted on 68030 and 68060 kernels in
+emulation, 2026-11-02) ✅:
+
+| | `O_NONBLOCK` | `O_NDELAY` |
+|---|---|---|
+| `connect()` to a remote host | −1, errno 11 `EAGAIN` ("No more processes") | −1, errno 150 `EINPROGRESS` |
+| `select()` for write | writable at once | writable once connected |
+| `getsockopt(SO_ERROR)` | 0, for an open and a closed port alike | 0 when connected; for a refused port `select` reports readable and writable and `getsockopt` itself fails with `EPIPE` (32), raising `SIGPIPE` |
+| a second `connect()` | errno 149 `EALREADY` | errno 133 `EISCONN` |
+
+Under `O_NONBLOCK` the program learns nothing about the outcome. A connect to `127.0.0.1` or the box's
+own address completes at once (rc 0) under either flag. **Porting rule:** code written for POSIX
+(Dropbear's `dbclient` failed every outbound connection with "No more processes") should connect under
+`O_NDELAY`, switch to `O_NONBLOCK` once connected, and ignore `SIGPIPE` around the `SO_ERROR` query.
+
 A `sockmod` open that fails can leave a freed queue on the STREAMS run list and panic the stock
 kernel in `queuerun` ([quirk 92](quirks.md#92-queuerun-panic)).
 
@@ -2807,6 +2825,7 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   each other. Same session: `/etc/net/{ticlts,ticots,ticotsord}/hosts` confirmed as a manual rename
   step that no first-boot script performs.
 - The `syslogd`/`m4` and console-logger rows (first-party record, 2026-10-26; emulation on both kernel lines) ✅ — see [quirks 77 and 78](quirks.md#77-syslogd-needs-m4).
+- The **non-blocking `connect()`** (first-party record, 2026-11-02) ✅ — the amix `userland/packages` Dropbear port's `connect` probe (socket, `fcntl`, `connect`, `select`, `SO_ERROR`, a second `connect`) on the 1.1 disks booted on 68030 and 68060 kernels in emulation, behind its patch 04 ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/dropbear`, `51ba153`, on `master`).
 
 
 ================================================================================
@@ -3155,6 +3174,29 @@ stock userland, 2026-10-31).
 carries no `BASEDIR`. With only absolute object paths it needs none. The amix catalog generator
 (`gen-catalog.py`) warns about a package that has one. Seen in emulation only; not yet on hardware.
 
+## ⚠ Under `-n`, the stock `pkgadd` stops at a path another package owns ✅/🟡 {#conflict-stops-stock-pkgadd}
+
+The stock `/usr/sbin/pkgadd` asks its conflict question whatever the admin file says ✅. With
+`conflict=nocheck` (and `action=nocheck`, `instance=overwrite`) under `-n`, a package that installs a
+file another package already owns prints "The following files are already installed on the system
+and are being used by another package:" with an **empty** list, then "Installation of <PKG> was
+suspended (interaction required)", exit status 5, nothing installed. Measured on the emulated 2.1c
+system (a package shipping files `core` owns) and again on the amigaux 1.1 images (the `heirtar`
+package, which takes over `core`'s `/usr/sbin/tar` and `/etc/tar`). Without `-n` it asks "Do you
+want to install these conflicting files", and a `y` goes on.
+
+A directory both packages list can trigger the same stop 🟡. On the 1.1 68030 disk, `amix-base`
+registers `/opt/amix/man/1` as mode 755, `root bin`; a package whose prototype says `root sys` for
+it (the Dropbear package, and others) stopped the stock `pkgadd -n` with the same empty conflict list
+and exit 5. The owner/group difference is measured: it is the only difference `pkgchk -l` shows over
+that package's 28 paths. That it alone causes the stop is inferred. On the 1.1 68060 disk the stock
+`pkgadd` installed the same package.
+
+APKGENG's `/usr/apkg/bin/pkgadd` with the same admin file installs both packages (exit 0), and
+`pkgchk -l` then names both owners of the shared paths ✅. **Practical rule:** a package that shares
+a path with another must go through APKGENG's `pkgadd`, or have the answers on stdin, and a shared
+directory is best declared with the attributes the system already records for it.
+
 ## Stock packages are pure payloads ✅
 
 Every package installed on the stock image is a **plain file payload** — no logic:
@@ -3244,6 +3286,7 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 - **Community distribution practice** (🟡): [amigaunix.com `more_software`](https://www.amigaunix.com/doku.php/more_software) (`.pkg` / cpio / `tar.zoo` distribution) and Michael Parson's **AmixBP** ([amixbp.sourceforge.net](https://amixbp.sourceforge.net), SourceForge group 263433) — the datastream-`.pkg` distribution channel.
 - **Licensing:** no proprietary `pkg*` source or media reproduced; this page documents runtime behaviour and on-disk **data-record** layout observed live. The single malformed `contents` record in the F7 section is cited as **factual defect data** (interoperability / bug documentation), not vendored source (per [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
 - The **Installer-NG** project, 2026-07-22/24 — blank-disk→bootable installs under Amiberry and on a real A4000 + Z3660 (install captures, s5/UFS state reads, and an on-metal digest attestation) ✅ (🟡 where tagged): [`jusii/amix-installng`](https://github.com/jusii/amix-installng) `docs/installer.md` (the `pkgadd -R` mnttab findings, "METAL-FIX.2"; the installed-tree digests) and [`jusii/amix-packagemanager`](https://github.com/jusii/amix-packagemanager) `CHANGELOG.md` (the 2026-07-23 `get_mntinfo()` entries).
+- The **conflict stop under `-n`** (first-party record, 2026-10-31 and 2026-11-01/02) ✅/🟡 — the amix `userland/pkgtools` runs of the stock `pkgadd` on an emulated 2.1c system, written up in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/pkgtools/docs/stock-pkg-system.md` §5; the `heirtar` and Dropbear package installs on the 1.1 images in emulation, stock and APKGENG `pkgadd` side by side, with `pkgchk -l` of the shared paths (`userland/packages/heirloom-tar`, `b07d4cb`; `userland/packages/dropbear`, `51ba153`; both on `master`).
 
 
 ================================================================================
@@ -3748,7 +3791,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel (on the bench image it is the retail 2.1 kernel ✅). Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
 | 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram; a `DL_UNITDATA_REQ` with under 60 data bytes fails with `ERANGE`. Attach only on Style 2, check the state, trust the IP length, pad short frames to 60 | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
-| 96 | **The stock `tar` (`/usr/sbin/tar`) crashes when root extracts a ustar or GNU archive whose owner or group name the box lacks** (an empty name counts, as GNU `--numeric-owner` writes): it prints `problem reading passwd entry` / `owner not changed`, then dereferences the NULL lookup and dies with `SIGSEGV` after the first file. Plain `tar` is this binary even with GNU tar installed. Use `tar xof`, a non-root user, `/opt/amix/bin/tar`, or v7 archives | ✅/🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
+| 96 | **The stock `tar` (`/usr/sbin/tar`) crashes when root extracts a ustar or GNU archive whose owner or group name the box lacks** (an empty name counts, as GNU `--numeric-owner` writes): it prints `problem reading passwd entry` / `owner not changed`, then dereferences the NULL lookup and dies with `SIGSEGV` after the first file. Plain `tar` is this binary even with GNU tar installed. Same on a 68060 kernel with the TT fix. It also reads no GNU long names or pax headers. Install `heirtar`, or use `tar xof`, a non-root user, `/opt/amix/bin/tar`, or v7 archives | ✅/🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
 | 97 | **A NULL read returns 0 in 193 stock binaries and faults in gcc14-built ones**: SVR4 `ld` gave those stock executables a read-only zero page at vaddr 0, while gcc14 binaries have none. Code that passes as one kind of binary can crash as the other. Before an unreleased fix, the 040/060 kernels returned chip-RAM bytes instead | ✅ | [Quirks §97](#97-zero-page-depends-on-linker), [040/060 status](68040-68060-status.md#k46-user-address-space) |
 
 The rest of this page expands each item.
@@ -4954,10 +4997,11 @@ Amix's **`/bin/sh` predates POSIX** ✅. The two bites that catch driver authors
 
 This was discovered the hard way porting the [VA2000 driver](../drivers/case-studies/va2000.md): install scripts written with modern shell syntax silently misbehave ✅. The default *interactive* shell is **ksh** (with `sh`/`csh`/`tcsh` also present), but build and install scripts that run under `/sbin/sh` or `/bin/sh` must stay pre-POSIX ✅. See [the driver model](../drivers/driver-model.md) and [writing a char driver](../drivers/writing-a-char-driver.md) for the driver-build implications, including the companion rule to `rm -f` stale objects before relinking the kernel.
 
-Five more that specifically bite installer/automation scripts, each bench-proven on Amix 2.1c ✅:
+Six more that specifically bite installer/automation scripts ✅ (bench-proven on Amix 2.1c; the `${1:?word}` one on the amigaux 1.1 images):
 
 - **`while read … done < FILE` runs in a SUBSHELL** — a counter incremented inside the loop reverts to its pre-loop value at `done`. Write per-iteration state to a temp file and read it back *after* the loop.
 - **An empty `set -- \`cmd\`` is a no-op on `$@`** — if the command prints nothing, `$#` keeps its *previous* value instead of going to 0. Guard with `[ -s file ]` before counting.
+- **`${1:?word}` ends at the first blank in the word** — `D=${1:?usage: box.sh dir [grep]}` is taken as the assignment `D=${1:?usage:` followed by the command `box.sh`, so the script fails with `box.sh: not found` and `D` stays empty (the 1992 `/sbin/sh`). Keep the word free of blanks, or write `[ -n "$1" ] || { echo usage >&2; exit 2; }; D=$1`.
 - **`mkdir -p` is not idempotent** — it exits rc=2 "File exists" on an already-present leaf directory, not 0. Guard with `[ -d dir ] || mkdir -p dir`.
 - **`wc -c` LEFT-PADS its count** with spaces, so a raw `wc -c` in a numeric test fails; strip the padding (e.g. via `read`) first.
 - **The console tty truncates canonical input at ~256 characters** — long one-liners are silently cut. Push a script file and run it rather than typing a long command.
@@ -5393,14 +5437,37 @@ Measured on a 68030 module kernel in emulation (A4000, 64 MB), archives from hos
 tar package (`/opt/amix/bin/tar`) is installed. A stock 2.1 kernel was not run; the fault is a user-space
 NULL read and needs only an unmapped page 0.
 
-**On the 68040/060 kernels before the TT fix** 🟡, the same `tar` prints the same messages and then
-carries on: exit 0, every file laid. Those kernels let user code read low physical memory
+**On the 68040/060 line it depends on the kernel, not the CPU** ✅. A 68060 kernel with the TT fix
+crashes the same way as the 68030: exit 139 with a core and no regular file written, for ustar and GNU
+archives with absent names and with empty ones. The 68060 kernel of the amigaux 1.1 image predates
+the fix: the same `tar` prints the same messages and carries on, exit 0, every file laid and owned by
+0/0 instead of the archive's 1234/5678. That kernel lets user code read low physical memory
 ([the 040/060 user address space](68040-68060-status.md#k46-tt-user-access)), so the NULL read
-returns a stray word instead of faulting. Whether that word becomes the files' owner was not checked.
-A 040/060 kernel with the fix should crash the same way as the 68030; that is inferred, not measured.
+returns a word instead of faulting. The 68030 kernel of the 1.1 image and a later 68030 build both
+crash (all four in emulation, archives from host GNU tar 1.35).
+
+**Two more limits of the same binary** ✅ (the same four systems):
+
+- **No GNU long names and no pax headers.** A GNU archive with one 117-byte name, and a pax archive
+  with the same name, stop at that entry with `tar: directory checksum error` (exit 2), after laying
+  the files before it. `tf` lists `././@LongLink` (or a `PaxHeaders/…` entry) and the name cut at 100
+  bytes. A ustar archive that keeps the same name in the 155-byte prefix field extracts fine.
+- **What `tar cf` writes**, compared field by field with Heirloom tar's: the mode field carries the
+  file-type bits (`0100644`, `0040755`, `0120777`); devmajor and devminor carry the file system's own
+  device in every header; a directory comes before its contents, named with a trailing slash
+  (`./d/`); records are 20 blocks. Sizes are right: it keeps them in a `long`, so the libc `%llo`
+  defect ([toolchain](../drivers/toolchain.md#known-defects-and-workarounds)) does not reach it.
+  `tvf` shows directories and symlinks with `-`, and a symlink's target length as its size.
 
 **Workarounds** ✅:
 
+- install the amix `heirtar` package (Heirloom tar 070715), which replaces `/usr/sbin/tar` and keeps
+  the `/etc/tar` link. As root it extracts all nine test archives (v7; ustar and GNU with names
+  present, absent and empty; pax) with exit 0 on the four systems above. A name that exists maps to
+  its local id, as before; an absent or empty name keeps the archive's numbers. It also reads GNU long
+  names and pax headers. It is an essential package: apkg refuses to remove it, and a plain `pkgrm`
+  leaves Heirloom's binary in place, since `core` still lists the path. Nothing else on the 1.1 images
+  calls `tar`;
 - as root, extract with `tar xof` (owner and group not restored);
 - or extract as a non-root user;
 - or use `/opt/amix/bin/tar`;
@@ -5440,6 +5507,7 @@ The stock `tar` of [quirk 96](#96-tar-formats-68030-test-image) is one such case
 ## Sources
 - The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
 - The **stock `tar` NULL owner lookup** (first-party record, 2026-11-01) ✅/🟡 — quirk 96: the amix `kernel/k30` runs in emulation, which pulled `/usr/sbin/tar` from the 68030 and 68LC060 images (one SHA-256 for all copies) and took a core on the 68030 (the faulting read through a zero address register). The disassembly of the binary shows the `getpwnam`/`getgrnam` results read after their failure messages, checked here against the pulled copy. The archive table (v7, ustar and GNU, named and numeric owners, `xof`, non-root) ran on two 68030 kernel builds; the 68LC060 run was on a 68040/060 kernel from before the TT fix. The first observation (exit 139 on ustar and GNU, v7 fine, the 68040/060 image unaffected) came from the amix `kernel/dlm` staging runs the same day.
+- The **stock `tar` on four systems, and `heirtar`** (first-party record, 2026-11-01) ✅ — quirk 96 and quirk 12's `${1:?word}` item: the amix `userland/packages` Heirloom tar port's emulator runs, nine archives made with host GNU tar 1.35 on the 68030 and 68060 kernels of the amigaux 1.1 image, a later 68030 build and a 68060 kernel with the TT fix; the stock `tar cf` headers compared byte for byte with Heirloom's; the package's install, extraction and removal checks. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/heirloom-tar` (`b07d4cb`, on `master`: README, `tests/`).
 - The **`aen` DLPI traps** (first-party record, 2026-10-30; the short-frame refusal 2026-10-31) ✅ — quirk 95: see the matching Sources entries on [the networking page](networking.md#raw-dlpi-aen).
 
 - The **4 KB TCP lower-read queue** (2026-10-21) ✅ — quirk 75: the stock kernel's `ipintr` /
@@ -12223,7 +12291,7 @@ disassembly that lost sync at a label as untrustworthy rather than clean ✅. Th
 
 | Defect | Effect | Workaround | Tag |
 |---|---|---|---|
-| libc's printf family and `ll` | `%lld` prints the high word and puts every later argument 4 bytes out of step | `libamixc99`'s `snprintf`/`vsnprintf` are correct; **`fprintf` is not replaced** | 🔴 open |
+| libc's printf family and `ll` | `%lld` prints the high word and puts every later argument 4 bytes out of step; `%llo` the same, so a value under 4 GiB prints as 0 | `libamixc99`'s `snprintf`/`vsnprintf` are correct; **`fprintf` is not replaced** | 🔴 open |
 | Vendor 1991 `libX11.a` and siblings | malformed `sh_link` on `.rela` sections; modern `ld` silently drops the relocations and the program jumps to 0 (ld 2.8.1 tolerated it) | run `tools/fix-x-libraries.sh` (repaired copies) before linking X | ✅ |
 | Headers without C++ linkage guards; K&R `static` prototypes in `sys/stat.h` and others | C++ cannot include them as shipped | generated wrappers and `make-kandr-fixes.py` | ✅ |
 | `gettimeofday` undeclared in `sys/time.h`, `select` in `sys/select.h`; no `FP_*`, `ENOTSUP`, `fsblkcnt_t`, `__cxa_atexit` | build errors | compat headers; `__cxa_atexit` from the compat layer | ✅ |
@@ -12328,11 +12396,43 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
   above). `od -t d8/u8/x8` builds formats the same way. A check that scans string literals for `ll`
   cannot see these; grep the sources for `PRIdMAX`/`PRIuMAX`/`PRIxMAX` too, and use `%ld`/`%lu` where
   the values fit a long.
+- **`%llo` reads one word too** ✅: Heirloom tar built without its fix formats each size with
+  `sprintf(size, "%11.11llo", (long long)st_size)`, and through the stock libc every member's size
+  came out 0 on 68030 and 68060 systems, so its archives extract as empty files. The printf reads one
+  32-bit word, the high half on this big-endian CPU. The amix package gate's `ll`-printf check caught
+  it at build time; the port formats through `libamixc99`'s `snprintf`.
+- **A non-blocking TCP `connect()` needs `O_NDELAY`, not `O_NONBLOCK`:** under `O_NONBLOCK` it fails
+  with `EAGAIN` and reports nothing, even for a refused port ([networking](../how-it-works/networking.md#nonblocking-connect)).
 - **`gethostbyname()` does not take a dotted quad:** parse IPv4 literals with `inet_addr()` first
   ([networking](../how-it-works/networking.md#gethostbyname-no-dotted-quad)).
 - **`/usr/bin/rsh` is the BSD remote shell** (setuid root, 15452 bytes), not the restricted shell ✅.
 - **The unprivileged account is `nobody`, uid and gid 60001; there is no `nogroup`** ✅ — a configure
   that probes the build host's `/etc/group` picks the wrong group name.
+
+### Pseudo-terminals: `/dev/ptmx`, and where to push `ldterm` ✅ {#svr4-ptys}
+
+Amix ptys are SVR4 STREAMS ptys ✅. `/dev/ptmx` is `crw-rw-rw- root root 27, 15`: the
+clone driver (major 27) opening the `ptmx` major 15; the slaves are `/dev/pts/N`, major 14 (the 1.1
+disks, 68030 and 68060). `grantpt`, `unlockpt` and `ptsname` are in `libc.so.1` (weak, with
+strong `_` aliases) but no sysroot header declares them, so GCC 14 needs your own prototypes;
+`/usr/lib/pt_chmod` is present. An autoconf `configure` skips its `/dev/ptmx` test when
+cross-compiling, so define the pty choice yourself (Dropbear: `USE_DEV_PTMX`).
+
+Measured with GCC 14 probes on the 1.1 disks in emulation (68030 and 68060 kernels) ✅:
+
+- **Push `ptem`, `ldterm` and `ttcompat` in the process that will own the session.** If a session
+  leader with no controlling tty pushes them on the slave, the pty becomes *its* controlling tty,
+  even with the slave opened `O_NOCTTY`. Its forked child's `setsid()` and `open(slave)` then get no
+  controlling tty (`open("/dev/tty")` fails `ENXIO`: no job control, no `^C`), and the master sees no
+  EOF when the child exits. If the child pushes the modules after its own `setsid()`, as SVR4's
+  `telnetd` does, its `/dev/tty` opens and the master reads 0 at exit. A parent that is not a
+  session leader may push without harm. A server that forks a session leader per connection
+  (`sshd`-style) must push in the session's child.
+- **The master has no line discipline.** `tcgetattr` on it fails, and `ioctl(master, TIOCSWINSZ)`
+  fails `EINVAL` until `ptem` is on the slave (then it returns 0 and `stty -a` on the slave shows the
+  rows and columns). Set terminal modes and the window size on the slave. `ldterm`'s defaults are
+  `intr` DEL, `quit` `^|`, `erase` `^h`, `kill` `^x`, speed 300, so a session whose modes are never
+  set takes Backspace (DEL on a modern terminal) as interrupt.
 
 ### The stock math library: `libm.a` ✅ {#stock-libm}
 
@@ -12513,6 +12613,7 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The rsync 3.1.3 port (first-party record, 2026-10-30) ✅: the `ftruncate` probe rows and the `truss` of `gethostbyname()` on an emulated stock 2.1c (details in quirk 90 and on the networking page); `ls -l` of `/usr/bin/rsh` and the `nobody` entries of `/etc/passwd` and `/etc/group` read on the box; [amix-packages](https://github.com/jusii/amix-packages) `e7ac916` (`recipes/rsync/`).
 - The stock `libm.a` measurements (first-party record, 2026-10-30) ✅ — the `sqrt` correction from follow-up probes calling libm's `sqrt` through a function pointer with `%fp0`/`%fp1` and the stack preloaded, `objdump` of the first probe's `main` (one inline `fsqrt`, re-read for this page), and an `FPCR`/`fpsetmask` read; ulps recomputed for this page: `ar t` and `objdump -d` of the sysroot's `/usr/ccs/lib/libm.a` (21 `fmovecr`, 16 `fintrz`, no transcendental instructions; counts re-read for this page), link maps of one-call programs, and a GCC 14 test program (19 functions, raw IEEE bits) run on an emulated stock 2.1c 68030 and an emulated 68040 on the 040/060 kernel line with unimplemented-instruction trapping on, the outputs equal; ulps against `mpmath` at 200 bits; a musl 1.2.5 `src/math` build of the same program (amix-packages).
 - The coreutils 5.2.1-3 and gtar 1.14-7 rebuilds (first-party record, 2026-10-30) ✅: the `stat -c %s` and `stat -f` rows on the box, `stat.c`'s run-time format assembly, `nm` of `truncate.o` in the static libc archive (`_ftruncate` T, `ftruncate` W); [amix-packages](https://github.com/jusii/amix-packages) `97bbcf1` (patch 09, the `ftruncate` replacement), `cad15e4`, `cbd8c25`.
+- The Heirloom tar and Dropbear ports (first-party record, 2026-11-01/02) ✅: the `%llo` size fields written as 0 by an unpatched Heirloom tar build on 68030 and 68060 systems in emulation, caught by the package gate's `ll`-printf check ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/heirloom-tar`, `b07d4cb`, on `master`); the pty probes (session leader and child pushes, `tcgetattr` and `TIOCSWINSZ` on the master, `ls -l` of the nodes, `nm -D` of the sysroot `libc.so.1`) on the 1.1 disks booted on 68030 and 68060 kernels in emulation, behind Dropbear's patch 05 (`userland/packages/dropbear`, `51ba153`, on `master`).
 
 
 ================================================================================

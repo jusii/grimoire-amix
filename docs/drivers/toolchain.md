@@ -404,7 +404,7 @@ disassembly that lost sync at a label as untrustworthy rather than clean ✅. Th
 
 | Defect | Effect | Workaround | Tag |
 |---|---|---|---|
-| libc's printf family and `ll` | `%lld` prints the high word and puts every later argument 4 bytes out of step | `libamixc99`'s `snprintf`/`vsnprintf` are correct; **`fprintf` is not replaced** | 🔴 open |
+| libc's printf family and `ll` | `%lld` prints the high word and puts every later argument 4 bytes out of step; `%llo` the same, so a value under 4 GiB prints as 0 | `libamixc99`'s `snprintf`/`vsnprintf` are correct; **`fprintf` is not replaced** | 🔴 open |
 | Vendor 1991 `libX11.a` and siblings | malformed `sh_link` on `.rela` sections; modern `ld` silently drops the relocations and the program jumps to 0 (ld 2.8.1 tolerated it) | run `tools/fix-x-libraries.sh` (repaired copies) before linking X | ✅ |
 | Headers without C++ linkage guards; K&R `static` prototypes in `sys/stat.h` and others | C++ cannot include them as shipped | generated wrappers and `make-kandr-fixes.py` | ✅ |
 | `gettimeofday` undeclared in `sys/time.h`, `select` in `sys/select.h`; no `FP_*`, `ENOTSUP`, `fsblkcnt_t`, `__cxa_atexit` | build errors | compat headers; `__cxa_atexit` from the compat layer | ✅ |
@@ -509,11 +509,43 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
   above). `od -t d8/u8/x8` builds formats the same way. A check that scans string literals for `ll`
   cannot see these; grep the sources for `PRIdMAX`/`PRIuMAX`/`PRIxMAX` too, and use `%ld`/`%lu` where
   the values fit a long.
+- **`%llo` reads one word too** ✅: Heirloom tar built without its fix formats each size with
+  `sprintf(size, "%11.11llo", (long long)st_size)`, and through the stock libc every member's size
+  came out 0 on 68030 and 68060 systems, so its archives extract as empty files. The printf reads one
+  32-bit word, the high half on this big-endian CPU. The amix package gate's `ll`-printf check caught
+  it at build time; the port formats through `libamixc99`'s `snprintf`.
+- **A non-blocking TCP `connect()` needs `O_NDELAY`, not `O_NONBLOCK`:** under `O_NONBLOCK` it fails
+  with `EAGAIN` and reports nothing, even for a refused port ([networking](../how-it-works/networking.md#nonblocking-connect)).
 - **`gethostbyname()` does not take a dotted quad:** parse IPv4 literals with `inet_addr()` first
   ([networking](../how-it-works/networking.md#gethostbyname-no-dotted-quad)).
 - **`/usr/bin/rsh` is the BSD remote shell** (setuid root, 15452 bytes), not the restricted shell ✅.
 - **The unprivileged account is `nobody`, uid and gid 60001; there is no `nogroup`** ✅ — a configure
   that probes the build host's `/etc/group` picks the wrong group name.
+
+### Pseudo-terminals: `/dev/ptmx`, and where to push `ldterm` ✅ {#svr4-ptys}
+
+Amix ptys are SVR4 STREAMS ptys ✅. `/dev/ptmx` is `crw-rw-rw- root root 27, 15`: the
+clone driver (major 27) opening the `ptmx` major 15; the slaves are `/dev/pts/N`, major 14 (the 1.1
+disks, 68030 and 68060). `grantpt`, `unlockpt` and `ptsname` are in `libc.so.1` (weak, with
+strong `_` aliases) but no sysroot header declares them, so GCC 14 needs your own prototypes;
+`/usr/lib/pt_chmod` is present. An autoconf `configure` skips its `/dev/ptmx` test when
+cross-compiling, so define the pty choice yourself (Dropbear: `USE_DEV_PTMX`).
+
+Measured with GCC 14 probes on the 1.1 disks in emulation (68030 and 68060 kernels) ✅:
+
+- **Push `ptem`, `ldterm` and `ttcompat` in the process that will own the session.** If a session
+  leader with no controlling tty pushes them on the slave, the pty becomes *its* controlling tty,
+  even with the slave opened `O_NOCTTY`. Its forked child's `setsid()` and `open(slave)` then get no
+  controlling tty (`open("/dev/tty")` fails `ENXIO`: no job control, no `^C`), and the master sees no
+  EOF when the child exits. If the child pushes the modules after its own `setsid()`, as SVR4's
+  `telnetd` does, its `/dev/tty` opens and the master reads 0 at exit. A parent that is not a
+  session leader may push without harm. A server that forks a session leader per connection
+  (`sshd`-style) must push in the session's child.
+- **The master has no line discipline.** `tcgetattr` on it fails, and `ioctl(master, TIOCSWINSZ)`
+  fails `EINVAL` until `ptem` is on the slave (then it returns 0 and `stty -a` on the slave shows the
+  rows and columns). Set terminal modes and the window size on the slave. `ldterm`'s defaults are
+  `intr` DEL, `quit` `^|`, `erase` `^h`, `kill` `^x`, speed 300, so a session whose modes are never
+  set takes Backspace (DEL on a modern terminal) as interrupt.
 
 ### The stock math library: `libm.a` ✅ {#stock-libm}
 
@@ -694,3 +726,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The rsync 3.1.3 port (first-party record, 2026-10-30) ✅: the `ftruncate` probe rows and the `truss` of `gethostbyname()` on an emulated stock 2.1c (details in quirk 90 and on the networking page); `ls -l` of `/usr/bin/rsh` and the `nobody` entries of `/etc/passwd` and `/etc/group` read on the box; [amix-packages](https://github.com/jusii/amix-packages) `e7ac916` (`recipes/rsync/`).
 - The stock `libm.a` measurements (first-party record, 2026-10-30) ✅ — the `sqrt` correction from follow-up probes calling libm's `sqrt` through a function pointer with `%fp0`/`%fp1` and the stack preloaded, `objdump` of the first probe's `main` (one inline `fsqrt`, re-read for this page), and an `FPCR`/`fpsetmask` read; ulps recomputed for this page: `ar t` and `objdump -d` of the sysroot's `/usr/ccs/lib/libm.a` (21 `fmovecr`, 16 `fintrz`, no transcendental instructions; counts re-read for this page), link maps of one-call programs, and a GCC 14 test program (19 functions, raw IEEE bits) run on an emulated stock 2.1c 68030 and an emulated 68040 on the 040/060 kernel line with unimplemented-instruction trapping on, the outputs equal; ulps against `mpmath` at 200 bits; a musl 1.2.5 `src/math` build of the same program (amix-packages).
 - The coreutils 5.2.1-3 and gtar 1.14-7 rebuilds (first-party record, 2026-10-30) ✅: the `stat -c %s` and `stat -f` rows on the box, `stat.c`'s run-time format assembly, `nm` of `truncate.o` in the static libc archive (`_ftruncate` T, `ftruncate` W); [amix-packages](https://github.com/jusii/amix-packages) `97bbcf1` (patch 09, the `ftruncate` replacement), `cad15e4`, `cbd8c25`.
+- The Heirloom tar and Dropbear ports (first-party record, 2026-11-01/02) ✅: the `%llo` size fields written as 0 by an unpatched Heirloom tar build on 68030 and 68060 systems in emulation, caught by the package gate's `ll`-printf check ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/heirloom-tar`, `b07d4cb`, on `master`); the pty probes (session leader and child pushes, `tcgetattr` and `TIOCSWINSZ` on the master, `ls -l` of the nodes, `nm -D` of the sysroot `libc.so.1`) on the 1.1 disks booted on 68030 and 68060 kernels in emulation, behind Dropbear's patch 05 (`userland/packages/dropbear`, `51ba153`, on `master`).

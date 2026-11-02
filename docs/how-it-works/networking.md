@@ -249,6 +249,24 @@ emulation on the 2.1c bench image (stock userland; its kernel is described under
 its socket, so its own `--kill` and `prngd-ctl` could never reach it) need that call removed; `prngd`'s
 UnixWare `DONT_CHMOD_SOCKET` define was meant for exactly this but nothing in 0.9.29 read it.
 
+### Non-blocking `connect()`: use `O_NDELAY`, not `O_NONBLOCK` ✅ {#nonblocking-connect}
+
+A TCP `connect()` on a socket set non-blocking with `fcntl` behaves differently under the two flags
+(GCC 14 probe with the stock `libsocket`/`libnsl`, the 1.1 disks booted on 68030 and 68060 kernels in
+emulation, 2026-11-02) ✅:
+
+| | `O_NONBLOCK` | `O_NDELAY` |
+|---|---|---|
+| `connect()` to a remote host | −1, errno 11 `EAGAIN` ("No more processes") | −1, errno 150 `EINPROGRESS` |
+| `select()` for write | writable at once | writable once connected |
+| `getsockopt(SO_ERROR)` | 0, for an open and a closed port alike | 0 when connected; for a refused port `select` reports readable and writable and `getsockopt` itself fails with `EPIPE` (32), raising `SIGPIPE` |
+| a second `connect()` | errno 149 `EALREADY` | errno 133 `EISCONN` |
+
+Under `O_NONBLOCK` the program learns nothing about the outcome. A connect to `127.0.0.1` or the box's
+own address completes at once (rc 0) under either flag. **Porting rule:** code written for POSIX
+(Dropbear's `dbclient` failed every outbound connection with "No more processes") should connect under
+`O_NDELAY`, switch to `O_NONBLOCK` once connected, and ignore `SIGPIPE` around the `SO_ERROR` query.
+
 A `sockmod` open that fails can leave a freed queue on the STREAMS run list and panic the stock
 kernel in `queuerun` ([quirk 92](quirks.md#92-queuerun-panic)).
 
@@ -708,3 +726,4 @@ A second real-hardware-verified example is the **`z3660eth`** driver for the **Z
   each other. Same session: `/etc/net/{ticlts,ticots,ticotsord}/hosts` confirmed as a manual rename
   step that no first-boot script performs.
 - The `syslogd`/`m4` and console-logger rows (first-party record, 2026-10-26; emulation on both kernel lines) ✅ — see [quirks 77 and 78](quirks.md#77-syslogd-needs-m4).
+- The **non-blocking `connect()`** (first-party record, 2026-11-02) ✅ — the amix `userland/packages` Dropbear port's `connect` probe (socket, `fcntl`, `connect`, `select`, `SO_ERROR`, a second `connect`) on the 1.1 disks booted on 68030 and 68060 kernels in emulation, behind its patch 04 ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/dropbear`, `51ba153`, on `master`).

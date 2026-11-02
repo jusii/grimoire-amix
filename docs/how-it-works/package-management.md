@@ -147,6 +147,29 @@ stock userland, 2026-10-31).
 carries no `BASEDIR`. With only absolute object paths it needs none. The amix catalog generator
 (`gen-catalog.py`) warns about a package that has one. Seen in emulation only; not yet on hardware.
 
+## ⚠ Under `-n`, the stock `pkgadd` stops at a path another package owns ✅/🟡 {#conflict-stops-stock-pkgadd}
+
+The stock `/usr/sbin/pkgadd` asks its conflict question whatever the admin file says ✅. With
+`conflict=nocheck` (and `action=nocheck`, `instance=overwrite`) under `-n`, a package that installs a
+file another package already owns prints "The following files are already installed on the system
+and are being used by another package:" with an **empty** list, then "Installation of <PKG> was
+suspended (interaction required)", exit status 5, nothing installed. Measured on the emulated 2.1c
+system (a package shipping files `core` owns) and again on the amigaux 1.1 images (the `heirtar`
+package, which takes over `core`'s `/usr/sbin/tar` and `/etc/tar`). Without `-n` it asks "Do you
+want to install these conflicting files", and a `y` goes on.
+
+A directory both packages list can trigger the same stop 🟡. On the 1.1 68030 disk, `amix-base`
+registers `/opt/amix/man/1` as mode 755, `root bin`; a package whose prototype says `root sys` for
+it (the Dropbear package, and others) stopped the stock `pkgadd -n` with the same empty conflict list
+and exit 5. The owner/group difference is measured: it is the only difference `pkgchk -l` shows over
+that package's 28 paths. That it alone causes the stop is inferred. On the 1.1 68060 disk the stock
+`pkgadd` installed the same package.
+
+APKGENG's `/usr/apkg/bin/pkgadd` with the same admin file installs both packages (exit 0), and
+`pkgchk -l` then names both owners of the shared paths ✅. **Practical rule:** a package that shares
+a path with another must go through APKGENG's `pkgadd`, or have the answers on stdin, and a shared
+directory is best declared with the attributes the system already records for it.
+
 ## Stock packages are pure payloads ✅
 
 Every package installed on the stock image is a **plain file payload** — no logic:
@@ -236,3 +259,4 @@ Its **"widely reported broken" reputation** 🟡 is, at minimum, **consistent wi
 - **Community distribution practice** (🟡): [amigaunix.com `more_software`](https://www.amigaunix.com/doku.php/more_software) (`.pkg` / cpio / `tar.zoo` distribution) and Michael Parson's **AmixBP** ([amixbp.sourceforge.net](https://amixbp.sourceforge.net), SourceForge group 263433) — the datastream-`.pkg` distribution channel.
 - **Licensing:** no proprietary `pkg*` source or media reproduced; this page documents runtime behaviour and on-disk **data-record** layout observed live. The single malformed `contents` record in the F7 section is cited as **factual defect data** (interoperability / bug documentation), not vendored source (per [AGENTS.md §5](https://github.com/Jusii/grimoire-amix/blob/master/AGENTS.md)).
 - The **Installer-NG** project, 2026-07-22/24 — blank-disk→bootable installs under Amiberry and on a real A4000 + Z3660 (install captures, s5/UFS state reads, and an on-metal digest attestation) ✅ (🟡 where tagged): [`jusii/amix-installng`](https://github.com/jusii/amix-installng) `docs/installer.md` (the `pkgadd -R` mnttab findings, "METAL-FIX.2"; the installed-tree digests) and [`jusii/amix-packagemanager`](https://github.com/jusii/amix-packagemanager) `CHANGELOG.md` (the 2026-07-23 `get_mntinfo()` entries).
+- The **conflict stop under `-n`** (first-party record, 2026-10-31 and 2026-11-01/02) ✅/🟡 — the amix `userland/pkgtools` runs of the stock `pkgadd` on an emulated 2.1c system, written up in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/pkgtools/docs/stock-pkg-system.md` §5; the `heirtar` and Dropbear package installs on the 1.1 images in emulation, stock and APKGENG `pkgadd` side by side, with `pkgchk -l` of the shared paths (`userland/packages/heirloom-tar`, `b07d4cb`; `userland/packages/dropbear`, `51ba153`; both on `master`).

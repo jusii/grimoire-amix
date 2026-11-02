@@ -108,7 +108,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 93 | **`netstat -rn` fails with `read error on routehash`, `netstat -in` lists no interfaces and `netstat -s` counts nothing**, on an image whose `/stand/unix` is not the booted kernel (on the bench image it is the retail 2.1 kernel ✅). Likely the namelist mismatch of §80 (🟡). Check `/stand/unix` before trusting `netstat`; set routes with `route` and record them yourself | ✅/🟡 | [Quirks §93](#93-netstat-rn-routehash), [Networking](networking.md#static-ip-configuration-no-dhcp) |
 | 94 | **The 2.1 `/bin/sh` and background jobs**: `wait <pid>` returns 0 for a child that already ended; two long-lived `>>` writers of one file overwrite each other; a shell waiting on a foreground child ignores `SIGTERM` until the child ends; `sh -c 'cmd' a b` sets `$0=a`. One output file per job, `KILL` after a grace period | ✅ | [Quirks §94](#94-sh-background-jobs) |
 | 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram; a `DL_UNITDATA_REQ` with under 60 data bytes fails with `ERANGE`. Attach only on Style 2, check the state, trust the IP length, pad short frames to 60 | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
-| 96 | **The stock `tar` (`/usr/sbin/tar`) crashes when root extracts a ustar or GNU archive whose owner or group name the box lacks** (an empty name counts, as GNU `--numeric-owner` writes): it prints `problem reading passwd entry` / `owner not changed`, then dereferences the NULL lookup and dies with `SIGSEGV` after the first file. Plain `tar` is this binary even with GNU tar installed. Use `tar xof`, a non-root user, `/opt/amix/bin/tar`, or v7 archives | ✅/🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
+| 96 | **The stock `tar` (`/usr/sbin/tar`) crashes when root extracts a ustar or GNU archive whose owner or group name the box lacks** (an empty name counts, as GNU `--numeric-owner` writes): it prints `problem reading passwd entry` / `owner not changed`, then dereferences the NULL lookup and dies with `SIGSEGV` after the first file. Plain `tar` is this binary even with GNU tar installed. Same on a 68060 kernel with the TT fix. It also reads no GNU long names or pax headers. Install `heirtar`, or use `tar xof`, a non-root user, `/opt/amix/bin/tar`, or v7 archives | ✅/🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
 | 97 | **A NULL read returns 0 in 193 stock binaries and faults in gcc14-built ones**: SVR4 `ld` gave those stock executables a read-only zero page at vaddr 0, while gcc14 binaries have none. Code that passes as one kind of binary can crash as the other. Before an unreleased fix, the 040/060 kernels returned chip-RAM bytes instead | ✅ | [Quirks §97](#97-zero-page-depends-on-linker), [040/060 status](68040-68060-status.md#k46-user-address-space) |
 
 The rest of this page expands each item.
@@ -1314,10 +1314,11 @@ Amix's **`/bin/sh` predates POSIX** ✅. The two bites that catch driver authors
 
 This was discovered the hard way porting the [VA2000 driver](../drivers/case-studies/va2000.md): install scripts written with modern shell syntax silently misbehave ✅. The default *interactive* shell is **ksh** (with `sh`/`csh`/`tcsh` also present), but build and install scripts that run under `/sbin/sh` or `/bin/sh` must stay pre-POSIX ✅. See [the driver model](../drivers/driver-model.md) and [writing a char driver](../drivers/writing-a-char-driver.md) for the driver-build implications, including the companion rule to `rm -f` stale objects before relinking the kernel.
 
-Five more that specifically bite installer/automation scripts, each bench-proven on Amix 2.1c ✅:
+Six more that specifically bite installer/automation scripts ✅ (bench-proven on Amix 2.1c; the `${1:?word}` one on the amigaux 1.1 images):
 
 - **`while read … done < FILE` runs in a SUBSHELL** — a counter incremented inside the loop reverts to its pre-loop value at `done`. Write per-iteration state to a temp file and read it back *after* the loop.
 - **An empty `set -- \`cmd\`` is a no-op on `$@`** — if the command prints nothing, `$#` keeps its *previous* value instead of going to 0. Guard with `[ -s file ]` before counting.
+- **`${1:?word}` ends at the first blank in the word** — `D=${1:?usage: box.sh dir [grep]}` is taken as the assignment `D=${1:?usage:` followed by the command `box.sh`, so the script fails with `box.sh: not found` and `D` stays empty (the 1992 `/sbin/sh`). Keep the word free of blanks, or write `[ -n "$1" ] || { echo usage >&2; exit 2; }; D=$1`.
 - **`mkdir -p` is not idempotent** — it exits rc=2 "File exists" on an already-present leaf directory, not 0. Guard with `[ -d dir ] || mkdir -p dir`.
 - **`wc -c` LEFT-PADS its count** with spaces, so a raw `wc -c` in a numeric test fails; strip the padding (e.g. via `read`) first.
 - **The console tty truncates canonical input at ~256 characters** — long one-liners are silently cut. Push a script file and run it rather than typing a long command.
@@ -1753,14 +1754,37 @@ Measured on a 68030 module kernel in emulation (A4000, 64 MB), archives from hos
 tar package (`/opt/amix/bin/tar`) is installed. A stock 2.1 kernel was not run; the fault is a user-space
 NULL read and needs only an unmapped page 0.
 
-**On the 68040/060 kernels before the TT fix** 🟡, the same `tar` prints the same messages and then
-carries on: exit 0, every file laid. Those kernels let user code read low physical memory
+**On the 68040/060 line it depends on the kernel, not the CPU** ✅. A 68060 kernel with the TT fix
+crashes the same way as the 68030: exit 139 with a core and no regular file written, for ustar and GNU
+archives with absent names and with empty ones. The 68060 kernel of the amigaux 1.1 image predates
+the fix: the same `tar` prints the same messages and carries on, exit 0, every file laid and owned by
+0/0 instead of the archive's 1234/5678. That kernel lets user code read low physical memory
 ([the 040/060 user address space](68040-68060-status.md#k46-tt-user-access)), so the NULL read
-returns a stray word instead of faulting. Whether that word becomes the files' owner was not checked.
-A 040/060 kernel with the fix should crash the same way as the 68030; that is inferred, not measured.
+returns a word instead of faulting. The 68030 kernel of the 1.1 image and a later 68030 build both
+crash (all four in emulation, archives from host GNU tar 1.35).
+
+**Two more limits of the same binary** ✅ (the same four systems):
+
+- **No GNU long names and no pax headers.** A GNU archive with one 117-byte name, and a pax archive
+  with the same name, stop at that entry with `tar: directory checksum error` (exit 2), after laying
+  the files before it. `tf` lists `././@LongLink` (or a `PaxHeaders/…` entry) and the name cut at 100
+  bytes. A ustar archive that keeps the same name in the 155-byte prefix field extracts fine.
+- **What `tar cf` writes**, compared field by field with Heirloom tar's: the mode field carries the
+  file-type bits (`0100644`, `0040755`, `0120777`); devmajor and devminor carry the file system's own
+  device in every header; a directory comes before its contents, named with a trailing slash
+  (`./d/`); records are 20 blocks. Sizes are right: it keeps them in a `long`, so the libc `%llo`
+  defect ([toolchain](../drivers/toolchain.md#known-defects-and-workarounds)) does not reach it.
+  `tvf` shows directories and symlinks with `-`, and a symlink's target length as its size.
 
 **Workarounds** ✅:
 
+- install the amix `heirtar` package (Heirloom tar 070715), which replaces `/usr/sbin/tar` and keeps
+  the `/etc/tar` link. As root it extracts all nine test archives (v7; ustar and GNU with names
+  present, absent and empty; pax) with exit 0 on the four systems above. A name that exists maps to
+  its local id, as before; an absent or empty name keeps the archive's numbers. It also reads GNU long
+  names and pax headers. It is an essential package: apkg refuses to remove it, and a plain `pkgrm`
+  leaves Heirloom's binary in place, since `core` still lists the path. Nothing else on the 1.1 images
+  calls `tar`;
 - as root, extract with `tar xof` (owner and group not restored);
 - or extract as a non-root user;
 - or use `/opt/amix/bin/tar`;
@@ -1800,6 +1824,7 @@ The stock `tar` of [quirk 96](#96-tar-formats-68030-test-image) is one such case
 ## Sources
 - The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
 - The **stock `tar` NULL owner lookup** (first-party record, 2026-11-01) ✅/🟡 — quirk 96: the amix `kernel/k30` runs in emulation, which pulled `/usr/sbin/tar` from the 68030 and 68LC060 images (one SHA-256 for all copies) and took a core on the 68030 (the faulting read through a zero address register). The disassembly of the binary shows the `getpwnam`/`getgrnam` results read after their failure messages, checked here against the pulled copy. The archive table (v7, ustar and GNU, named and numeric owners, `xof`, non-root) ran on two 68030 kernel builds; the 68LC060 run was on a 68040/060 kernel from before the TT fix. The first observation (exit 139 on ustar and GNU, v7 fine, the 68040/060 image unaffected) came from the amix `kernel/dlm` staging runs the same day.
+- The **stock `tar` on four systems, and `heirtar`** (first-party record, 2026-11-01) ✅ — quirk 96 and quirk 12's `${1:?word}` item: the amix `userland/packages` Heirloom tar port's emulator runs, nine archives made with host GNU tar 1.35 on the 68030 and 68060 kernels of the amigaux 1.1 image, a later 68030 build and a 68060 kernel with the TT fix; the stock `tar cf` headers compared byte for byte with Heirloom's; the package's install, extraction and removal checks. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/heirloom-tar` (`b07d4cb`, on `master`: README, `tests/`).
 - The **`aen` DLPI traps** (first-party record, 2026-10-30; the short-frame refusal 2026-10-31) ✅ — quirk 95: see the matching Sources entries on [the networking page](networking.md#raw-dlpi-aen).
 
 - The **4 KB TCP lower-read queue** (2026-10-21) ✅ — quirk 75: the stock kernel's `ipintr` /

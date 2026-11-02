@@ -625,3 +625,19 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   missing ✅; skipped with `xof`, as non-root, and for v7 ✅. Root's plain `tar xf` of foreign
   tarballs hits it (`/usr/sbin` before `/opt/amix/bin`) 🟡; on 040/060 kernels before the TT fix
   the NULL read does not fault 🟡. Supersedes the "cause not examined" of the entry above.
+- 2026-11-01 — the stock `tar` on four systems and `heirtar`, amix `userland/packages` Heirloom tar
+  port (`b07d4cb`), emulation: quirk 96 crashes on a 68060 kernel with the TT fix; the 1.1 image's
+  68060 kernel extracts with every file owned 0/0 ✅. No GNU long names or pax headers (`directory
+  checksum error`, exit 2); a prefix-field ustar name works ✅. `tar cf`: type bits in the mode, the
+  fs device in devmajor/devminor, directories first with a trailing slash, 20-block records, sizes
+  right ✅. `%llo` through the stock libc writes 0 ✅. The 1992 `/sbin/sh` ends `${1:?word}` at the
+  first blank ✅. Stock `pkgadd -n` stops at a file another package owns, admin file regardless ✅.
+  `heirtar` extracts all nine archives on all four systems ✅.
+- 2026-11-02 — Dropbear port probes (`51ba153`), 1.1 disks on 68030 and 68060 kernels, emulation:
+  TCP `connect()` under `O_NONBLOCK` gives `EAGAIN` and no outcome, under `O_NDELAY` `EINPROGRESS`
+  then POSIX behaviour (refused: `SO_ERROR` query fails `EPIPE`) ✅. A session leader without a
+  controlling tty that pushes `ldterm` takes the pty as its own, `O_NOCTTY` or not ✅; the master has
+  no line discipline (`tcgetattr` fails, `TIOCSWINSZ` `EINVAL` until `ptem`) ✅; `/dev/ptmx` is
+  clone 27/15, `/dev/pts/N` major 14, `grantpt`/`unlockpt`/`ptsname` in libc but no header ✅. A
+  shared directory with different recorded owner/group stops the stock `pkgadd -n` on the 1.1 030
+  disk 🟡 (attribute difference ✅, causation inferred).
