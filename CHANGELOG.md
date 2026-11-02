@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-02 — Z3660 registers read as longs; FW_VERSION; zscsi INQUIRY fixed (3dd02b7)
+
+Z3660: read the register block as longs (the firmware masks reads with 0x1FFFFC, and a word at +0 differs between the real and the emulated CPU); FW_VERSION (0x103) is a nonzero identity; the 144B:01 entry needs ext_kickstart 2. Z3660 SCSI: module 1.0.0-4 answers unmapped units as no device.
+
 ## 2026-11-02 — empty Zorro III reads per CPU path; /dev/scsi; probe facts (5c69b80)
 
 Quirk 66: an empty Zorro III read, measured per CPU path (real 68LC060: Buster's bus error after ~285 ms, caught by bprobe at any level; the Z3660's emulated 030 0xFF and Amiberry 0x00, no fault), so fixed-address probes still need an identity check; a bprobe above VSECT1 faults in the MMU. Device list: the stock /dev/scsi interface and limits. Gayle IDE: the slave is off by default. Z3660 SCSI: INQUIRY answers unmapped units as disks. A4091: the first command's bus reset is slow under Amiberry. Z3660 ethernet: MAC_HI is a 32-bit register.
