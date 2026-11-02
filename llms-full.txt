@@ -10244,9 +10244,14 @@ fails with `ENOMEM`, whatever the size: the first-use rule of the driver-to-modu
 
 ### Board windows and DMA
 
-- **Below `VSECT1` (0x40000000) the kernels map physical addresses one to one** (page-table early
-  termination, not transparent translation): a board window there is reachable at `phystokv(phys)`,
-  the identity, with nothing to map ✅ (`ddi.md`).
+- **Below `VSECT1` (0x40000000) the kernels map physical addresses one to one**: a board window
+  there is reachable at `phystokv(phys)`, the identity, with nothing to map ✅ (`ddi.md`; both kits'
+  `<sys/amixddi.h>`). The two lines do it differently ✅. On k30 the TT registers are off and a
+  section-0 early-termination descriptor in the MMU root table maps the span
+  ([the identity map](zorro-autoconfig.md#the-identity-map)). On k46 it is the transparent-translation
+  register DTT0, and DTT1 maps `0x80000000`–`0xFFFFFFFF` the same way; only the band
+  `0x40000000`–`0x7FFFFFFF` needs a page mapping
+  ([the 040/060 user address space](../how-it-works/68040-68060-status.md#k46-tt-user-access)).
 - Above it, `sptalloc(npages, mode, pfn, 0)` maps the pages from the same fixed 4 MiB `sptmap`; on a
   box with much RAM a large run may not be left. Map only what you need ✅. On k46, `dev_kvmap(phys,
   nbytes, cm, flags)` maps a device window at a cache class (0x40 non-cacheable serialised, for
@@ -10306,6 +10311,7 @@ it for `ramdisk` ✅ (`kernel/modules/ramdisk/README.md`).
 
 ## Sources
 
+- The **identity map on each line** ✅ — k30: the first-party measurement of the TT registers and the root table on a running kernel (see [Zorro AutoConfig](zorro-autoconfig.md#the-identity-map)); k46: the port's `KNOWN-ISSUES.md` (DTT0 over `0x00000000`–`0x3FFFFFFF`, DTT1 over `0x80000000`–`0xFFFFFFFF`, the band between them page-mapped; [`amigaux/amix-040-060-port`](https://github.com/amigaux/amix-040-060-port) `k46-module`); `VSECT1` and `phystokv` from both kits' `<sys/amixddi.h>`.
 - [`amigaux/amix`](https://github.com/amigaux/amix) @ `95bf2f3` (2026-10-29), public ✅:
   `kernel/dlm/README.md`; `kernel/dlm/abi/README.md` (kit contents, kabi minors, `abi.txt`);
   `kernel/dlm/abi/registry/majors`; `kernel/dlm/docs/abi/writing-a-module.md` (§1–§9);
