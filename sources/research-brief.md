@@ -673,3 +673,9 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   timeout, static and uncleared buffer ✅. Gayle `slave` defaults to 0 ✅. zscsi -5 answers INQUIRY
   for units 0–7 as disks ✅ (emulation). A4091 first-command bus reset: ~0.25 s metal, 53–72 s
   Amiberry ✅, the `VHPOSR` mechanism 🟡.
+- 2026-11-02 — Z3660 register reads, the fork's firmware source (`aab97b5`): the register read
+  handler masks the address with `0x1FFFFC`, so registers read as right-aligned longs and an
+  undecoded one reads 0 ✅; a word at +0 gets the high half on a real 060, the low half under the
+  firmware's emulated CPU ✅; `FW_VERSION` = major<<8 | minor (`0x103`) ✅; the MAC is set from the
+  config before either CPU runs ✅; `144B:01` exists only with `ext_kickstart 2` ✅. z3660scsi module
+  1.0.0-4 answers unmapped units with qualifier 3, type `0x1F` ✅.

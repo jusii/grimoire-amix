@@ -205,10 +205,11 @@ Disk geometry comes from `P_DRVTYPE` (`0x0C`) plus the **per-unit** registers `P
 and `MODE_SENSE` are synthesized in software** inside `z3660queue` — the firmware exposes a block
 device, not a SCSI target, so the SCSI command surface the Amix `sd` stack expects is faked above the
 mailbox. Multi-byte SCSI fields are written **byte-wise big-endian**, which is also 68030
-alignment-safe ✅. Because the answer is built in software, the packaged driver (zscsi -5) answers
+alignment-safe ✅. Because the answer is built in software, the driver up to package zscsi -5 answered
 `INQUIRY` for every unit 0–7 as a disk (`type 0 Z3660 PiSCSI_Disk`), units the firmware has no
-drive mapped for included; CD units get type 5 from the firmware ✅ (emulation, both kernel lines;
-metal not run 🟡). A fix that answers an unmapped unit as absent is pending.
+drive mapped for included ✅ (emulation, both kernel lines; metal not run 🟡). Module 1.0.0-4
+(package 1.0.0-7) answers an unmapped unit as no device (peripheral qualifier 3, type `0x1F`); a
+mapped disk stays type 0 and a CD type 5, from the firmware's flag ✅.
 
 > **Source.** `src/z3660.c`: `PISCSI_OFFSET` `0x2000`; `P_WRITE`/`P_READ` `0x00`/`0x04`, triggered
 > by `WRLONG( P_WRITE, unit)` / `WRLONG( P_READ, unit)` in `z3660_rw()`; `P_DRVNUMX` `0x90`; the
@@ -482,7 +483,7 @@ digest tool built with the box's own `cc` ✅.
 
 ## Sources
 
-- The **`INQUIRY` on unmapped units** (first-party record, 2026-11-02) ✅ (emulation) — `kbootset inquiry` against zscsi -5 under Amiberry on both kernel lines; [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/drivers/z3660scsi/README.md` and `kernel/dlm/kbootset/` (`51dd57a`, on `master`).
+- The **`INQUIRY` on unmapped units** (first-party record, 2026-11-02) ✅ (emulation) — `kbootset inquiry` against zscsi -5 under Amiberry on both kernel lines; [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/drivers/z3660scsi/README.md` and `kernel/dlm/kbootset/` (`51dd57a`, on `master`); the fix in module 1.0.0-4 (`d6bc7ba`, on `master`).
 - The **2026-10-02 local-I/O peek measurements**, first-party, on an A4000D with a Z3660 ✅ — a supervisor-mode, fault-catching peek tool under AmigaOS: the first read of `$DD0000` never returned; reads of Gary's `$DE0000`/`$DE0001` on the A4000D terminated (`FF`→`7F`, `7F`) (first-party record, 2026-10-02). The CPLD side is read from the Z3660's CPLD sources (`TERM.vhd`/`BUSTERM.vhd`: termination waits on `DSACK`/`AVEC`/`BERR`, `nTEA` only from the bus-error state, no timeout counter anywhere). The meaning of the A4000's `$DE0000`/`$DE0001` bits is unsourced 🔴.
 - The **CD-unit overrun fix** ✅ — `amix-z3660scsi` CHANGELOG 2026-10-02 (commit `e072408`: refuse a READ/WRITE larger than `nbyte`; host harness 184/0) and its metal check on an A4000T the same day (raw `dd` at three block sizes → `I/O error`, counter +3; first-party record, 2026-10-02).
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).

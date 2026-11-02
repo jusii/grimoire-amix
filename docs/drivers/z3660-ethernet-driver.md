@@ -83,7 +83,18 @@ numbers here and below are from the firmware fork's `amix-main` branch (the 1.0 
 ### Frame windows
 
 The frame buffers are real DDR reached through the Zorro III window, at fixed board-relative offsets
-(from the firmware `memorymap.h`) ✅. `ZZ_ETH_MAC_HI` is a 32-bit register: read it as a long. On real hardware a **word** read of it gave `0x0000` at boot, before the driver had loaded ✅, while a long read gives `0x00000080`, the card's MAC starting `00:80`, which the firmware sets before either CPU runs 🟡 (the register width from the firmware). `0x0000` is also what Amiberry returns for an empty window, so a probe that reads it as a word can't tell the board from open bus. Note the board base is `0x10000000`, so these windows land
+(from the firmware `memorymap.h`) ✅. **Read these registers as longs** ✅ (the firmware's register read handler): it masks the address
+with `0x1FFFFC`, ignoring the two low address bits and the access size, so every register comes back
+as a right-aligned 32-bit value, and an undecoded register reads 0. On the real 68060 a word read at
+the register's own offset gets the high half, usually 0; the firmware's emulated CPU answers a word
+read with the low half at both +0 and +2. So read a long, or a word at +2, in every mode. Measured:
+on a real 68LC060 a word read of `ZZ_ETH_MAC_HI` gave `0x0000` at boot, before the driver had loaded
+✅, while a long read gives `0x00000080`, the card's MAC starting `00:80` ✅. The MAC is set from the
+card's configuration before either CPU runs and changes only when written ✅. `0x0000` is also what
+Amiberry returns for an empty window, so a probe that reads a word at +0 cannot tell the board from
+open bus. A better identity is `FW_VERSION` (`0x1A0`, read as a long): the firmware returns its
+version there, major in bits 15–8 and minor in bits 7–0, so `0x00000103` on the 1.03 line, never 0 ✅.
+The board's `144B:01` AutoConfig entry exists only with the extended ROM (`ext_kickstart 2`) ✅. Note the board base is `0x10000000`, so these windows land
 **inside the [identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map)** (< `0x40000000`) and
 are directly reachable — this is *not* the [A4091's above-the-identity-map](a4091-53c710-driver.md)
 case; the driver first used `sptalloc` simply as a clean way to map the full 128 KB region, which on
@@ -512,7 +523,7 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 
 ## Sources
 
-- The **`ZZ_ETH_MAC_HI` read before load** (first-party record, 2026-11-02) ✅/🟡 — the amix `kernel/dlm` `bprobe` test modules' word read of `0x10000198` on an A4000D with a Z3660 (real 68LC060), root and boot passes; the 32-bit width from the firmware 🟡, the test module now reading a long (`3bdf89d`, on `master`) ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/tests/bench/bprobe/`, (`51dd57a`, on `master`)).
+- The **`ZZ_ETH_MAC_HI` read before load** (first-party record, 2026-11-02) ✅/🟡 — the amix `kernel/dlm` `bprobe` test modules' word read of `0x10000198` on an A4000D with a Z3660 (real 68LC060), root and boot passes; the test module now reading a long (`3bdf89d`, on `master`). The register read handler, the MAC set-up, `FW_VERSION` and the `ext_kickstart` condition from the Z3660 fork's firmware source ([jusii/Z3660-amix](https://github.com/jusii/Z3660-amix); `rtg/rtg.c`; `aab97b5`, on `core1-runtime`) ✅ ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/tests/bench/bprobe/`, (`51dd57a`, on `master`)).
 - **Driver source we wrote** (primary, ✅): the **amix-z3660net** project
   (<https://github.com/jusii/amix-z3660net>, branch `master`) — `src/z3660eth.c` (about 1,650 lines;
   the MAPPING STRATEGY note and `z3660eth_direct_map`), `src/z3660eth.h` (register map, frame-window
