@@ -479,8 +479,17 @@ are [above](#the-stock-shared-libc-getpwnam-first-call-sigsegv-and-the-static-li
   behaviour has not been exercised 🟡.
 - **`vfork` is not in `libc.so.1`.** It exists only as a static member of the `usr/ccs/lib/libc.so`
   archive, so autoconf finds it and a cross `configure` guesses it works ✅. The project's ports pin
-  `ac_cv_func_vfork=no` and use `fork`, which is proven on the box ✅; whether that static `vfork` has
-  true `vfork` semantics on Amix is untested 🔴.
+  `ac_cv_func_vfork=no` and use `fork`, which is proven on the box ✅. That static `vfork` is a true
+  vfork: the child shares the parent's memory ✅, and a child that calls `signal`, `sigset` or
+  `sigaction` rewrites the parent's libc handler table, so the parent dies of `SIGBUS` at its next
+  delivery of that signal ([quirk 98](../how-it-works/quirks.md#98-vfork-child-signal-table)). In a
+  vfork child call only `exec*()` and `_exit()`.
+- **Imake turns vfork on for SVR4** ✅: X11R6.3's `Imake.tmpl` gives `HasVFork YES` to every platform
+  not declared `SystemV`, and a cf file that defines only `SystemV4` gets `-DHAS_VFORK` (`xinit`,
+  `xdmshell`, `xmh`). Say `#define HasVFork NO`. An audit of the amix packages (2026-11-02) found
+  make, diffutils and pkgtools mapping `vfork` to `fork`, Dropbear built with `DROPBEAR_VFORK 0`,
+  Python's `_posixsubprocess` using vfork only on Linux, and the static `vsyslog` as the one vfork
+  left in built binaries.
 
 ### More gaps and traps from the 2026-10 ports ✅
 
@@ -727,3 +736,4 @@ The patch disk uses a related (but distinct) self-extracting mechanism — a 1 K
 - The stock `libm.a` measurements (first-party record, 2026-10-30) ✅ — the `sqrt` correction from follow-up probes calling libm's `sqrt` through a function pointer with `%fp0`/`%fp1` and the stack preloaded, `objdump` of the first probe's `main` (one inline `fsqrt`, re-read for this page), and an `FPCR`/`fpsetmask` read; ulps recomputed for this page: `ar t` and `objdump -d` of the sysroot's `/usr/ccs/lib/libm.a` (21 `fmovecr`, 16 `fintrz`, no transcendental instructions; counts re-read for this page), link maps of one-call programs, and a GCC 14 test program (19 functions, raw IEEE bits) run on an emulated stock 2.1c 68030 and an emulated 68040 on the 040/060 kernel line with unimplemented-instruction trapping on, the outputs equal; ulps against `mpmath` at 200 bits; a musl 1.2.5 `src/math` build of the same program (amix-packages).
 - The coreutils 5.2.1-3 and gtar 1.14-7 rebuilds (first-party record, 2026-10-30) ✅: the `stat -c %s` and `stat -f` rows on the box, `stat.c`'s run-time format assembly, `nm` of `truncate.o` in the static libc archive (`_ftruncate` T, `ftruncate` W); [amix-packages](https://github.com/jusii/amix-packages) `97bbcf1` (patch 09, the `ftruncate` replacement), `cad15e4`, `cbd8c25`.
 - The Heirloom tar and Dropbear ports (first-party record, 2026-11-01/02) ✅: the `%llo` size fields written as 0 by an unpatched Heirloom tar build on 68030 and 68060 systems in emulation, caught by the package gate's `ll`-printf check ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/heirloom-tar`, `b07d4cb`, on `master`); the pty probes (session leader and child pushes, `tcgetattr` and `TIOCSWINSZ` on the master, `ls -l` of the nodes, `nm -D` of the sysroot `libc.so.1`) on the 1.1 disks booted on 68030 and 68060 kernels in emulation, behind Dropbear's patch 05 (`userland/packages/dropbear`, `51ba153`, on `master`).
+- The **static `vfork` and the X11R6.3 Imake trap** (first-party record, 2026-11-02) ✅: the `xinit` cores on a real A4000D and the stock `libc.so.1` disassembly behind [quirk 98](../how-it-works/quirks.md#98-vfork-child-signal-table); `Imake.tmpl`; the package audit and the x11r63 fix ([`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/x11r6.3`, `c3abeff`, `443fe46`, on `master`).

@@ -652,3 +652,9 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   (2026-08-11) ✅; the miniroot has no timeout tool, and the 1.1 installer's scan reads one block per
   id and calls `ddsize` only when a profile allows it (none does) ✅. Other controller paths
   unmeasured 🔴.
+- 2026-11-02 — vfork and the libc signal table, amix `userland/packages` x11r63 (`443fe46`): the
+  sysroot's static `vfork` shares the parent's memory ✅; `signal`/`sigset`/`sigaction` keep the
+  handler in `libc.so.1`'s `_siguhandler` and register a trampoline that calls it ✅ (disassembly,
+  `savr` checked); so a vfork child's signal call kills the parent with `SIGBUS` at the next delivery
+  (`xinit`, real A4000D, 2 of 2) ✅. `vsyslog`'s `LOG_CONS` fallback vforks and resets `SIGALRM` ✅,
+  its effect on a program 🟡. Imake's `HasVFork` defaults to YES off `SystemV` ✅.

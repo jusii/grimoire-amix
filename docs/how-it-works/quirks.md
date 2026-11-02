@@ -110,6 +110,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 95 | **The A2065 `aen` DLPI traps**: `DL_ATTACH_REQ` is never answered; an open can return a slot left bound with stale frames queued; received frames are 14 bytes longer than the datagram; a `DL_UNITDATA_REQ` with under 60 data bytes fails with `ERANGE`. Attach only on Style 2, check the state, trust the IP length, pad short frames to 60 | ✅ | [Quirks §95](#95-aen-dlpi-traps), [Networking](networking.md#raw-dlpi-aen) |
 | 96 | **The stock `tar` (`/usr/sbin/tar`) crashes when root extracts a ustar or GNU archive whose owner or group name the box lacks** (an empty name counts, as GNU `--numeric-owner` writes): it prints `problem reading passwd entry` / `owner not changed`, then dereferences the NULL lookup and dies with `SIGSEGV` after the first file. Plain `tar` is this binary even with GNU tar installed. Same on a 68060 kernel with the TT fix. It also reads no GNU long names or pax headers. Install `heirtar`, or use `tar xof`, a non-root user, `/opt/amix/bin/tar`, or v7 archives | ✅/🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
 | 97 | **A NULL read returns 0 in 193 stock binaries and faults in gcc14-built ones**: SVR4 `ld` gave those stock executables a read-only zero page at vaddr 0, while gcc14 binaries have none. Code that passes as one kind of binary can crash as the other. Before an unreleased fix, the 040/060 kernels returned chip-RAM bytes instead | ✅ | [Quirks §97](#97-zero-page-depends-on-linker), [040/060 status](68040-68060-status.md#k46-user-address-space) |
+| 98 | **A `vfork` child that calls `signal`, `sigset` or `sigaction` breaks the parent**: libc keeps the handlers in a table in its own data, which a vfork child shares, so the parent's next delivery of that signal jumps to 0 or 1 and dies with `SIGBUS`. `xinit` built with vfork never starts X. Use `fork`; in a vfork child call only `exec*` and `_exit` | ✅ | [Quirks §98](#98-vfork-child-signal-table) |
 
 The rest of this page expands each item.
 
@@ -1813,6 +1814,36 @@ accesses too, so a NULL read in either kind of binary returned chip-RAM bytes in
 
 The stock `tar` of [quirk 96](#96-tar-formats-68030-test-image) is one such case: it reads through a failed `getpwnam` result.
 
+### 98. A `vfork` child that sets a signal handler breaks the parent's ✅ {#98-vfork-child-signal-table}
+
+The static `vfork` in the sysroot's libc archive (`usr/ccs/lib/libc.so`) is a real vfork: the child
+runs in the parent's memory until it calls `exec` or `_exit` ✅. That collides with how the stock
+libc delivers signals. `signal`, `sigset` and `sigaction` store the handler in a table in
+`libc.so.1`'s own data (`_siguhandler`) and register a libc trampoline with the kernel (`savr` for
+`signal`/`sigset`, `sigacthandler` for `sigaction`), which loads the handler from the table and calls
+it ✅ (disassembly of the stock `libc.so.1`). `SIG_DFL` and `SIG_IGN` go straight to the kernel, but
+the table entry is overwritten all the same ✅.
+
+So a vfork child that calls any of the three rewrites the **parent's** table entry. The parent's
+trampoline stays registered with the kernel; at its next delivery of that signal it calls the value
+the child left, 0 or 1, and dies with `SIGBUS` (`si_code` 1, `BUS_ADRALN`) at the trampoline's call
+✅. Seen on a real A4000D (68LC060) with X11R6.3's `xinit` built with vfork: its child sets
+`SIGUSR1` to `SIG_IGN` before it execs the server, the server signals the parent when it is ready,
+and `xinit` printed `Bus Error - core dumped` (2 of 2 runs, two matching cores). X never starts
+through `xinit`/`startx`, and the server is left running with no client. The same `xinit.c` built
+with `fork` ran the client and ended cleanly on the same box ✅.
+
+The stock `vsyslog` vforks too ✅ (both `libc.so.1` and the static copy GCC 14 links in): when
+`openlog` was given `LOG_CONS` and the write to the log device fails, its child calls
+`signal(SIGALRM, SIG_DFL)` before writing to the console. A program with a `SIGALRM` handler that
+logs that way would lose the handler and crash at its next alarm 🟡 (follows from the above, not yet
+seen on a box).
+
+**Rule** ✅: use `fork`. Where `vfork` stays, the child calls nothing but `exec*()` and `_exit()`; no
+signal calls, and by the general vfork rule no syslog, stdio or `malloc`. X11R6.3's Imake gives every
+platform not declared `SystemV` vfork (`HasVFork YES`), so an SVR4 cf file must say
+`#define HasVFork NO` ([toolchain](../drivers/toolchain.md#sigaltstack-is-there-vfork-is-not-in-the-shared-libc)).
+
 ## See also
 
 - [Hardware](hardware.md) — the machines, RAM ceiling, Zorro II, FPU/MMU requirements in full.
@@ -1824,6 +1855,7 @@ The stock `tar` of [quirk 96](#96-tar-formats-68030-test-image) is one such case
 ## Sources
 - The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
 - The **stock `tar` NULL owner lookup** (first-party record, 2026-11-01) ✅/🟡 — quirk 96: the amix `kernel/k30` runs in emulation, which pulled `/usr/sbin/tar` from the 68030 and 68LC060 images (one SHA-256 for all copies) and took a core on the 68030 (the faulting read through a zero address register). The disassembly of the binary shows the `getpwnam`/`getgrnam` results read after their failure messages, checked here against the pulled copy. The archive table (v7, ustar and GNU, named and numeric owners, `xof`, non-root) ran on two 68030 kernel builds; the 68LC060 run was on a 68040/060 kernel from before the TT fix. The first observation (exit 139 on ustar and GNU, v7 fine, the 68040/060 image unaffected) came from the amix `kernel/dlm` staging runs the same day.
+- The **vfork child and the signal table** (first-party record, 2026-11-02) ✅/🟡 — quirk 98: two `xinit` cores from a real A4000D (68LC060) with the x11r63 package built with vfork, and the fork build's clean run on the same box; the disassembly of the stock `libc.so.1` from [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`signal`/`sigset`/`sigaction`, the `savr` and `sigacthandler` trampolines, `_siguhandler`, and `vsyslog`'s vfork), the `savr` call checked here; X11R6.3 `config/cf/Imake.tmpl` and `programs/xinit/xinit.c`; the fix in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/x11r6.3` (`c3abeff`, `443fe46`, on `master`).
 - The **stock `tar` on four systems, and `heirtar`** (first-party record, 2026-11-01) ✅ — quirk 96 and quirk 12's `${1:?word}` item: the amix `userland/packages` Heirloom tar port's emulator runs, nine archives made with host GNU tar 1.35 on the 68030 and 68060 kernels of the amigaux 1.1 image, a later 68030 build and a 68060 kernel with the TT fix; the stock `tar cf` headers compared byte for byte with Heirloom's; the package's install, extraction and removal checks. [`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/heirloom-tar` (`b07d4cb`, on `master`: README, `tests/`).
 - The **`aen` DLPI traps** (first-party record, 2026-10-30; the short-frame refusal 2026-10-31) ✅ — quirk 95: see the matching Sources entries on [the networking page](networking.md#raw-dlpi-aen).
 
