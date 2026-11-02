@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-02 — Zorro III and the identity map, made precise (9ef6bc5)
+
+Zorro III wording made precise across 13 pages: the space starts at 0x10000000 and its bottom (to 0x3FFFFFFF) is inside the identity map; AutoConfig places Z3 boards at 0x40000000 and above (VSECT1 on both kernel lines), outside it.
+
 ## 2026-11-02 — the A3000/A4000 physical address map (01792fa)
 
 Hardware: the A3000/A4000 physical address map (secondary ranges at 🟡, first-party rows at ✅); Zorro III space begins at 0x10000000, inside the identity map, while AutoConfig'd Z3 boards land at 0x40000000 and above.
