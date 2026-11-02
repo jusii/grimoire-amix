@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-02 — ddsize on the a3091 path; quirk 98, vfork and the signal table (4a1b551, c9ae68a)
+
+Disks: /etc/ddsize hangs for good on the A3000 onboard SCSI (a3091) in emulation; the miniroot can't bound it, and the 1.1 installer avoids it; other controllers unmeasured. Quirk 98: a vfork child that calls signal/sigset/sigaction rewrites the parent's libc handler table and kills it with SIGBUS (xinit on a real A4000D); vsyslog's LOG_CONS fallback does the same to SIGALRM (🟡); toolchain: the static vfork is a true vfork; Imake's HasVFork must be NO on SVR4.
+
 ## 2026-11-02 — loadable modules: how each line maps the low 1 GiB (b4dfc83)
 
 Loadable modules: the identity map below VSECT1 is a root-table early-termination descriptor on k30 and DTT0 on k46 (DTT1 also maps 0x80000000 up; only 0x40000000–0x7FFFFFFF needs page mapping).
