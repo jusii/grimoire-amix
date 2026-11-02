@@ -641,3 +641,9 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   clone 27/15, `/dev/pts/N` major 14, `grantpt`/`unlockpt`/`ptsname` in libc but no header ✅. A
   shared directory with different recorded owner/group stops the stock `pkgadd -n` on the 1.1 030
   disk 🟡 (attribute difference ✅, causation inferred).
+- 2026-11-02 — a secondary Amiga memory map (robthenerd.com, read 2026-11-02; no sources named, no
+  licence line; cited by URL only, no text copied): the A3000/A4000 ranges for chip RAM, Zorro II
+  memory and AutoConfig, CIAs, clock, local I/O, custom chips, ROM, motherboard and CPU-slot RAM,
+  Zorro III space `0x10000000`–`0x7FFFFFFF` and its AutoConfig space at `0xFF000000` 🟡. It lists a
+  SCSI controller at `0xDD0000` for the A4000 without telling the A4000D from the A4000T (first-party:
+  nothing answers there on the A4000D). Nothing on bus timeouts or bus errors.

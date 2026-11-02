@@ -126,6 +126,44 @@ The **stock** Amix kernel **predates the 68040 MMU** and has no support for it (
 
 Board addresses are assigned at reset by the Amiga **AUTOCONFIG** mechanism, which Amix reads through the kernel's `autocon()` interface — again, **Zorro II only**. ✅ See [the Zorro autoconfig driver page](../drivers/zorro-autoconfig.md) for how drivers consume this.
 
+### The A3000/A4000 address map {#address-map}
+
+The physical map of the 32-bit machines, as far as Amix and its drivers meet it. A 🟡 row rests on
+a secondary map of the Amiga models (see Sources), not on Commodore documentation; a ✅ row is
+backed by a first-party measurement or source read on the linked page.
+
+| Range | What is there | Tag |
+|---|---|---|
+| `0x000000`–`0x1FFFFF` | Chip RAM, up to 2 MB | 🟡 |
+| `0x200000`–`0x9FFFFF` | Zorro II memory space (AutoConfig places memory-mapped boards here) | 🟡 |
+| `0xBF0000`–`0xBFFFFF` | the two 8520 CIAs | 🟡 |
+| `0xD80000`–`0xDFFFFF` | local I/O; a read that nothing decodes never ends under the Z3660 ([quirk 66](quirks.md#66-local-io-read-hangs)) | ✅ |
+| `0xDC0000`–`0xDCFFFF` | the battery-backed clock | 🟡 |
+| `0xDD0000`–`0xDD0FFF` | A3000: the WD33C93 SCSI; A4000T: the NCR 53C710 (registers at +`0x40`); A4000D: nothing, the first read hangs under the Z3660 | ✅ |
+| `0xDD1000`–`0xDD3FFF` | A4000/A4000T IDE: task file at `0xDD2020`, `ALTSTAT` at `0xDD303A` ([IDE](#ide-the-a4000-gayle-port)) | ✅ (range 🟡) |
+| `0xDE0000`–`0xDEFFFF` | motherboard resources (Gary's timeout bit at `0xDE0001`) | 🟡 |
+| `0xDF0000`–`0xDFFFFF` | custom chip registers (`VPOSR` at `0xDFF004`, the [chipset gate](../drivers/zorro-autoconfig.md)) | ✅ |
+| `0xE80000`–`0xE8FFFF` | Zorro II AutoConfig space: a board answers here until it is given its address | 🟡 |
+| `0xE90000`–`0xEFFFFF` | Zorro II I/O boards | 🟡 |
+| `0xF80000`–`0xFFFFFF` | Kickstart ROM (the Z3660 can serve it from its own memory, [quirk 67](quirks.md#67-z3660-kickstart-0)) | ✅ |
+| `0x07000000`–`0x07FFFFFF` | motherboard fast RAM, 16 MB; a bigger A3000 bank extends below `0x07000000` ([quirk 57](quirks.md#57-loader-placement-a3000-scsi)) | ✅ |
+| `0x08000000`–`0x0FFFFFFF` | CPU-slot memory; on an A4000 with a Z3660 the kernel loads at `0x08000000` | ✅ (range 🟡) |
+| `0x10000000`–`0x7FFFFFFF` | Zorro III space; the Z3660 hard-maps its combo window at `0x10000000`, AutoConfig put the A4091 at `0x40000000` | 🟡 (the two bases ✅) |
+| `0xFF000000`–`0xFF00FFFF` | Zorro III AutoConfig space | 🟡 |
+
+**Zorro III space and the identity map** 🟡: the kernels' one-to-one map of the low 1 GB
+([the identity map](../drivers/zorro-autoconfig.md#the-identity-map)) covers `0x10000000`–`0x3FFFFFFF`,
+the bottom of Zorro III space. The Z3660's fixed window at `0x10000000` is reached through it ✅; the
+Zorro III boards AutoConfig placed in the measured setups landed at `0x40000000` and above, outside
+it ✅. So "Zorro III lies outside the identity map", on this site, means where boards land in
+practice, not the whole range.
+
+**Empty space** ✅: the motherboard turns no unanswered local-I/O read into a bus error, and Gary
+ends an unanswered motherboard read with its timeout and wrong data
+([Z3660 timings](z3660-timings.md)); under the Z3660 a local-I/O read can hang forever (quirk 66).
+Buster's Zorro III timeout reaches the CPU as an access fault (quirk 66, from the Z3660's CPLD
+sources). The secondary map says nothing about either.
+
 ## Supported expansion cards
 
 The following cards are known to work. Entries are ✅ unless tagged 🟡 (community-reported). For the full per-device table with major/minor numbers and `/dev` paths, see [the device list](../reference/device-list.md).
@@ -206,6 +244,7 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 
 ## Sources
 
+- The **address map** (2026-11-02) 🟡 — the "Amiga Memory Map" page, <https://robthenerd.com/amiga/memorymap>, read 2026-11-02: a secondary per-model table with no sources named. It does not tell the A4000D from the A4000T (it lists a SCSI controller at `0xDD0000` for the A4000; on the A4000D nothing answers there, quirk 66). The ✅ rows come from the first-party records cited on the pages they link.
 - The **no-FPU signal panic** ✅ — see the matching Sources entry on [the quirks page](quirks.md#74-no-fpu-signal-panic) (a real A1200 with an FPU-less 68030 card and an Amiberry reproduction, first-party record, 2026-10-14; the stock `sendsig` → `fpu_setup` call in the public 68040/68060 port's gate census).
 - The **68LC060 and FPU-built AmigaOS software** ✅ — the Z3660 driver set's `z3660-drivers/exfat/makefile` (`-m68881`) and a first-party test on a 68LC060 (2026-10-02) in which mounting the SD with that handler raised a Line-F exception; Amix's own `no fpu detected` / `fpu emulation enabled` boot lines are on [the 040/060 page](68040-68060-status.md).
 - The **A4000/030's stock CPU card** — Commodore's 68EC030 card, identified first-party 2026-10-01 ✅.
