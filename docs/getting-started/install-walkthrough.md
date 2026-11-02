@@ -199,20 +199,28 @@ shutdown -i6
 
 Remove the floppy so the machine boots from the SCSI disk (ID 6).
 
-## Stage 6 — first boot and finish with `amixadm`
+## Stage 6 — first boot: Commodore's `system.setup` {#stage-6-first-boot-and-finish-with-amixadm}
 
-The machine now boots `relocunix` from the boot partition. Complete the post-install configuration with
-the admin tool **`amixadm`** ✅, which walks you through:
+The machine now boots `relocunix` from the boot partition. At every boot `/etc/sysinit` runs
+Commodore's **`/usr/amiga/bin/system.setup`** for as long as that script is executable ✅ (the stock
+files). It asks, in order:
 
 - **nodename** (hostname) and **domain**;
-- **time zone**;
-- the **date** — `amixadm` accepts only a year **≤ 1999** ✅ (a limit of the tool, not the kernel;
-  set the real date afterwards — see the [Y2K step](#stage-8-y2k-make-the-clock-work-past-1999));
-- the **root password**;
-- **X11** configuration.
+- the **date** and **time** — the date is typed as `mmddyy`, so only a year **≤ 1999** fits ✅
+  (a limit of the tool, not the kernel; set the real date afterwards — see the
+  [Y2K step](#stage-8-y2k-make-the-clock-work-past-1999));
+- "Would you like to assign a password to all of the system accounts? [y]" — yes sets **root's
+  password** and copies it to the other system accounts, and a second question covers `guest`
+  (details: [accounts and remote logins](first-login-and-tour.md#stock-accounts-and-remote-logins));
+- a first **user account**, the **monitor** type, **X11** for a colour card, an **xdm** login screen,
+  and **Netnews**.
 
-> **Default password lore 🟡:** community sources report a default post-install login password of
-> `wasp`. Change it immediately via `amixadm` / `passwd`.
+It then shows a summary; answering that nothing needs changing clears the script's execute bit, so
+it does not run again. **`amixadm`** is the same steps as a menu, for later use ✅.
+
+> **Default password lore 🟡:** community sources report a post-install login password of `wasp`
+> on pre-built images. A system you installed has the password you typed here — or **none**, if
+> you declined the password questions. Set one with `passwd`.
 
 After this, you have a running Amix 2.1. For a guided look around your new system — virtual consoles
 (Alt+F1..F8), the default `ksh`, and starting X — see the
@@ -271,7 +279,7 @@ keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-se
                              amixpkg -i -m -d -r /mnt -y standard
                              (viper_kludge only for nonstandard tape drives)
 5. make bootpart KERNEL=relocunix ; shutdown -i6 ; remove floppy
-6. first boot → amixadm: nodename/domain/tz/date (amixadm: ≤1999)/root pw/X11
+6. first boot → system.setup: nodename/domain/date+time (≤1999)/system-account pw/guest pw/user/X11
 7. apply patch disk          → 2.1p2a / kernel 2.1c
 8. Y2K: community setclk + /etc/clkzone → clock from the RTC
 ```
@@ -290,6 +298,7 @@ keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-se
 
 ## Sources
 
+- The **first-boot `system.setup`** (read 2026-11-02) ✅ — the stock `etc/sysinit` and `usr/amiga/bin/system.setup`, `passwdall` and `amixadm` in [amigaux/amix-system](https://github.com/amigaux/amix-system) (`761a82e`). This replaces the earlier "`amixadm` walks you through" reading.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap); first-party record, 2026-09-29).
 - `sources/research-brief.md` §9 (installation flow) and §10 (boot/root/patch disk anatomy) — the

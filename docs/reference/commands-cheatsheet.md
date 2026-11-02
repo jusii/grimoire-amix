@@ -39,7 +39,7 @@ For terminology (major/minor numbers, STREAMS, `cdevsw`, RDB, etc.) see the
 | Command | What it does | Tag |
 |---|---|---|
 | `sysadm` | SVR4 menu-driven admin front-end (standard SVR4 tool) | ✅ |
-| `amixadm` | Amix's post-install / admin tool — sets nodename, domain, timezone, date, root password, X11 | ✅ |
+| `amixadm` | Amix's admin menu — add a user, date and time zone, screen, keymap, nodename and domain, passwords for all system accounts, hosts file, colour X, xdm, Netnews | ✅ |
 | `init <level>` | Switch run level (SVR4 `init` + `/etc/inittab`) | ✅ |
 | `who -r` | Show the current run level | ✅ |
 | `shutdown -i6 -g0 -y` | Reboot now (`-i6` = run level 6); use `-i0` to halt, `-iS` for single-user | ✅ |
@@ -58,10 +58,13 @@ shutdown -i6 -g0 -y
 console, a reboot stalls at `INIT: New run level: 6` and never runs `rc6` — stock `init`,
 reproduced on the stock kernel; only a power cycle recovers ✅. See [quirks §58](../how-it-works/quirks.md#58-console-getty-shutdown-stall).
 
-**Finishing an install ✅.** After the distribution is laid down and the kernel is built,
-`amixadm` walks you through the final configuration: node name, NIS/DNS domain, timezone, the
-date (**`amixadm` accepts only a year ≤ 1999 — set the real date afterwards; see [Time and the clock](#time-and-the-clock)**),
-the root password, and X11 setup. This is reconstructed from the `root.adf` install scripts (brief §9).
+**Finishing an install ✅.** After the distribution is laid down and the kernel is built, the first
+boot runs Commodore's `system.setup` (from `/etc/sysinit`, until it clears its own execute bit): node
+name and domain, the date and time (**the date step accepts only a year ≤ 1999 — set the real
+date afterwards; see [Time and the clock](#time-and-the-clock)**), a password for all system
+accounts and for `guest`, a user account, the monitor, X11 and xdm, and Netnews. `amixadm` offers the
+same steps as a menu afterwards. Read from the stock `/etc/sysinit`, `system.setup` and `amixadm`;
+see [accounts and remote logins](../getting-started/first-login-and-tour.md#stock-accounts-and-remote-logins).
 
 > **Note on the default password 🟡.** Community reports a post-install login password of
 > `wasp`. Treat as community lore, not a guarantee.

@@ -134,7 +134,7 @@ At the user level the native Ethernet device is `aen0` (the A2065 LANCE driver) 
 
 Amix exposes the usual SVR4 administration model ✅:
 
-- **`sysadm`** is the menu-driven admin tool; Amix also ships an **`amixadm`** wrapper used to finish post-install configuration (nodename, domain, timezone, date, root password, X11) ✅.
+- **`sysadm`** is the menu-driven admin tool; Amix also ships **`amixadm`**, a menu of the same steps Commodore's first-boot `system.setup` asks (nodename, domain, date and time, system-account passwords, a user, X11, xdm, Netnews) ✅.
 - **`init` + `/etc/inittab` + run levels** govern system state and what starts at each level ✅. Shutting down to reboot is `shutdown -i6` (run level 6) ✅; a kernel install is followed by exactly that ✅.
 - **Virtual consoles** are switched with **Alt+F1 … Alt+F8** ✅.
 - **Packaging** uses the SVR4 tools `pkgadd` / `pkgmk` / `pkgtrans` (plus `pkgproto`) ✅. The Amix-specific **`amixpkg`** wrapper is widely reported as flaky/"broken" 🟡, yet the installer itself drives package installation through it, e.g. `amixpkg -i -m -d -r /mnt -y standard` ✅. See [the toolchain page](../drivers/toolchain.md) for packaging detail.

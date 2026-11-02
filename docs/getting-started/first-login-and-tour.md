@@ -23,14 +23,47 @@ login: root
 Password:
 ```
 
-- The **post-install root password is reported to be `wasp`** 🟡 (community-reported; this is the value seen on pre-built emulator disk images, not something the installer hard-codes). On a system you installed yourself, the password is whatever you set during the `amixadm` finish step at the end of the [install](install-walkthrough.md#stage-6-first-boot-and-finish-with-amixadm). Change it immediately with `passwd`.
-- If `wasp` doesn't work and you didn't set a password, you're looking at a fresh install that expects you to set one during `amixadm`.
+- The **post-install root password is reported to be `wasp`** 🟡 (community-reported; this is the value seen on pre-built emulator disk images, not something the installer hard-codes). On a system you installed yourself, the password is whatever you gave the first-boot `system.setup` at the end of the [install](install-walkthrough.md#stage-6-first-boot-and-finish-with-amixadm), or none at all if you declined its password questions. Change it immediately with `passwd`.
+- If `wasp` doesn't work and you didn't set a password, try an empty one: the stock files ship root without a password ([below](#stock-accounts-and-remote-logins)).
 
 ```sh
 passwd          # change root's password right away
 ```
 
 Once logged in as `root` you're in the default shell (**ksh** — see [Shells](#shells)). The prompt is `#`; a normal user gets `$`.
+
+## Accounts and remote logins on a stock install ✅ {#stock-accounts-and-remote-logins}
+
+The stock 2.1 system files ship every system account without a password and the network login
+services switched on ✅ (read from the stock tree, [amigaux/amix-system](https://github.com/amigaux/amix-system)):
+
+- `/etc/shadow` has an empty password field for `root`, `daemon`, `bin`, `sys`, `adm`, `uucp`,
+  `nuucp`, `sync`, `amiga`, `lp`, `listen`, the menu logins `setup`, `sysadm`, `powerdown`,
+  `checkfsys`, `makefsys`, `mountfsys` and `umountfsys`, and `guest`.
+- `/etc/default/login` sets `PASSREQ=NO` and leaves its `CONSOLE` line commented out. On SVR4 an
+  unset `CONSOLE` lets root log in on any terminal, network logins included 🟡 (the SVR4 meaning,
+  not tested on Amix).
+- The service access controller starts `inetd` at boot, and `/etc/inet/inetd.conf` enables `telnet`,
+  `ftp`, `shell` (rsh), `login` (rlogin) and `exec` (rexec), all running as root. Out of the box only
+  the loopback interface is configured, so they answer on the LAN once the network is set up 🟡.
+
+**What the first boot asks** ✅. `/etc/sysinit` runs Commodore's `system.setup` at every boot while
+the script is executable. After the node name and the date it asks "Would you like to assign a
+password to all of the system accounts? [y]". Yes (the default) runs `passwdall`, which sets root's
+password with `passwd` and copies the same hash to `root`, `daemon`, `bin`, `sys`, `adm`, `uucp`,
+`nuucp`, `sync`, `amiga`, `lp`, `listen`, `setup`, `powerdown`, `sysadm`, `checkfsys`, `makefsys`,
+`mountfsys`, `umountfsys`, `games`, `news`, `x` and `nobody`. **`guest` is not on that list**: a
+second question sets its password, defaulting to yes only if the first answer was yes. Declining both
+leaves the accounts as shipped, without passwords. When the summary is accepted the script clears
+its own execute bit and never runs again; interrupting it (`^C` is allowed inside it) leaves it
+executable, so it asks again at the next boot. Afterwards `amixadm` option 6 runs `passwdall` again,
+and `passwdall -d` empties them all. No Commodore text on securing these accounts is on record here
+beyond that question.
+
+**Closing a stock box** 🟡 (ordinary SVR4 practice, not measured here): make sure every account in the
+lists above, `guest` included, has a password or is locked; uncomment `CONSOLE=/dev/console` to keep
+root logins on the console; and comment out the `inetd.conf` services you don't use (the r-services
+first), then send `inetd` a `SIGHUP`.
 
 ## Virtual consoles (Alt+F1 .. Alt+F8)
 
@@ -164,6 +197,7 @@ When you're ready to do real work, the next stops are the [commands cheat-sheet]
 - [Glossary](../how-it-works/glossary.md) — SVR4 / Amix jargon
 
 ## Sources
+- The **stock accounts, login defaults and first-boot questions** (read 2026-11-02) ✅ — [amigaux/amix-system](https://github.com/amigaux/amix-system) (`761a82e`): `etc/shadow`, `etc/default/login`, `etc/saf/_sactab`, `etc/inet/inetd.conf`, `etc/inet/rc.inet`, `etc/sysinit`, and `usr/amiga/bin/system.setup`, `passwdall` and `amixadm`; the `system.setup` reading also made in the Installer-NG project. The `CONSOLE` meaning and the closing steps are SVR4 convention 🟡.
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap); first-party record, 2026-09-29).
 - Master research brief, §4 (kernel architecture: virtual consoles Alt+F1..F8, `/usr/sys`, `/stand`, `kernel.c`), §8 (default login password "wasp" 🟡), §11 (default shell ksh, pre-POSIX `/bin/sh`; X11R4 default, `tvtwm` mono, A2410 TIGA `olinit -- -tiga`, OpenLook `olwm`/`olwsm`, keymap y/z + `/`=SHIFT-8), §12 (Y2K — corrected 2026-09-29: a `setclk` bug, not a kernel cap; `/bin/sh` pre-POSIX), §3/§9 (`/stand`, `make bootpart KERNEL=relocunix`, `rdbunix`→`relocunix` rename), §5 (`/dev` major/minor examples)
 - `asokero/va2000-amix` install-script gotcha (Amix `/bin/sh` has no `$(...)`, no `grep -q`) — https://github.com/asokero/va2000-amix (brief §6)

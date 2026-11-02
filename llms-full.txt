@@ -1856,7 +1856,7 @@ At the user level the native Ethernet device is `aen0` (the A2065 LANCE driver) 
 
 Amix exposes the usual SVR4 administration model ✅:
 
-- **`sysadm`** is the menu-driven admin tool; Amix also ships an **`amixadm`** wrapper used to finish post-install configuration (nodename, domain, timezone, date, root password, X11) ✅.
+- **`sysadm`** is the menu-driven admin tool; Amix also ships **`amixadm`**, a menu of the same steps Commodore's first-boot `system.setup` asks (nodename, domain, date and time, system-account passwords, a user, X11, xdm, Netnews) ✅.
 - **`init` + `/etc/inittab` + run levels** govern system state and what starts at each level ✅. Shutting down to reboot is `shutdown -i6` (run level 6) ✅; a kernel install is followed by exactly that ✅.
 - **Virtual consoles** are switched with **Alt+F1 … Alt+F8** ✅.
 - **Packaging** uses the SVR4 tools `pkgadd` / `pkgmk` / `pkgtrans` (plus `pkgproto`) ✅. The Amix-specific **`amixpkg`** wrapper is widely reported as flaky/"broken" 🟡, yet the installer itself drives package installation through it, e.g. `amixpkg -i -m -d -r /mnt -y standard` ✅. See [the toolchain page](../drivers/toolchain.md) for packaging detail.
@@ -8247,20 +8247,28 @@ shutdown -i6
 
 Remove the floppy so the machine boots from the SCSI disk (ID 6).
 
-## Stage 6 — first boot and finish with `amixadm`
+## Stage 6 — first boot: Commodore's `system.setup` {#stage-6-first-boot-and-finish-with-amixadm}
 
-The machine now boots `relocunix` from the boot partition. Complete the post-install configuration with
-the admin tool **`amixadm`** ✅, which walks you through:
+The machine now boots `relocunix` from the boot partition. At every boot `/etc/sysinit` runs
+Commodore's **`/usr/amiga/bin/system.setup`** for as long as that script is executable ✅ (the stock
+files). It asks, in order:
 
 - **nodename** (hostname) and **domain**;
-- **time zone**;
-- the **date** — `amixadm` accepts only a year **≤ 1999** ✅ (a limit of the tool, not the kernel;
-  set the real date afterwards — see the [Y2K step](#stage-8-y2k-make-the-clock-work-past-1999));
-- the **root password**;
-- **X11** configuration.
+- the **date** and **time** — the date is typed as `mmddyy`, so only a year **≤ 1999** fits ✅
+  (a limit of the tool, not the kernel; set the real date afterwards — see the
+  [Y2K step](#stage-8-y2k-make-the-clock-work-past-1999));
+- "Would you like to assign a password to all of the system accounts? [y]" — yes sets **root's
+  password** and copies it to the other system accounts, and a second question covers `guest`
+  (details: [accounts and remote logins](first-login-and-tour.md#stock-accounts-and-remote-logins));
+- a first **user account**, the **monitor** type, **X11** for a colour card, an **xdm** login screen,
+  and **Netnews**.
 
-> **Default password lore 🟡:** community sources report a default post-install login password of
-> `wasp`. Change it immediately via `amixadm` / `passwd`.
+It then shows a summary; answering that nothing needs changing clears the script's execute bit, so
+it does not run again. **`amixadm`** is the same steps as a menu, for later use ✅.
+
+> **Default password lore 🟡:** community sources report a post-install login password of `wasp`
+> on pre-built images. A system you installed has the password you typed here — or **none**, if
+> you declined the password questions. Set one with `passwd`.
 
 After this, you have a running Amix 2.1. For a guided look around your new system — virtual consoles
 (Alt+F1..F8), the default `ksh`, and starting X — see the
@@ -8319,7 +8327,7 @@ keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-se
                              amixpkg -i -m -d -r /mnt -y standard
                              (viper_kludge only for nonstandard tape drives)
 5. make bootpart KERNEL=relocunix ; shutdown -i6 ; remove floppy
-6. first boot → amixadm: nodename/domain/tz/date (amixadm: ≤1999)/root pw/X11
+6. first boot → system.setup: nodename/domain/date+time (≤1999)/system-account pw/guest pw/user/X11
 7. apply patch disk          → 2.1p2a / kernel 2.1c
 8. Y2K: community setclk + /etc/clkzone → clock from the RTC
 ```
@@ -8338,6 +8346,7 @@ keeps it in local time. Details: [quirks §7](../how-it-works/quirks.md#7-y2k-se
 
 ## Sources
 
+- The **first-boot `system.setup`** (read 2026-11-02) ✅ — the stock `etc/sysinit` and `usr/amiga/bin/system.setup`, `passwdall` and `amixadm` in [amigaux/amix-system](https://github.com/amigaux/amix-system) (`761a82e`). This replaces the earlier "`amixadm` walks you through" reading.
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap); first-party record, 2026-09-29).
 - `sources/research-brief.md` §9 (installation flow) and §10 (boot/root/patch disk anatomy) — the
@@ -8635,14 +8644,47 @@ login: root
 Password:
 ```
 
-- The **post-install root password is reported to be `wasp`** 🟡 (community-reported; this is the value seen on pre-built emulator disk images, not something the installer hard-codes). On a system you installed yourself, the password is whatever you set during the `amixadm` finish step at the end of the [install](install-walkthrough.md#stage-6-first-boot-and-finish-with-amixadm). Change it immediately with `passwd`.
-- If `wasp` doesn't work and you didn't set a password, you're looking at a fresh install that expects you to set one during `amixadm`.
+- The **post-install root password is reported to be `wasp`** 🟡 (community-reported; this is the value seen on pre-built emulator disk images, not something the installer hard-codes). On a system you installed yourself, the password is whatever you gave the first-boot `system.setup` at the end of the [install](install-walkthrough.md#stage-6-first-boot-and-finish-with-amixadm), or none at all if you declined its password questions. Change it immediately with `passwd`.
+- If `wasp` doesn't work and you didn't set a password, try an empty one: the stock files ship root without a password ([below](#stock-accounts-and-remote-logins)).
 
 ```sh
 passwd          # change root's password right away
 ```
 
 Once logged in as `root` you're in the default shell (**ksh** — see [Shells](#shells)). The prompt is `#`; a normal user gets `$`.
+
+## Accounts and remote logins on a stock install ✅ {#stock-accounts-and-remote-logins}
+
+The stock 2.1 system files ship every system account without a password and the network login
+services switched on ✅ (read from the stock tree, [amigaux/amix-system](https://github.com/amigaux/amix-system)):
+
+- `/etc/shadow` has an empty password field for `root`, `daemon`, `bin`, `sys`, `adm`, `uucp`,
+  `nuucp`, `sync`, `amiga`, `lp`, `listen`, the menu logins `setup`, `sysadm`, `powerdown`,
+  `checkfsys`, `makefsys`, `mountfsys` and `umountfsys`, and `guest`.
+- `/etc/default/login` sets `PASSREQ=NO` and leaves its `CONSOLE` line commented out. On SVR4 an
+  unset `CONSOLE` lets root log in on any terminal, network logins included 🟡 (the SVR4 meaning,
+  not tested on Amix).
+- The service access controller starts `inetd` at boot, and `/etc/inet/inetd.conf` enables `telnet`,
+  `ftp`, `shell` (rsh), `login` (rlogin) and `exec` (rexec), all running as root. Out of the box only
+  the loopback interface is configured, so they answer on the LAN once the network is set up 🟡.
+
+**What the first boot asks** ✅. `/etc/sysinit` runs Commodore's `system.setup` at every boot while
+the script is executable. After the node name and the date it asks "Would you like to assign a
+password to all of the system accounts? [y]". Yes (the default) runs `passwdall`, which sets root's
+password with `passwd` and copies the same hash to `root`, `daemon`, `bin`, `sys`, `adm`, `uucp`,
+`nuucp`, `sync`, `amiga`, `lp`, `listen`, `setup`, `powerdown`, `sysadm`, `checkfsys`, `makefsys`,
+`mountfsys`, `umountfsys`, `games`, `news`, `x` and `nobody`. **`guest` is not on that list**: a
+second question sets its password, defaulting to yes only if the first answer was yes. Declining both
+leaves the accounts as shipped, without passwords. When the summary is accepted the script clears
+its own execute bit and never runs again; interrupting it (`^C` is allowed inside it) leaves it
+executable, so it asks again at the next boot. Afterwards `amixadm` option 6 runs `passwdall` again,
+and `passwdall -d` empties them all. No Commodore text on securing these accounts is on record here
+beyond that question.
+
+**Closing a stock box** 🟡 (ordinary SVR4 practice, not measured here): make sure every account in the
+lists above, `guest` included, has a password or is locked; uncomment `CONSOLE=/dev/console` to keep
+root logins on the console; and comment out the `inetd.conf` services you don't use (the r-services
+first), then send `inetd` a `SIGHUP`.
 
 ## Virtual consoles (Alt+F1 .. Alt+F8)
 
@@ -8776,6 +8818,7 @@ When you're ready to do real work, the next stops are the [commands cheat-sheet]
 - [Glossary](../how-it-works/glossary.md) — SVR4 / Amix jargon
 
 ## Sources
+- The **stock accounts, login defaults and first-boot questions** (read 2026-11-02) ✅ — [amigaux/amix-system](https://github.com/amigaux/amix-system) (`761a82e`): `etc/shadow`, `etc/default/login`, `etc/saf/_sactab`, `etc/inet/inetd.conf`, `etc/inet/rc.inet`, `etc/sysinit`, and `usr/amiga/bin/system.setup`, `passwdall` and `amixadm`; the `system.setup` reading also made in the Installer-NG project. The `CONSOLE` meaning and the closing steps are SVR4 convention 🟡.
 - The **2026-09-29 Y2K correction** ✅ — `date 092912002026` accepted on a stock 2.1c box; the stock `setclk` boot run ending in `date: bad conversion`; the patch disk's 103-member cpio carrying no `setclk` ([quirks §7](../how-it-works/quirks.md#7-y2k-setclk-and-the-kernels-1999-date-cap); first-party record, 2026-09-29).
 - Master research brief, §4 (kernel architecture: virtual consoles Alt+F1..F8, `/usr/sys`, `/stand`, `kernel.c`), §8 (default login password "wasp" 🟡), §11 (default shell ksh, pre-POSIX `/bin/sh`; X11R4 default, `tvtwm` mono, A2410 TIGA `olinit -- -tiga`, OpenLook `olwm`/`olwsm`, keymap y/z + `/`=SHIFT-8), §12 (Y2K — corrected 2026-09-29: a `setclk` bug, not a kernel cap; `/bin/sh` pre-POSIX), §3/§9 (`/stand`, `make bootpart KERNEL=relocunix`, `rdbunix`→`relocunix` rename), §5 (`/dev` major/minor examples)
 - `asokero/va2000-amix` install-script gotcha (Amix `/bin/sh` has no `$(...)`, no `grep -q`) — https://github.com/asokero/va2000-amix (brief §6)
@@ -17920,7 +17963,7 @@ For terminology (major/minor numbers, STREAMS, `cdevsw`, RDB, etc.) see the
 | Command | What it does | Tag |
 |---|---|---|
 | `sysadm` | SVR4 menu-driven admin front-end (standard SVR4 tool) | ✅ |
-| `amixadm` | Amix's post-install / admin tool — sets nodename, domain, timezone, date, root password, X11 | ✅ |
+| `amixadm` | Amix's admin menu — add a user, date and time zone, screen, keymap, nodename and domain, passwords for all system accounts, hosts file, colour X, xdm, Netnews | ✅ |
 | `init <level>` | Switch run level (SVR4 `init` + `/etc/inittab`) | ✅ |
 | `who -r` | Show the current run level | ✅ |
 | `shutdown -i6 -g0 -y` | Reboot now (`-i6` = run level 6); use `-i0` to halt, `-iS` for single-user | ✅ |
@@ -17939,10 +17982,13 @@ shutdown -i6 -g0 -y
 console, a reboot stalls at `INIT: New run level: 6` and never runs `rc6` — stock `init`,
 reproduced on the stock kernel; only a power cycle recovers ✅. See [quirks §58](../how-it-works/quirks.md#58-console-getty-shutdown-stall).
 
-**Finishing an install ✅.** After the distribution is laid down and the kernel is built,
-`amixadm` walks you through the final configuration: node name, NIS/DNS domain, timezone, the
-date (**`amixadm` accepts only a year ≤ 1999 — set the real date afterwards; see [Time and the clock](#time-and-the-clock)**),
-the root password, and X11 setup. This is reconstructed from the `root.adf` install scripts (brief §9).
+**Finishing an install ✅.** After the distribution is laid down and the kernel is built, the first
+boot runs Commodore's `system.setup` (from `/etc/sysinit`, until it clears its own execute bit): node
+name and domain, the date and time (**the date step accepts only a year ≤ 1999 — set the real
+date afterwards; see [Time and the clock](#time-and-the-clock)**), a password for all system
+accounts and for `guest`, a user account, the monitor, X11 and xdm, and Netnews. `amixadm` offers the
+same steps as a menu afterwards. Read from the stock `/etc/sysinit`, `system.setup` and `amixadm`;
+see [accounts and remote logins](../getting-started/first-login-and-tour.md#stock-accounts-and-remote-logins).
 
 > **Note on the default password 🟡.** Community reports a post-install login password of
 > `wasp`. Treat as community lore, not a guarantee.

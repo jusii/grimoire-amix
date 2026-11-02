@@ -658,3 +658,10 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   `savr` checked); so a vfork child's signal call kills the parent with `SIGBUS` at the next delivery
   (`xinit`, real A4000D, 2 of 2) ✅. `vsyslog`'s `LOG_CONS` fallback vforks and resets `SIGALRM` ✅,
   its effect on a program 🟡. Imake's `HasVFork` defaults to YES off `SystemV` ✅.
+- 2026-11-02 — stock accounts and first boot, from amigaux/amix-system (`761a82e`): `etc/shadow`
+  ships root, daemon, bin, sys, adm, uucp, nuucp, sync, amiga, lp, listen, the menu logins and guest
+  with empty passwords; `etc/default/login` PASSREQ=NO, CONSOLE commented ✅. `inetd` from the SAF,
+  with telnet/ftp/rsh/rlogin/rexec enabled ✅. First boot is `system.setup` (run by `etc/sysinit`
+  while executable), not `amixadm`: it asks the system-account password question, and `passwdall`
+  copies root's hash to its list, which omits guest (set by its own question) ✅. Supersedes §9's
+  "finish via amixadm".
