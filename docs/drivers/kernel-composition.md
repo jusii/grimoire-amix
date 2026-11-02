@@ -89,7 +89,10 @@ all the machines that don't have the hardware**. Probes keyed on a Zorro AutoCon
 (`autocon()`) are safe by construction — no board, no match ✅. Probes that touch **fixed addresses**
 (the A3000's `0xDD0000`, the Z3660's `0x10000000`) must be explicitly gated (chipset check,
 multi-register anti-alias readback) or they will false-positive on open bus ✅. The two phantom
-postmortems above are the canonical examples of getting this wrong.
+postmortems above are the canonical examples of getting this wrong. A bus-error guard (`bprobe`) does
+not replace the identity check: an empty Zorro III read faults only on a real 68060, and returns `0xFF`
+on the Z3660's emulated 030 and `0x00` under Amiberry, so reject all-zeros and all-ones too ✅
+([quirk 66](../how-it-works/quirks.md#66-local-io-read-hangs)).
 
 ### Size: irrelevant to RAM, real for floppies — and DMA reach
 

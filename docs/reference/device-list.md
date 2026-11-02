@@ -140,13 +140,31 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev` node | Notes | Tag |
 |---|---|---|
 | `/dev/mem` | Physical-memory device; `lszorro` opens it and `mmap()`s AutoConfig windows ✅ | ✅ |
-| `/dev/scsi` | `gsioctl` raw-SCSI-command passthrough, **char major 11** (`scsi.c:gsioctl`); used by the `gsio` userspace tool to send arbitrary CDBs — *not* the block path (block 18 / char 40) ✅ | ✅ |
+| `/dev/scsi` | `gsioctl` raw-SCSI-command passthrough, **char major 11** (`scsi.c:gsioctl`); used by the `gsio` userspace tool to send arbitrary CDBs — *not* the block path (block 18 / char 40) ✅; interface and limits [below](#dev-scsi) | ✅ |
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (an `ifconfig` name, not a `/dev` node — but the underlying `aen` LANCE driver **does occupy char major 18** in `cdevsw[]`; see the [registry](major-number-registry.md)) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
 | `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-51 driver) ✅ | ✅ |
 
 **Note:** `aen0`, `hya0` and `zen0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (both the hydra and z3660eth drivers were modelled on it) ✅.
+
+### `/dev/scsi`: the stock raw passthrough ✅ {#dev-scsi}
+
+From the stock `scsi.c` (`gsioctl`) and `sd.h` in [amigaux/amix-system](https://github.com/amigaux/amix-system),
+with the struct laid out by gcc-cross-amix, and used by `kbootset inquiry` on every 1.1 controller
+module in emulation and on an A4092 on metal ✅:
+
+- **The call:** `ioctl(fd, 'GSIO', &sdcom)` (`'GSIO'` = `0x4753494F`) with `struct sdcom` from
+  `sd.h`, 40 bytes: `next` +0, `reading` +4, `okay` +5, `status` +6, `cdb[12]` +7, `addr` +20,
+  `nbyte` +24, `card` +28, `unit` +32, `intr` +36 (`bool` is a `char`).
+- **`nbyte`** must be a multiple of 4 and at most the kernel's static buffer (1024 bytes stock); data
+  is copied in or out through that buffer. Opening a card that has no queue function fails `ENXIO`.
+- **No timeout of its own:** the call sleeps at `PRIBIO` until the controller completes the command,
+  and a signal does not interrupt it, so an unanswered command costs whatever the controller module
+  allows.
+- **One user at a time:** the `sdcom` and the buffer are static. The buffer is never cleared, so a
+  short answer leaves the previous command's bytes behind it; for `INQUIRY`, trust only 5 + byte 4
+  (the additional length) bytes.
 
 ## Supported expansion cards
 
@@ -218,6 +236,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 
 ## Sources
 
+- The **`/dev/scsi` interface** (2026-11-02) ✅ — the stock `usr/sys/amiga/alien/scsi.c` and `sd.h` in [amigaux/amix-system](https://github.com/amigaux/amix-system) (read here: the static `sdcom` and 1024-byte buffer, the 4-byte rule, the `PRIBIO` sleep); the struct offsets as compiled by gcc-cross-amix 2.7.2.3 and `kbootset`'s use of it ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/kbootset/`, (`51dd57a`, on `master`)).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) (console char 0, par char 21, fd0 block 16, SCSI disk block 18, minor = addr/LUN/partition; `cdevsw`/`bdevsw` switch tables; `int2_tbl[]` interrupt handlers).
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (supported machines & expansion cards, Zorro II only, SCSI ID 6 / tape ID 4), §6 (va2000 char 68, hydra char 47/`hya`, AutoConfig IDs).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (`/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).

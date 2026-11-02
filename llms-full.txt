@@ -330,8 +330,9 @@ AutoConfig placed, not the whole range.
 **Empty space** ✅: the motherboard turns no unanswered local-I/O read into a bus error, and Gary
 ends an unanswered motherboard read with its timeout and wrong data
 ([Z3660 timings](z3660-timings.md)); under the Z3660 a local-I/O read can hang forever (quirk 66).
-Buster's Zorro III timeout reaches the CPU as an access fault (quirk 66, from the Z3660's CPLD
-sources). The secondary map says nothing about either.
+An empty Zorro III read ends in Buster's bus error after 283–295 ms on a real 68LC060, but returns
+`0xFF` on the Z3660's emulated 68030 and `0x00` under Amiberry, with no fault
+([quirk 66](quirks.md#66-local-io-read-hangs)). The secondary map says nothing about either.
 
 ## Supported expansion cards
 
@@ -359,7 +360,7 @@ command (`READ VERIFY`) ✅. The A1200/A600 Gayle id register at `0xDE1000` does
 machines and is never touched ✅. On real hardware (A4000D, 68LC060 on a Z3660, 1.1 module kernel) the
 driver runs **interrupt-driven**, with an A4092 and the Z3660's disk beside it, in safe mode and as the
 root controller, and passed a 200 MB raw write and read-back with zero interrupt errors ✅ (one machine).
-To check an ATAPI CD behind it, mount it (`mount -F cdfs`); a raw `dd bs=2048` returns every fourth
+**The IDE slave is off by default** ✅: the driver's module parameter `slave` is 0 (never touch the slave; 1 any drive, 2 ATAPI only), with the slave as unit 5 (`slaveunit`) and the master as unit 6. In emulation an IDE-slave CD answered `INQUIRY` as unit 5 only with `slave=2` set in `/etc/conf/modreg.local.d/gayle`; with the default it is invisible to everything. To check an ATAPI CD behind it, mount it (`mount -F cdfs`); a raw `dd bs=2048` returns every fourth
 block ([quirk 63](quirks.md#63-dd-512-unit-overrun)).
 
 **On a multi-controller machine, a disk's `cXd0` name follows its controller** ✅: `cN = card × 8 + unit`, with cards numbered in ascending board-address order ([device list](../reference/device-list.md)). With an A3000's on-board SCSI (card 0) plus an A4091 (card 1), a disk at ID 6 on the A3000 reads as `c6d0`, while the *same* disk moved to ID 6 on the A4091 becomes `c14d0` — so `c6d0` no longer reaches it (`dd` I/O error, `fsck` "Can't open"). A disk behind a second controller is still a valid install target: the amigaux 1.0 CD installer installs onto a disk behind an A4092 and the system roots from it as `c9d0` (card 1, unit 1) 🟡 (measured on one A4000 + Z3660). A CD is addressed differently: `cdfs` reaches it by **`<card>,<unit>`** (HBA-enumeration order — e.g. an A3000-plus-A4091 box mounts the A4091's CD at `1,3`), not through the `cXd0` disk names.
@@ -413,6 +414,8 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 
 ## Sources
 
+- The **Gayle IDE `slave` parameter** (first-party record, 2026-11-02) ✅ — amix-gayle-ide `module/Master` (the `slave` and `slaveunit` parameters) and an emulator `kbootset inquiry` run with and without `slave=2`.
+- The **empty Zorro III read** (first-party record, 2026-11-02) ✅ — see the matching Sources entry on [the quirks page](quirks.md#66-local-io-read-hangs).
 - The **address map** (2026-11-02) 🟡 — the "Amiga Memory Map" page, <https://robthenerd.com/amiga/memorymap>, read 2026-11-02: a secondary per-model table with no sources named. It does not tell the A4000D from the A4000T (it lists a SCSI controller at `0xDD0000` for the A4000; on the A4000D nothing answers there, quirk 66). The ✅ rows come from the first-party records cited on the pages they link.
 - The **no-FPU signal panic** ✅ — see the matching Sources entry on [the quirks page](quirks.md#74-no-fpu-signal-panic) (a real A1200 with an FPU-less 68030 card and an Amiberry reproduction, first-party record, 2026-10-14; the stock `sendsig` → `fpu_setup` call in the public 68040/68060 port's gate census).
 - The **68LC060 and FPU-built AmigaOS software** ✅ — the Z3660 driver set's `z3660-drivers/exfat/makefile` (`-m68881`) and a first-party test on a 68LC060 (2026-10-02) in which mounting the SD with that handler raised a Line-F exception; Amix's own `no fpu detected` / `fpu emulation enabled` boot lines are on [the 040/060 page](68040-68060-status.md).
@@ -3932,6 +3935,22 @@ own** — its termination logic waits for `DSACK`, `AVEC` or `BERR` indefinitely
 card's CPLD sources). The CPLD *does* forward a bus error that something else raises: Buster's Zorro
 III timeout (~280 ms) arrives at the CPU as an ordinary access fault ✅.
 
+**An empty Zorro III address, by CPU path** ✅ — an undecoded address below `VSECT1`
+(`0x20000000`) read through the kernel's `bprobe`, at interrupt levels 0, 4 and 7, on an A4000D with
+a Z3660 and under Amiberry (2026-11-02):
+
+| CPU path | What the read does |
+|---|---|
+| real 68LC060 (the Z3660's real-CPU mode) | bus error after 283–295 ms (Buster's timeout); `bprobe` catches it at every level, level 7 included, and the box carries on |
+| the Z3660's emulated 68030 | returns `0xFF` within 64 µs, no fault |
+| Amiberry (A4000, either CPU) | returns `0x00`, no fault |
+
+So a bus-error guard tells an empty window from a present one only on the real-CPU path. On the
+emulated 030 and under Amiberry the read succeeds, and only the identity check that follows can
+refuse a phantom board: reject all-zeros and all-ones as well. A real 68030 has not been run 🔴. And a
+`bprobe` at or above `VSECT1` says nothing about the bus: there the read faults in the MMU first,
+outside the identity map, so a bus-error test must use an undecoded address below `0x40000000`.
+
 **Rules for driver and probe authors:** never probe `$DD00xx` (or anything else in `$D80000`–
 `$DFFFFF`) speculatively — gate any such access on a positive identification of the machine, the way
 the [VPOSR gate](#61-vposr-low-nibble) does; a fault-catching probe does not help, because there is
@@ -5577,6 +5596,7 @@ platform not declared `SystemV` vfork (`HasVFork YES`), so an SVR4 cf file must 
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
+- The **empty Zorro III read per CPU path** (first-party record, 2026-11-02) ✅ — quirk 66: the amix `kernel/dlm` `bprobe` test modules (root pass at level 7, boot passes at levels 0, 4 and 7, each read timed by CIA-B's TOD clock) on an A4000D with a Z3660 in real-68LC060 and emulated-68030 modes, and under Amiberry; the 2026-10-27 root-context probe above `VSECT1` that faulted in the MMU. [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/tests/bench/bprobe/` (`51dd57a`, on `master`); the coverage note in `kernel/dlm/docs/contracts/C4-2-root-class-driver.md` §2.1 (`9407b0f`, on `master`).
 - The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
 - The **stock `tar` NULL owner lookup** (first-party record, 2026-11-01) ✅/🟡 — quirk 96: the amix `kernel/k30` runs in emulation, which pulled `/usr/sbin/tar` from the 68030 and 68LC060 images (one SHA-256 for all copies) and took a core on the 68030 (the faulting read through a zero address register). The disassembly of the binary shows the `getpwnam`/`getgrnam` results read after their failure messages, checked here against the pulled copy. The archive table (v7, ustar and GNU, named and numeric owners, `xof`, non-root) ran on two 68030 kernel builds; the 68LC060 run was on a 68040/060 kernel from before the TT fix. The first observation (exit 139 on ustar and GNU, v7 fine, the 68040/060 image unaffected) came from the amix `kernel/dlm` staging runs the same day.
 - The **vfork child and the signal table** (first-party record, 2026-11-02) ✅/🟡 — quirk 98: two `xinit` cores from a real A4000D (68LC060) with the x11r63 package built with vfork, and the fork build's clean run on the same box; the disassembly of the stock `libc.so.1` from [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`signal`/`sigset`/`sigaction`, the `savr` and `sigacthandler` trampolines, `_siguhandler`, and `vsyslog`'s vfork), the `savr` call checked here; X11R6.3 `config/cf/Imake.tmpl` and `programs/xinit/xinit.c`; the fix in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/x11r6.3` (`c3abeff`, `443fe46`, on `master`).
@@ -9987,7 +10007,10 @@ all the machines that don't have the hardware**. Probes keyed on a Zorro AutoCon
 (`autocon()`) are safe by construction — no board, no match ✅. Probes that touch **fixed addresses**
 (the A3000's `0xDD0000`, the Z3660's `0x10000000`) must be explicitly gated (chipset check,
 multi-register anti-alias readback) or they will false-positive on open bus ✅. The two phantom
-postmortems above are the canonical examples of getting this wrong.
+postmortems above are the canonical examples of getting this wrong. A bus-error guard (`bprobe`) does
+not replace the identity check: an empty Zorro III read faults only on a real 68060, and returns `0xFF`
+on the Z3660's emulated 030 and `0x00` under Amiberry, so reject all-zeros and all-ones too ✅
+([quirk 66](../how-it-works/quirks.md#66-local-io-read-hangs)).
 
 ### Size: irrelevant to RAM, real for floppies — and DMA reach
 
@@ -11549,7 +11572,7 @@ A driver typically calls `autocon()` from its `init` or `open` routine, then kee
 
 > **Note.** `amiga/ml/ttrap.s` contains `tt0 = 0x003F0143` / `tt1 = 0x807F0143`, but the running kernel does not load them. The identity map comes from the MMU root table, as described above ✅.
 
-A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`. The bottom of Zorro III space, `0x10000000`–`0x3FFFFFFF`, is inside the identity map 🟡 (`VSECT1` is `0x40000000` in both the k30 and the k46 kit); a board placed there, such as the Z3660's fixed window at `0x10000000`, is dereferenced directly ✅ ([the address map](../how-it-works/hardware.md#address-map)).
+A **Zorro II** board (≤ 24-bit, e.g. the A3000 internal SCSI at `0xDD0000`) lives inside the identity-mapped low 1 GB, so a stock WD33C93 driver can dereference the `autocon()` base directly ✅. A **Zorro III** board such as the A4091 (physical base `0x40000000`) lands in the **unmapped region above it** — `autocon()` returns the right address, but the CPU cannot reach it without a page mapping ✅. Extending the identity map upward is unsafe regardless of how it is built: `amiga/ml/syms.s` places the page-mapped u-area at `0x40000000`. The bottom of Zorro III space, `0x10000000`–`0x3FFFFFFF`, is inside the identity map 🟡 (`VSECT1` is `0x40000000` in both the k30 and the k46 kit); a board placed there, such as the Z3660's fixed window at `0x10000000`, is dereferenced directly ✅ ([the address map](../how-it-works/hardware.md#address-map)). A `bprobe` of an address at or above `VSECT1` faults in the MMU before it reaches the bus, so its "1" says nothing about bus errors; test the bus at an undecoded address below it, such as `0x20000000` on an A4000 ✅. A real bus error is caught by `bprobe` on the 68060 kernel on a real 68LC060; on a real 68030 it has not been shown, and the Z3660's emulated 030 and Amiberry return data instead of faulting ([quirk 66](../how-it-works/quirks.md#66-local-io-read-hangs)), so a 68030 driver's fixed-address probe must also check an identity ✅.
 
 The fix is the kernel primitive **`sptalloc(npages, prot, pfn, flag)`**, which page-table-maps physical pages into kernel VA ✅. A Zorro III driver takes the `autocon()` base and `sptalloc`-maps it before any register access:
 
@@ -11731,6 +11754,7 @@ the binary or its root/swap stamped to card 1 instead.
 
 ## Sources
 
+- The **`bprobe` above and below `VSECT1`** (first-party record, 2026-10-27 and 2026-11-02) ✅ — the amix `kernel/dlm` `bprobe` test modules on an A4000D with a Z3660 and in emulation; the coverage note in `kernel/dlm/docs/contracts/C4-2-root-class-driver.md` §2.1 (`9407b0f`, on `master`); see [quirk 66](../how-it-works/quirks.md#66-local-io-read-hangs).
 - The **CPU-path resolution** of the 2026-08 vs 2026-10-02 `$DD0000` observations ✅ — the Z3660 emulator sources (`Z3660_emu/src/cpu_emulator.cpp` `wait_read_ack()`, `uae_emulator.cpp` `make_dummy_address_bank()`, `uae/memory.cpp` Gary non-range bus error under `gary_toenb`) and the FPGA's forwarding of local I/O to the motherboard on the real-060 path (`z3660.v`), read 2026-10-02.
 - The **2026-10-02 local-I/O peek measurements**, first-party, on an A4000D with a Z3660 ✅ — a supervisor-mode, fault-catching peek tool under AmigaOS: the first read of `$DD0000` never returned; reads of Gary's `$DE0000`/`$DE0001` on the A4000D terminated (`FF`→`7F`, `7F`). The CPLD side is read from the Z3660's CPLD sources (`TERM.vhd`/`BUSTERM.vhd`: termination waits on `DSACK`/`AVEC`/`BERR`, `nTEA` only from the bus-error state, no timeout counter anywhere). The meaning of the A4000's `$DE0000`/`$DE0001` bits is unsourced 🔴.
 - The **signed manufacturer compare in stock `autocon()`** ✅ — `amix-a4091` commit `06a7d96` (2026-10-02, `support.c.patch`: the unsigned shift, codegen `swap`/`ext.l` → `clr.w`/`swap`), the matching one-byte `asr.l` → `lsr.l` patch in the 68040/68060 relink tooling the same day, and an A4000D metal run that proved it (an A4092's `0xC0DE0001` handed over in `bootinfo.autocon[]` but unregistered without the fix, registered as card 1 with it).
@@ -14318,6 +14342,16 @@ motherboard memory (so no memory a bus master can reach remains) and maps `$DD00
 SCSI, so neither the onboard 53C710 nor any other bus master can be used on that boot. The same mode makes
 Zorro III DMA impossible for the A4091/A4092 as well.
 
+### The first command's SCSI bus reset ✅ {#first-command-bus-reset}
+
+The driver's first command in a boot runs a SCSI bus reset that waits for 4000 changes of the beam
+counter. On metal (A4000D, A4092) that took about 0.25 s: the first `INQUIRY` to an empty id came
+back in under a second, with one reset and no reset timeout ✅. Under Amiberry at `cpu_speed=max`
+the first `INQUIRY` to the A4091 took 53 s on the 68060 kernel and 72 s on the 68030 kernel, and
+every later command under a second ✅. The likely reason 🟡: the wait counts changes of `VHPOSR`'s
+high byte, which Amiberry at that speed shows only once or twice a frame, so any busy wait on the
+beam counter runs slow there. A fix that counts lines passed is pending.
+
 ## Status
 
 | Claim | Status |
@@ -14353,6 +14387,7 @@ Zorro III DMA impossible for the A4091/A4092 as well.
   stack.
 
 ## Sources
+- The **first-command bus reset** (first-party record, 2026-11-02) ✅/🟡 — `kbootset inquiry` timings under Amiberry on both kernel lines and on an A4000D with an A4092 (the driver's reset counters read with `modadmin -p`); the per-card bus reset in [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/drivers/a4091/CHANGELOG.md` (2026-10-03). The `VHPOSR` explanation is the driver project's 🟡.
 - **Stock sources, public** ✅ — the stock SCSI layer in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`7cba961`): [`usr/sys/amiga/alien/sd.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/sd.c), [`usr/include/sys/sd.h`](https://github.com/amigaux/amix-system/blob/7cba961/usr/include/sys/sd.h), [`usr/sys/amiga/alien/dd.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/alien/dd.c), [`usr/sys/amiga/kernel/support.c`](https://github.com/amigaux/amix-system/blob/7cba961/usr/sys/amiga/kernel/support.c).
 
 - The Z3660 CPLD's `SNOOP` drive — `z3660-firmware/CPLD/DMA _WIP/z3660.vhd` line 459 (`nSNOOP` low when `DMA_BUSY` or on an ARM bus grant; `DMA_BUSY` set whenever the CPLD's DMA state machine is not idle, line 424) and the firmware `CHANGES.md`, v1.03 beta 2 ✅. The 68060 snoop semantics are 🟡: the MC68060 User's Manual is not among this project's sources.
@@ -14477,7 +14512,7 @@ numbers here and below are from the firmware fork's `amix-main` branch (the 1.0 
 ### Frame windows
 
 The frame buffers are real DDR reached through the Zorro III window, at fixed board-relative offsets
-(from the firmware `memorymap.h`) ✅. Note the board base is `0x10000000`, so these windows land
+(from the firmware `memorymap.h`) ✅. `ZZ_ETH_MAC_HI` is a 32-bit register: read it as a long. On real hardware a **word** read of it gave `0x0000` at boot, before the driver had loaded ✅, while a long read gives `0x00000080`, the card's MAC starting `00:80`, which the firmware sets before either CPU runs 🟡 (the register width from the firmware). `0x0000` is also what Amiberry returns for an empty window, so a probe that reads it as a word can't tell the board from open bus. Note the board base is `0x10000000`, so these windows land
 **inside the [identity-mapped low 1 GB](zorro-autoconfig.md#the-identity-map)** (< `0x40000000`) and
 are directly reachable — this is *not* the [A4091's above-the-identity-map](a4091-53c710-driver.md)
 case; the driver first used `sptalloc` simply as a clean way to map the full 128 KB region, which on
@@ -14906,6 +14941,7 @@ Validated on a real **A4000 + Z3660**, all reproduced live ✅:
 
 ## Sources
 
+- The **`ZZ_ETH_MAC_HI` read before load** (first-party record, 2026-11-02) ✅/🟡 — the amix `kernel/dlm` `bprobe` test modules' word read of `0x10000198` on an A4000D with a Z3660 (real 68LC060), root and boot passes; the 32-bit width from the firmware 🟡, the test module now reading a long (`3bdf89d`, on `master`) ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/tests/bench/bprobe/`, (`51dd57a`, on `master`)).
 - **Driver source we wrote** (primary, ✅): the **amix-z3660net** project
   (<https://github.com/jusii/amix-z3660net>, branch `master`) — `src/z3660eth.c` (about 1,650 lines;
   the MAPPING STRATEGY note and `z3660eth_direct_map`), `src/z3660eth.h` (register map, frame-window
@@ -15174,7 +15210,10 @@ Disk geometry comes from `P_DRVTYPE` (`0x0C`) plus the **per-unit** registers `P
 and `MODE_SENSE` are synthesized in software** inside `z3660queue` — the firmware exposes a block
 device, not a SCSI target, so the SCSI command surface the Amix `sd` stack expects is faked above the
 mailbox. Multi-byte SCSI fields are written **byte-wise big-endian**, which is also 68030
-alignment-safe ✅.
+alignment-safe ✅. Because the answer is built in software, the packaged driver (zscsi -5) answers
+`INQUIRY` for every unit 0–7 as a disk (`type 0 Z3660 PiSCSI_Disk`), units the firmware has no
+drive mapped for included; CD units get type 5 from the firmware ✅ (emulation, both kernel lines;
+metal not run 🟡). A fix that answers an unmapped unit as absent is pending.
 
 > **Source.** `src/z3660.c`: `PISCSI_OFFSET` `0x2000`; `P_WRITE`/`P_READ` `0x00`/`0x04`, triggered
 > by `WRLONG( P_WRITE, unit)` / `WRLONG( P_READ, unit)` in `z3660_rw()`; `P_DRVNUMX` `0x90`; the
@@ -15448,6 +15487,7 @@ digest tool built with the box's own `cc` ✅.
 
 ## Sources
 
+- The **`INQUIRY` on unmapped units** (first-party record, 2026-11-02) ✅ (emulation) — `kbootset inquiry` against zscsi -5 under Amiberry on both kernel lines; [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/drivers/z3660scsi/README.md` and `kernel/dlm/kbootset/` (`51dd57a`, on `master`).
 - The **2026-10-02 local-I/O peek measurements**, first-party, on an A4000D with a Z3660 ✅ — a supervisor-mode, fault-catching peek tool under AmigaOS: the first read of `$DD0000` never returned; reads of Gary's `$DE0000`/`$DE0001` on the A4000D terminated (`FF`→`7F`, `7F`) (first-party record, 2026-10-02). The CPLD side is read from the Z3660's CPLD sources (`TERM.vhd`/`BUSTERM.vhd`: termination waits on `DSACK`/`AVEC`/`BERR`, `nTEA` only from the bus-error state, no timeout counter anywhere). The meaning of the A4000's `$DE0000`/`$DE0001` bits is unsourced 🔴.
 - The **CD-unit overrun fix** ✅ — `amix-z3660scsi` CHANGELOG 2026-10-02 (commit `e072408`: refuse a READ/WRITE larger than `nbyte`; host harness 184/0) and its metal check on an A4000T the same day (raw `dd` at three block sizes → `I/O error`, counter +3; first-party record, 2026-10-02).
 - The **2026-09-29 stock-kernel RAM-layout measurement** ✅ — on the emulated bench the same 64 MB A3000 motherboard bank boots a kernel that probes for the A3000 SCSI and stops the pinned stock kernel at `s5mountroot VOP_OPEN error 6` (no card 0), symbolised against the stock `autocon()` load-address guess (first-party record, 2026-09-29; [quirks §57](../how-it-works/quirks.md#57-loader-placement-a3000-scsi)).
@@ -17499,13 +17539,31 @@ These appear in the brief but without an authoritative major/minor pairing, so t
 | `/dev` node | Notes | Tag |
 |---|---|---|
 | `/dev/mem` | Physical-memory device; `lszorro` opens it and `mmap()`s AutoConfig windows ✅ | ✅ |
-| `/dev/scsi` | `gsioctl` raw-SCSI-command passthrough, **char major 11** (`scsi.c:gsioctl`); used by the `gsio` userspace tool to send arbitrary CDBs — *not* the block path (block 18 / char 40) ✅ | ✅ |
+| `/dev/scsi` | `gsioctl` raw-SCSI-command passthrough, **char major 11** (`scsi.c:gsioctl`); used by the `gsio` userspace tool to send arbitrary CDBs — *not* the block path (block 18 / char 40) ✅; interface and limits [below](#dev-scsi) | ✅ |
 | `/dev/rmt/4h`, `/dev/rmt/4hn` | Raw / no-rewind tape at SCSI ID 4 ✅ | ✅ |
 | `aen0` | A2065 Ethernet **network interface** (an `ifconfig` name, not a `/dev` node — but the underlying `aen` LANCE driver **does occupy char major 18** in `cdevsw[]`; see the [registry](major-number-registry.md)) ✅ | ✅ |
 | `hya0` | Hydra network interface name (linked via `slink` from the char-47 driver) ✅ | ✅ |
 | `zen0` | Z3660 onboard-ethernet interface name (linked via `slink` from the char-51 driver) ✅ | ✅ |
 
 **Note:** `aen0`, `hya0` and `zen0` are *interface* names managed via `ifconfig`/STREAMS, distinct from `/dev` device-file majors. The underlying A2065 LANCE driver source lives in `aen/` in the kernel tree (both the hydra and z3660eth drivers were modelled on it) ✅.
+
+### `/dev/scsi`: the stock raw passthrough ✅ {#dev-scsi}
+
+From the stock `scsi.c` (`gsioctl`) and `sd.h` in [amigaux/amix-system](https://github.com/amigaux/amix-system),
+with the struct laid out by gcc-cross-amix, and used by `kbootset inquiry` on every 1.1 controller
+module in emulation and on an A4092 on metal ✅:
+
+- **The call:** `ioctl(fd, 'GSIO', &sdcom)` (`'GSIO'` = `0x4753494F`) with `struct sdcom` from
+  `sd.h`, 40 bytes: `next` +0, `reading` +4, `okay` +5, `status` +6, `cdb[12]` +7, `addr` +20,
+  `nbyte` +24, `card` +28, `unit` +32, `intr` +36 (`bool` is a `char`).
+- **`nbyte`** must be a multiple of 4 and at most the kernel's static buffer (1024 bytes stock); data
+  is copied in or out through that buffer. Opening a card that has no queue function fails `ENXIO`.
+- **No timeout of its own:** the call sleeps at `PRIBIO` until the controller completes the command,
+  and a signal does not interrupt it, so an unanswered command costs whatever the controller module
+  allows.
+- **One user at a time:** the `sdcom` and the buffer are static. The buffer is never cleared, so a
+  short answer leaves the previous command's bytes behind it; for `INQUIRY`, trust only 5 + byte 4
+  (the additional length) bytes.
 
 ## Supported expansion cards
 
@@ -17577,6 +17635,7 @@ On a running system, list the device nodes and read their major/minor with `ls -
 
 ## Sources
 
+- The **`/dev/scsi` interface** (2026-11-02) ✅ — the stock `usr/sys/amiga/alien/scsi.c` and `sd.h` in [amigaux/amix-system](https://github.com/amigaux/amix-system) (read here: the static `sdcom` and 1024-byte buffer, the 4-byte rule, the `PRIBIO` sleep); the struct offsets as compiled by gcc-cross-amix 2.7.2.3 and `kbootset`'s use of it ([`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/kbootset/`, (`51dd57a`, on `master`)).
 - Ditto, *Writing Amix Device Drivers*, 1990 European Amiga Developer's Conference — §5 of [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) (console char 0, par char 21, fd0 block 16, SCSI disk block 18, minor = addr/LUN/partition; `cdevsw`/`bdevsw` switch tables; `int2_tbl[]` interrupt handlers).
 - [`sources/research-brief.md`](https://github.com/Jusii/grimoire-amix/blob/master/sources/research-brief.md) §2 (supported machines & expansion cards, Zorro II only, SCSI ID 6 / tape ID 4), §6 (va2000 char 68, hydra char 47/`hya`, AutoConfig IDs).
 - `amix_21_root.adf` analysis via `tools/inspect-adf.sh` (`/dev/rmt/4h`, `BPART=/dev/dsk/c${SCSI}d0s${BOOTPART}`).

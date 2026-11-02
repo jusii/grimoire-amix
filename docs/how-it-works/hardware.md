@@ -161,8 +161,9 @@ AutoConfig placed, not the whole range.
 **Empty space** ✅: the motherboard turns no unanswered local-I/O read into a bus error, and Gary
 ends an unanswered motherboard read with its timeout and wrong data
 ([Z3660 timings](z3660-timings.md)); under the Z3660 a local-I/O read can hang forever (quirk 66).
-Buster's Zorro III timeout reaches the CPU as an access fault (quirk 66, from the Z3660's CPLD
-sources). The secondary map says nothing about either.
+An empty Zorro III read ends in Buster's bus error after 283–295 ms on a real 68LC060, but returns
+`0xFF` on the Z3660's emulated 68030 and `0x00` under Amiberry, with no fault
+([quirk 66](quirks.md#66-local-io-read-hangs)). The secondary map says nothing about either.
 
 ## Supported expansion cards
 
@@ -190,7 +191,7 @@ command (`READ VERIFY`) ✅. The A1200/A600 Gayle id register at `0xDE1000` does
 machines and is never touched ✅. On real hardware (A4000D, 68LC060 on a Z3660, 1.1 module kernel) the
 driver runs **interrupt-driven**, with an A4092 and the Z3660's disk beside it, in safe mode and as the
 root controller, and passed a 200 MB raw write and read-back with zero interrupt errors ✅ (one machine).
-To check an ATAPI CD behind it, mount it (`mount -F cdfs`); a raw `dd bs=2048` returns every fourth
+**The IDE slave is off by default** ✅: the driver's module parameter `slave` is 0 (never touch the slave; 1 any drive, 2 ATAPI only), with the slave as unit 5 (`slaveunit`) and the master as unit 6. In emulation an IDE-slave CD answered `INQUIRY` as unit 5 only with `slave=2` set in `/etc/conf/modreg.local.d/gayle`; with the default it is invisible to everything. To check an ATAPI CD behind it, mount it (`mount -F cdfs`); a raw `dd bs=2048` returns every fourth
 block ([quirk 63](quirks.md#63-dd-512-unit-overrun)).
 
 **On a multi-controller machine, a disk's `cXd0` name follows its controller** ✅: `cN = card × 8 + unit`, with cards numbered in ascending board-address order ([device list](../reference/device-list.md)). With an A3000's on-board SCSI (card 0) plus an A4091 (card 1), a disk at ID 6 on the A3000 reads as `c6d0`, while the *same* disk moved to ID 6 on the A4091 becomes `c14d0` — so `c6d0` no longer reaches it (`dd` I/O error, `fsck` "Can't open"). A disk behind a second controller is still a valid install target: the amigaux 1.0 CD installer installs onto a disk behind an A4092 and the system roots from it as `c9d0` (card 1, unit 1) 🟡 (measured on one A4000 + Z3660). A CD is addressed differently: `cdfs` reaches it by **`<card>,<unit>`** (HBA-enumeration order — e.g. an A3000-plus-A4091 box mounts the A4091's CD at `1,3`), not through the `cXd0` disk names.
@@ -244,6 +245,8 @@ The full, annotated config table lives in [the WinUAE emulation guide](../gettin
 
 ## Sources
 
+- The **Gayle IDE `slave` parameter** (first-party record, 2026-11-02) ✅ — amix-gayle-ide `module/Master` (the `slave` and `slaveunit` parameters) and an emulator `kbootset inquiry` run with and without `slave=2`.
+- The **empty Zorro III read** (first-party record, 2026-11-02) ✅ — see the matching Sources entry on [the quirks page](quirks.md#66-local-io-read-hangs).
 - The **address map** (2026-11-02) 🟡 — the "Amiga Memory Map" page, <https://robthenerd.com/amiga/memorymap>, read 2026-11-02: a secondary per-model table with no sources named. It does not tell the A4000D from the A4000T (it lists a SCSI controller at `0xDD0000` for the A4000; on the A4000D nothing answers there, quirk 66). The ✅ rows come from the first-party records cited on the pages they link.
 - The **no-FPU signal panic** ✅ — see the matching Sources entry on [the quirks page](quirks.md#74-no-fpu-signal-panic) (a real A1200 with an FPU-less 68030 card and an Amiberry reproduction, first-party record, 2026-10-14; the stock `sendsig` → `fpu_setup` call in the public 68040/68060 port's gate census).
 - The **68LC060 and FPU-built AmigaOS software** ✅ — the Z3660 driver set's `z3660-drivers/exfat/makefile` (`-m68881`) and a first-party test on a 68LC060 (2026-10-02) in which mounting the SD with that handler raised a Line-F exception; Amix's own `no fpu detected` / `fpu emulation enabled` boot lines are on [the 040/060 page](68040-68060-status.md).

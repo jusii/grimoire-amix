@@ -665,3 +665,11 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   while executable), not `amixadm`: it asks the system-account password question, and `passwdall`
   copies root's hash to its list, which omits guest (set by its own question) ✅. Supersedes §9's
   "finish via amixadm".
+- 2026-11-02 — empty Zorro III read, amix `kernel/dlm` `bprobe` (`51dd57a`), A4000D + Z3660 and
+  Amiberry: real 68LC060 — bus error after 283–295 ms, caught by `bprobe` at levels 0/4/7 ✅; the
+  Z3660's emulated 030 — `0xFF`, no fault ✅; Amiberry — `0x00`, no fault ✅; real 68030 not run 🔴.
+  A `bprobe` at/above `VSECT1` faults in the MMU ✅. `ZZ_ETH_MAC_HI` read as a word gives 0 ✅; it is 32-bit, a long read `0x00000080` 🟡. Stock
+  `/dev/scsi` (`scsi.c`): 40-byte `sdcom`, `nbyte` %4 ≤ 1024, uninterruptible `PRIBIO` sleep with no
+  timeout, static and uncleared buffer ✅. Gayle `slave` defaults to 0 ✅. zscsi -5 answers INQUIRY
+  for units 0–7 as disks ✅ (emulation). A4091 first-command bus reset: ~0.25 s metal, 53–72 s
+  Amiberry ✅, the `VHPOSR` mechanism 🟡.

@@ -208,6 +208,22 @@ own** — its termination logic waits for `DSACK`, `AVEC` or `BERR` indefinitely
 card's CPLD sources). The CPLD *does* forward a bus error that something else raises: Buster's Zorro
 III timeout (~280 ms) arrives at the CPU as an ordinary access fault ✅.
 
+**An empty Zorro III address, by CPU path** ✅ — an undecoded address below `VSECT1`
+(`0x20000000`) read through the kernel's `bprobe`, at interrupt levels 0, 4 and 7, on an A4000D with
+a Z3660 and under Amiberry (2026-11-02):
+
+| CPU path | What the read does |
+|---|---|
+| real 68LC060 (the Z3660's real-CPU mode) | bus error after 283–295 ms (Buster's timeout); `bprobe` catches it at every level, level 7 included, and the box carries on |
+| the Z3660's emulated 68030 | returns `0xFF` within 64 µs, no fault |
+| Amiberry (A4000, either CPU) | returns `0x00`, no fault |
+
+So a bus-error guard tells an empty window from a present one only on the real-CPU path. On the
+emulated 030 and under Amiberry the read succeeds, and only the identity check that follows can
+refuse a phantom board: reject all-zeros and all-ones as well. A real 68030 has not been run 🔴. And a
+`bprobe` at or above `VSECT1` says nothing about the bus: there the read faults in the MMU first,
+outside the identity map, so a bus-error test must use an undecoded address below `0x40000000`.
+
 **Rules for driver and probe authors:** never probe `$DD00xx` (or anything else in `$D80000`–
 `$DFFFFF`) speculatively — gate any such access on a positive identification of the machine, the way
 the [VPOSR gate](#61-vposr-low-nibble) does; a fault-catching probe does not help, because there is
@@ -1853,6 +1869,7 @@ platform not declared `SystemV` vfork (`HasVFork YES`), so an SVR4 cf file must 
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
+- The **empty Zorro III read per CPU path** (first-party record, 2026-11-02) ✅ — quirk 66: the amix `kernel/dlm` `bprobe` test modules (root pass at level 7, boot passes at levels 0, 4 and 7, each read timed by CIA-B's TOD clock) on an A4000D with a Z3660 in real-68LC060 and emulated-68030 modes, and under Amiberry; the 2026-10-27 root-context probe above `VSECT1` that faulted in the MMU. [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/tests/bench/bprobe/` (`51dd57a`, on `master`); the coverage note in `kernel/dlm/docs/contracts/C4-2-root-class-driver.md` §2.1 (`9407b0f`, on `master`).
 - The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
 - The **stock `tar` NULL owner lookup** (first-party record, 2026-11-01) ✅/🟡 — quirk 96: the amix `kernel/k30` runs in emulation, which pulled `/usr/sbin/tar` from the 68030 and 68LC060 images (one SHA-256 for all copies) and took a core on the 68030 (the faulting read through a zero address register). The disassembly of the binary shows the `getpwnam`/`getgrnam` results read after their failure messages, checked here against the pulled copy. The archive table (v7, ustar and GNU, named and numeric owners, `xof`, non-root) ran on two 68030 kernel builds; the 68LC060 run was on a 68040/060 kernel from before the TT fix. The first observation (exit 139 on ustar and GNU, v7 fine, the 68040/060 image unaffected) came from the amix `kernel/dlm` staging runs the same day.
 - The **vfork child and the signal table** (first-party record, 2026-11-02) ✅/🟡 — quirk 98: two `xinit` cores from a real A4000D (68LC060) with the x11r63 package built with vfork, and the fork build's clean run on the same box; the disassembly of the stock `libc.so.1` from [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (`signal`/`sigset`/`sigaction`, the `savr` and `sigacthandler` trampolines, `_siguhandler`, and `vsyslog`'s vfork), the `savr` call checked here; X11R6.3 `config/cf/Imake.tmpl` and `programs/xinit/xinit.c`; the fix in [`amigaux/amix`](https://github.com/amigaux/amix) `userland/packages/x11r6.3` (`c3abeff`, `443fe46`, on `master`).
