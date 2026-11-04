@@ -679,3 +679,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   firmware's emulated CPU ✅; `FW_VERSION` = major<<8 | minor (`0x103`) ✅; the MAC is set from the
   config before either CPU runs ✅; `144B:01` exists only with `ext_kickstart 2` ✅. z3660scsi module
   1.0.0-4 answers unmapped units with qualifier 3, type `0x1F` ✅.
+- 2026-11-04 — amix `userland/base` (`075b143`): the stock `sh`'s EXIT trap replaces exit's status
+  (`true` → 0, `false` → 255) and `$?` reads 0 inside it, on 68030 and 68060 kernels ✅. Stock
+  `setclk -s` formats the year `%02d` into an 11-byte buffer (2026 → `…126`, one byte over) and reads
+  it back as 2012 🟡 (source read, not run); the 1.1 installer's corrected setclk does not ✅.
