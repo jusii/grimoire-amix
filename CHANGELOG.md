@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-04 — quirks 12 and 7: the sh EXIT trap; the stock setclk's year (077b1e8)
+
+Quirk 12: the stock sh's EXIT trap replaces exit's status, and $? reads 0 inside it (measured on both kernel lines); use a cleanup function and trap only the signals. Quirk 7: the stock setclk -s overruns an 11-byte buffer and sets the battery clock to 2012 for 2026 (read from the source); the 1.1 installer's setclk is corrected.
+
 ## 2026-11-02 — Z3660 registers read as longs; FW_VERSION; zscsi INQUIRY fixed (3dd02b7)
 
 Z3660: read the register block as longs (the firmware masks reads with 0x1FFFFC, and a word at +0 differs between the real and the emulated CPU); FW_VERSION (0x103) is a nonzero identity; the 144B:01 entry needs ext_kickstart 2. Z3660 SCSI: module 1.0.0-4 answers unmapped units as no device.
