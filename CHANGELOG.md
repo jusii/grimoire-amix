@@ -2,6 +2,12 @@
 
 Started 2026-09-26.
 
+## 2026-11-05 — amixsh.py refuses long lines and can't be fooled by marker text; quirks 12, 39, 99 (62e451e, a1a88da, e789077)
+
+amixsh.py: a line over 237 bytes is refused before login (exit 2); the end marker is now DONE_<status>_<nonce> on its own line, so text in a command or its output can't give a false 0 and a trailing & runs; a missing marker stops the batch with exit 124 and a message; AMIX_TIMEOUT sets the wait per command. New test-amixsh.py runs against a fake shell; checked on a 68030 guest.
+
+Quirk 99: a telnet command line over the 256-byte canonical limit runs nothing and wedges the login (237 bytes answered, 269 did not), with the rule to measure and split on the host. Quirk 12 gains `false` exiting 255; quirk 39 gains that a background job without nohup does not finish after logout.
+
 ## 2026-11-05 — amix-installng is no longer public (a2cfef0)
 
 Links to it are removed, and its documents are cited in plain text as not public. The media builder is to move into amigaux/amix under media/ before 1.1; its test bench stays private.
