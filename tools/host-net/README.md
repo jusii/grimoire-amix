@@ -64,13 +64,22 @@ then `AMIX_HOST=192.0.2.50 python3 amixsh.py 'uname -a'`.
   this. `amixsh.py` refuses a line over 237 bytes before it logs in. Split a long line into several
   arguments: they run in the same login.
 - **`124` means the marker did not arrive, not that the command stopped.** It may still be running
-  on the box, or the connection may have dropped. For a long job, raise `AMIX_TIMEOUT` or start it
-  in the background and poll its log.
+  on the box, or the connection may have dropped. For a long job, raise `AMIX_TIMEOUT`, or start it
+  in the background with `nohup` and poll its log: a background job without `nohup` did not finish
+  once the login ended ✅ ([quirk 39](../../docs/how-it-works/quirks.md#39-transport-ampersand-law)).
 - **Commands that read standard input.** The marker line follows the command straight away, so a
-  foreground command that reads input takes the marker as its input, and the result is a `124`.
+  foreground command that reads input takes the marker as its input, and the result is a `124`. On
+  a 68030 guest, `cat` echoed the marker line, and `read x; echo got=$x` printed
+  `got=echo D''ONE_$?_<nonce>` ✅. An interactive prompt would take that line as its answer, so don't
+  run one through `amixsh.py`.
 - **Filtering the output.** The marker prints as `DONE_<status>_<nonce>`, with a new nonce each run,
   so text in a command or its output cannot pass for it. Each command's output in `amixsh.py`'s
-  stdout still holds the echoed `echo D''ONE_$?_<nonce>` line, the shell's prompt and the marker.
+  stdout still holds the echoed `echo D''ONE_$?_<nonce>` line, usually ahead of the command's own
+  output because it is sent straight after the command. The marker follows the shell's prompt, as
+  `# DONE_0_<nonce>`, so don't anchor on a line starting with `DONE_`. The command's own output
+  still starts at column 0 ✅.
+- **`false` exits 255 on Amix**, so `amixsh.py false` exits 255, not 1
+  ([quirk 12](../../docs/how-it-works/quirks.md#12-binsh-is-pre-posix)).
 
 ## Quick start
 

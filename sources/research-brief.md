@@ -691,3 +691,6 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   box a 229-byte line answered; a 269-byte line ran nothing and wedged the login until reconnect ✅
   (first-party, 2026-08-27); an earlier 260-byte line also ran nothing ✅. Exact threshold, cause and
   the 237-byte command budget 🟡 (inferred); console, serial and other kernels 🔴 (not run).
+- 2026-11-05 — on a 68030 guest: `false` exits 255 ✅; a 237-byte line answers ✅, which moves the lower
+  bound of the line limit from 229 to 237; a background job without `nohup` did not finish once its
+  telnet login ended, and with `nohup` it did ✅, a hang-up being the likely cause 🟡.

@@ -91,7 +91,7 @@ class FakeAmix:
     @staticmethod
     def _run_one(conn, cmd, status):
         if cmd == 'false':
-            return 1
+            return 255                         # as on Amix
         if cmd == 'hang':
             return None
         for word, then in (('say ', 0), ('sayhang ', None)):
@@ -130,11 +130,11 @@ class AmixshTest(unittest.TestCase):
     def test_true_is_0(self):
         self.assertEqual(self.run_amixsh('true'), 0)
 
-    def test_false_is_1(self):
-        self.assertEqual(self.run_amixsh('false'), 1)
+    def test_false_is_255(self):
+        self.assertEqual(self.run_amixsh('false'), 255)
 
     def test_first_failure_sticks(self):
-        self.assertEqual(self.run_amixsh('false', 'true'), 1)
+        self.assertEqual(self.run_amixsh('false', 'true'), 255)
         self.assertEqual(self.sent(), ['false', 'true'])
 
     # a command over the line limit
@@ -170,7 +170,7 @@ class AmixshTest(unittest.TestCase):
         self.assertIn('2 later command(s) not sent', self.stderr)
 
     def test_failure_before_a_hang_keeps_its_status(self):
-        self.assertEqual(self.run_amixsh('false', 'hang'), 1)
+        self.assertEqual(self.run_amixsh('false', 'hang'), 255)
 
     def test_output_before_a_hang_is_kept(self):
         self.run_amixsh('sayhang partial')
@@ -184,10 +184,10 @@ class AmixshTest(unittest.TestCase):
         self.assertEqual(self.run_amixsh('sayhang DONE_0'), 124)
 
     def test_marker_in_command_text_then_fail(self):
-        self.assertEqual(self.run_amixsh('say DONE_0; false'), 1)
+        self.assertEqual(self.run_amixsh('say DONE_0; false'), 255)
 
     def test_marker_in_output_does_not_mask_the_next_command(self):
-        self.assertEqual(self.run_amixsh('say DONE_0', 'false'), 1)
+        self.assertEqual(self.run_amixsh('say DONE_0', 'false'), 255)
 
     # a command's own ending does not disturb the marker
     def test_trailing_ampersand_runs(self):

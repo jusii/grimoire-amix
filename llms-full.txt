@@ -4940,7 +4940,12 @@ back either.
 
 **The fix is to parenthesise the background launch** so the line ends in `)`, which composes fine
 with an appended `; …`: `(nohup sh job.sh > /job.out 2>&1 &); echo DONE_$?` ✅. A `&` that is not
-last on the line, such as `cmd & echo launched-$!`, is not affected.
+last on the line, such as `cmd & echo launched-$!`, is not affected. `tools/host-net/amixsh.py` in
+this repository sends its marker on a line of its own, so a trailing `&` is safe there ✅.
+
+**Keep the `nohup`.** A background job without it ran while its telnet login stayed open, but did not
+finish once the login ended; with `nohup` it finished ✅ (measured on a 68030 guest). A hang-up at
+logout is the likely cause 🟡, not traced.
 
 ### 99. A telnet line over the 256-byte canonical limit runs nothing and wedges the login ✅/🟡 {#99-canonical-line-wedge}
 
@@ -4948,7 +4953,7 @@ The stock headers set `MAX_CANON`, the most bytes in a line for canonical proces
 telnet on a 68030 box, **a 229-byte line answered normally, while a 269-byte line answered nothing,
 and neither did any later command in that login until the client reconnected** ✅ (measured). An
 earlier bench run's 260-byte line (244 bytes of command plus a 16-byte marker) also ran nothing and
-answered nothing ✅.
+answered nothing ✅. A 237-byte line answered in a later run on a 68030 guest ✅.
 
 There is little to notice. The measured failure had no truncated echo and no error, only silence ✅.
 An earlier run did get `^G` bells back, so bells are one form of the failure, and their absence
@@ -4956,7 +4961,7 @@ proves nothing ✅.
 
 Three things were not measured:
 
-- **The exact threshold.** The measurements place it between 229 and 260 bytes, and 256 comes from
+- **The exact threshold.** The measurements place it between 237 and 260 bytes, and 256 comes from
   the header 🟡.
 - **The cause.** The likely explanation is that the tty discards the overrun and the newline, so the
   line never ends and later input has no room 🟡. It has not been traced in the kernel.
@@ -5087,12 +5092,13 @@ Amix's **`/bin/sh` predates POSIX** ✅. The two bites that catch driver authors
 
 This was discovered the hard way porting the [VA2000 driver](../drivers/case-studies/va2000.md): install scripts written with modern shell syntax silently misbehave ✅. The default *interactive* shell is **ksh** (with `sh`/`csh`/`tcsh` also present), but build and install scripts that run under `/sbin/sh` or `/bin/sh` must stay pre-POSIX ✅. See [the driver model](../drivers/driver-model.md) and [writing a char driver](../drivers/writing-a-char-driver.md) for the driver-build implications, including the companion rule to `rm -f` stale objects before relinking the kernel.
 
-Seven more that specifically bite installer/automation scripts ✅ (bench-proven on Amix 2.1c; the `${1:?word}` and `EXIT`-trap ones on the amigaux 1.1 images):
+Eight more that specifically bite installer/automation scripts ✅ (bench-proven on Amix 2.1c; the `${1:?word}` and `EXIT`-trap ones on the amigaux 1.1 images; the `false` one on a 68030 guest):
 
 - **`while read … done < FILE` runs in a SUBSHELL** — a counter incremented inside the loop reverts to its pre-loop value at `done`. Write per-iteration state to a temp file and read it back *after* the loop.
 - **An empty `set -- \`cmd\`` is a no-op on `$@`** — if the command prints nothing, `$#` keeps its *previous* value instead of going to 0. Guard with `[ -s file ]` before counting.
 - **`${1:?word}` ends at the first blank in the word** — `D=${1:?usage: box.sh dir [grep]}` is taken as the assignment `D=${1:?usage:` followed by the command `box.sh`, so the script fails with `box.sh: not found` and `D` stays empty (the 1992 `/sbin/sh`). Keep the word free of blanks, or write `[ -n "$1" ] || { echo usage >&2; exit 2; }; D=$1`.
 - **An `EXIT` trap replaces the status `exit` was given, and `$?` reads 0 inside it** — with `trap "true" 0`, `exit 3` ends with status 0; with `trap "false" 0`, with 255; `trap "echo in=\$?" 0` prints `in=0`, so saving `$?` inside the trap does not help (68030 and 68060 kernels alike). A script that cleans up in an `EXIT` trap reports success for every failing `exit`; dash and bash keep the status, so host tests miss it. Use no `EXIT` trap: clean up in a function that ends with `exit $1`, call it in place of each `exit`, and trap only the signals, e.g. `finish() { rm -rf "${LOCK:?}"; exit $1; }; trap 'finish 1' 1 2 15` … `finish 0`.
+- **`false` exits 255, not 1** — `false; echo $?` prints `255`. A script or test that compares against 1 gets it wrong; test for non-zero instead.
 - **`mkdir -p` is not idempotent** — it exits rc=2 "File exists" on an already-present leaf directory, not 0. Guard with `[ -d dir ] || mkdir -p dir`.
 - **`wc -c` LEFT-PADS its count** with spaces, so a raw `wc -c` in a numeric test fails; strip the padding (e.g. via `read`) first.
 - **The console tty truncates canonical input at ~256 characters** — long one-liners are silently cut. Push a script file and run it rather than typing a long command.
@@ -5626,6 +5632,7 @@ platform not declared `SystemV` vfork (`HasVFork YES`), so an SVR4 cf file must 
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
+- The **`amixsh.py` run on a 68030 guest** (first-party record, 2026-11-05) ✅/🟡 — quirk 12's `false` item, quirk 39's `nohup` paragraph and quirk 99's 237-byte line: the amix `kernel/k30` tooling's run of `tools/host-net/amixsh.py` against a 68030 kernel build, with the marker on its own line. The hang-up at logout is inferred from the behaviour. No `false` or `true` file is in [`amigaux/amix-system`](https://github.com/amigaux/amix-system), and where the 255 comes from was not traced.
 - The **canonical line wedge** (first-party record, 2026-08-27) ✅/🟡 — quirk 99: the amix `kernel/k30` bench tooling's line-length probe on a 68030 box (229 bytes answered, 269 stalled and wedged the login), its earlier failure on a 260-byte line and the `^G` bells seen on 2026-08-01. `MAX_CANON` is in `usr/include/limits.h` and `usr/include/sys/param.h` in [`amigaux/amix-system`](https://github.com/amigaux/amix-system), read here. The threshold, the cause and the 237-byte budget are inferred from these, not measured.
 - The **empty Zorro III read per CPU path** (first-party record, 2026-11-02) ✅ — quirk 66: the amix `kernel/dlm` `bprobe` test modules (root pass at level 7, boot passes at levels 0, 4 and 7, each read timed by CIA-B's TOD clock) on an A4000D with a Z3660 in real-68LC060 and emulated-68030 modes, and under Amiberry; the 2026-10-27 root-context probe above `VSECT1` that faulted in the MMU. [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/tests/bench/bprobe/` (`51dd57a`, on `master`); the coverage note in `kernel/dlm/docs/contracts/C4-2-root-class-driver.md` §2.1 (`9407b0f`, on `master`).
 - The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
