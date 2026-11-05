@@ -113,4 +113,4 @@ The tape image at SCSI ID 4 is the standard route, but a tape-free install is do
 - [amigaunix.com](https://www.amigaunix.com/doku.php/home) (install media, image checksums, requirements).
 - [Internet Archive: Commodore Amiga operating systems — Amix](https://archive.org/details/commodore-amiga-operating-systems-amix).
 - WinUAE MMU emulation since 2.6.0 (2013) — brief §8.
-- Amiberry as a full install-and-run target and the 1.0 classic kit's emulator — [Amix on Amiberry](emulation-amiberry.md); [`jusii/amix-installng`](https://github.com/jusii/amix-installng) `docs/public-classic-README.txt` ("Tested in emulation only (Amiberry …)", "Amiberry 8.3.0 or newer") and `docs/releases/1.0.md` ("Emulator acceptance (Amiberry)").
+- Amiberry as a full install-and-run target and the 1.0 classic kit's emulator — [Amix on Amiberry](emulation-amiberry.md); Installer-NG (not public) `docs/public-classic-README.txt` ("Tested in emulation only (Amiberry …)", "Amiberry 8.3.0 or newer") and `docs/releases/1.0.md` ("Emulator acceptance (Amiberry)").

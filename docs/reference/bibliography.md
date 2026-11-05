@@ -112,9 +112,11 @@ around one monorepo ✅. What is public, and where:
 | [`hmlio/amix-gayle-ide`](https://github.com/hmlio/amix-gayle-ide), [`isoriano1968/zz9000-amix`](https://github.com/isoriano1968/zz9000-amix), [`isoriano1968/paula-amix`](https://github.com/isoriano1968/paula-amix), [`reinauer/ODFileSystem`](https://github.com/reinauer/ODFileSystem) | Collaborators' projects (Gayle IDE; ZZ9000/Z3660 RTG; Paula audio; the CD filesystem `cdfs` is ported from) — they stay their authors' repositories, and the project works on forks that `amigaux/amix` is to pin by commit | ✅ |
 
 The project's own driver and package repositories (`amix-a4091`, `amix-z3660scsi`, `amix-z3660net`,
-`amix-packagemanager`, `amix-packages`, `amix-installng`, under `jusii/` on GitHub) are to move into
+`amix-packagemanager`, `amix-packages`, under `jusii/` on GitHub) are to move into
 `amigaux/amix` one at a time with their history; until each does, the `jusii/` repository is the
-public one, and its public copy can lag the work described on this site 🔴 (planned). The package
+public one, and its public copy can lag the work described on this site 🔴 (planned). The install-media
+builder, Installer-NG (`amix-installng`), has not been public since 2026-11-05; it is to move into
+`amigaux/amix` under `media/` before 1.1, and its test bench stays private 🔴 (planned). The package
 repository is [pkg.amigaux.org](../how-it-works/package-repository.md), and the release site is
 [amigaux.org](https://amigaux.org) ✅.
 

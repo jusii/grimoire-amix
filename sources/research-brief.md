@@ -683,3 +683,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   (`true` → 0, `false` → 255) and `$?` reads 0 inside it, on 68030 and 68060 kernels ✅. Stock
   `setclk -s` formats the year `%02d` into an 11-byte buffer (2026 → `…126`, one byte over) and reads
   it back as 2012 🟡 (source read, not run); the 1.1 installer's corrected setclk does not ✅.
+- 2026-11-05 — repository status: `jusii/amix-installng` (Installer-NG) is no longer public ✅, checked
+  on GitHub; its documents remain first-party records, cited in plain text as not public. The media
+  builder is to move into `amigaux/amix` under `media/` before 1.1, and its test bench stays private
+  🔴 (planned).

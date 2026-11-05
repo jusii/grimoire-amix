@@ -17,10 +17,12 @@ All three are tractable — the bootable-floppy format has been reverse-engineer
 | **(c) Self-extracting add-on disk** | *distributing* a driver to other users to install | ✅ host-verified · 🟡 not yet run on real Amix |
 
 The [amigaux 1.0](https://amigaux.org/install/) install media are built by
-[Installer-NG](https://github.com/jusii/amix-installng): a classic boot floppy framing a driver
+the project's media builder, Installer-NG: a classic boot floppy framing a driver
 kernel (surface b, tested in emulation only) for the 68030 machines, while a Z3660 (68060) installs
-from its own self-booting `.hdf` media, not a floppy ✅. This page covers hand-building custom-kernel
-media on stock 2.1.
+from its own self-booting `.hdf` media, not a floppy ✅. Installer-NG's repository is not public at
+present; the builder is to move into [`amigaux/amix`](https://github.com/amigaux/amix) under `media/`
+before 1.1, and its test bench stays private 🔴 (planned). This page covers hand-building
+custom-kernel media on stock 2.1.
 
 A driver in stock Amix is **statically linked into a monolithic kernel — there are no loadable modules** ✅
 ([one third-party exception](../how-it-works/kernel-architecture.md#loadable-modules)), so
@@ -294,7 +296,7 @@ If you boot-test a rebuilt floppy, or pin the checksum, please contribute the re
   [`github.com/isoriano1968/hydra-amix`](https://github.com/isoriano1968/hydra-amix).
 - Install media (user-supplied): [amigaunix.com](https://www.amigaunix.com/doku.php/downloads) ·
   [archive.org](https://archive.org/details/commodore-amiga-operating-systems-amix).
-- amigaux 1.0 install media — the [amix-installng README](https://github.com/jusii/amix-installng)
+- amigaux 1.0 install media — the Installer-NG README (not public)
   (the classic boot floppy frames the K030-U-FD install kernel; a Z3660 installs from its own
   self-booting `.hdf` media) and the [amigaux.org Downloads](https://amigaux.org/downloads/) page
   (classic kit tested in emulation only).
