@@ -2,6 +2,10 @@
 
 Started 2026-09-26.
 
+## 2026-11-05 — amix-installng is no longer public (a2cfef0)
+
+Links to it are removed, and its documents are cited in plain text as not public. The media builder is to move into amigaux/amix under media/ before 1.1; its test bench stays private.
+
 ## 2026-11-04 — quirks 12 and 7: the sh EXIT trap; the stock setclk's year (077b1e8)
 
 Quirk 12: the stock sh's EXIT trap replaces exit's status, and $? reads 0 inside it (measured on both kernel lines); use a cleanup function and trap only the signals. Quirk 7: the stock setclk -s overruns an 11-byte buffer and sets the battery clock to 2012 for 2026 (read from the source); the 1.1 installer's setclk is corrected.
