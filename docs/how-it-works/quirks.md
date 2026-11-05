@@ -111,6 +111,7 @@ Each item is one line: what it is, the ✅/🟡 confidence tag carried from the 
 | 96 | **The stock `tar` (`/usr/sbin/tar`) crashes when root extracts a ustar or GNU archive whose owner or group name the box lacks** (an empty name counts, as GNU `--numeric-owner` writes): it prints `problem reading passwd entry` / `owner not changed`, then dereferences the NULL lookup and dies with `SIGSEGV` after the first file. Plain `tar` is this binary even with GNU tar installed. Same on a 68060 kernel with the TT fix. It also reads no GNU long names or pax headers. Install `heirtar`, or use `tar xof`, a non-root user, `/opt/amix/bin/tar`, or v7 archives | ✅/🟡 | [Quirks §96](#96-tar-formats-68030-test-image) |
 | 97 | **A NULL read returns 0 in 193 stock binaries and faults in gcc14-built ones**: SVR4 `ld` gave those stock executables a read-only zero page at vaddr 0, while gcc14 binaries have none. Code that passes as one kind of binary can crash as the other. Before an unreleased fix, the 040/060 kernels returned chip-RAM bytes instead | ✅ | [Quirks §97](#97-zero-page-depends-on-linker), [040/060 status](68040-68060-status.md#k46-user-address-space) |
 | 98 | **A `vfork` child that calls `signal`, `sigset` or `sigaction` breaks the parent**: libc keeps the handlers in a table in its own data, which a vfork child shares, so the parent's next delivery of that signal jumps to 0 or 1 and dies with `SIGBUS`. `xinit` built with vfork never starts X. Use `fork`; in a vfork child call only `exec*` and `_exit` | ✅ | [Quirks §98](#98-vfork-child-signal-table) |
+| 99 | **A telnet command line over the 256-byte canonical limit runs nothing and wedges the login**: a 229-byte line answered and a 269-byte line did not, and nothing later in that login answered until a reconnect. Usually there is no echo or error, only silence. Check the length on the host and split long lines | ✅/🟡 | [Quirks §99](#99-canonical-line-wedge) |
 
 The rest of this page expands each item.
 
@@ -1214,6 +1215,32 @@ back either.
 with an appended `; …`: `(nohup sh job.sh > /job.out 2>&1 &); echo DONE_$?` ✅. A `&` that is not
 last on the line, such as `cmd & echo launched-$!`, is not affected.
 
+### 99. A telnet line over the 256-byte canonical limit runs nothing and wedges the login ✅/🟡 {#99-canonical-line-wedge}
+
+The stock headers set `MAX_CANON`, the most bytes in a line for canonical processing, to 256 ✅. Over
+telnet on a 68030 box, **a 229-byte line answered normally, while a 269-byte line answered nothing,
+and neither did any later command in that login until the client reconnected** ✅ (measured). An
+earlier bench run's 260-byte line (244 bytes of command plus a 16-byte marker) also ran nothing and
+answered nothing ✅.
+
+There is little to notice. The measured failure had no truncated echo and no error, only silence ✅.
+An earlier run did get `^G` bells back, so bells are one form of the failure, and their absence
+proves nothing ✅.
+
+Three things were not measured:
+
+- **The exact threshold.** The measurements place it between 229 and 260 bytes, and 256 comes from
+  the header 🟡.
+- **The cause.** The likely explanation is that the tty discards the overrun and the newline, so the
+  line never ends and later input has no room 🟡. It has not been traced in the kernel.
+- **Other paths.** A console or serial line and other kernels have not been run 🔴.
+
+**Rule:** measure a command on the host before sending it, and count whatever the tool adds to the
+line. A tool that appends `; echo DONE_$?` (16 bytes) and a CRLF has 237 bytes left for the command,
+keeping one byte in hand (256 − 16 − 2 − 1) 🟡. Split a longer line into several commands, which can
+share one login. After a wedge, reconnect. `tools/host-net/amixsh.py` in this repository refuses a
+line over 237 bytes before it logs in.
+
 ### 73. Amiberry before upstream `845af02`: `MOVES` across a page boundary corrupts Amix data 🟡 {#73-amiberry-moves-page-boundary}
 
 Reported by the [amix-x11-aga](https://github.com/hmlio/amix-x11-aga) project, and not reproduced
@@ -1872,6 +1899,7 @@ platform not declared `SystemV` vfork (`HasVFork YES`), so an SVR4 cf file must 
 - [Glossary](glossary.md) — RDB, AUTOCONFIG, STREAMS, Superkickstart, and other terms used here.
 
 ## Sources
+- The **canonical line wedge** (first-party record, 2026-08-27) ✅/🟡 — quirk 99: the amix `kernel/k30` bench tooling's line-length probe on a 68030 box (229 bytes answered, 269 stalled and wedged the login), its earlier failure on a 260-byte line and the `^G` bells seen on 2026-08-01. `MAX_CANON` is in `usr/include/limits.h` and `usr/include/sys/param.h` in [`amigaux/amix-system`](https://github.com/amigaux/amix-system), read here. The threshold, the cause and the 237-byte budget are inferred from these, not measured.
 - The **empty Zorro III read per CPU path** (first-party record, 2026-11-02) ✅ — quirk 66: the amix `kernel/dlm` `bprobe` test modules (root pass at level 7, boot passes at levels 0, 4 and 7, each read timed by CIA-B's TOD clock) on an A4000D with a Z3660 in real-68LC060 and emulated-68030 modes, and under Amiberry; the 2026-10-27 root-context probe above `VSECT1` that faulted in the MMU. [`amigaux/amix`](https://github.com/amigaux/amix) `kernel/dlm/tests/bench/bprobe/` (`51dd57a`, on `master`); the coverage note in `kernel/dlm/docs/contracts/C4-2-root-class-driver.md` §2.1 (`9407b0f`, on `master`).
 - The **zero page** (2026-11-01) ✅ — quirk 97: the program headers of the `ET_EXEC` files in [`amigaux/amix-system`](https://github.com/amigaux/amix-system) (193 of 434 carry the read-only `PT_LOAD` at vaddr 0, checked here with `readelf -l`); the gcc14 toolchain's `nullread` test and the 68040/060 port's before-and-after runs in emulation (first-party record, 2026-11-01). The 040/060 sources are on [the status page](68040-68060-status.md#sources).
 - The **stock `tar` NULL owner lookup** (first-party record, 2026-11-01) ✅/🟡 — quirk 96: the amix `kernel/k30` runs in emulation, which pulled `/usr/sbin/tar` from the 68030 and 68LC060 images (one SHA-256 for all copies) and took a core on the 68030 (the faulting read through a zero address register). The disassembly of the binary shows the `getpwnam`/`getgrnam` results read after their failure messages, checked here against the pulled copy. The archive table (v7, ustar and GNU, named and numeric owners, `xof`, non-root) ran on two 68030 kernel builds; the 68LC060 run was on a 68040/060 kernel from before the TT fix. The first observation (exit 139 on ustar and GNU, v7 fine, the 68040/060 image unaffected) came from the amix `kernel/dlm` staging runs the same day.

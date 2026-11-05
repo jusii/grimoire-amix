@@ -687,3 +687,7 @@ rows) are cited in plain words; their hosts and run numbers are project bookkeep
   on GitHub; its documents remain first-party records, cited in plain text as not public. The media
   builder is to move into `amigaux/amix` under `media/` before 1.1, and its test bench stays private
   🔴 (planned).
+- 2026-11-05 — canonical tty line limit: stock `MAX_CANON` is 256 ✅ (headers). Over telnet on a 68030
+  box a 229-byte line answered; a 269-byte line ran nothing and wedged the login until reconnect ✅
+  (first-party, 2026-08-27); an earlier 260-byte line also ran nothing ✅. Exact threshold, cause and
+  the 237-byte command budget 🟡 (inferred); console, serial and other kernels 🔴 (not run).

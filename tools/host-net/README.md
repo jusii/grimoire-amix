@@ -58,10 +58,11 @@ then `AMIX_HOST=192.0.2.50 python3 amixsh.py 'uname -a'`.
 | `2`, with a message on stderr | a line over 237 bytes was refused, and nothing was sent |
 | `124`, with a message on stderr | a command's end marker did not arrive within `AMIX_TIMEOUT`; later commands are not sent |
 
-- **Line length.** A canonical tty line holds 256 bytes, and past that the tty discards the overrun
-  and the newline. Measured on a 68030 box, a 229-byte line answers, while a 269-byte line answers
-  nothing and neither does anything later in that login ✅. `amixsh.py` refuses a line over 237
-  bytes before it logs in. Split a long line into several arguments: they run in the same login.
+- **Line length.** Measured on a 68030 box, a 229-byte line answers, while a 269-byte line answers
+  nothing and neither does anything later in that login ✅. See
+  [quirk 99](../../docs/how-it-works/quirks.md#99-canonical-line-wedge) for the 256-byte limit behind
+  this. `amixsh.py` refuses a line over 237 bytes before it logs in. Split a long line into several
+  arguments: they run in the same login.
 - **`124` means the marker did not arrive, not that the command stopped.** It may still be running
   on the box, or the connection may have dropped. For a long job, raise `AMIX_TIMEOUT` or start it
   in the background and poll its log.
