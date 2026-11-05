@@ -31,7 +31,8 @@ Why routed rather than a true L2 bridge:
 | `amix-lan-up.sh`   | Idempotent host setup: TAP, proxy-ARP, ip_forward, `/32` route, forward rules (Docker-aware). |
 | `amix-lan-down.sh` | Full teardown. |
 | `amix-lan.service` | systemd unit so the host side comes up at boot (after `docker.service`). |
-| `amixsh.py`        | Run shell commands on Amix over telnet, scripted (no PTY). Good for automation / agents. |
+| `amixsh.py`        | Run shell commands on Amix over telnet, scripted (no PTY). Good for automation / agents. [Limits and exit status](#amixshpy-limits-and-exit-status) below. |
+| `test-amixsh.py`   | Tests for `amixsh.py`'s exit status against a fake login and shell. Needs no Amix box, and so tests the script's logic, not a real tty. |
 | `amixput.py`       | Upload a file to Amix via FTP (PASV, root). |
 
 **Set your own addresses.** The built-in defaults are RFC 5737 documentation addresses
@@ -43,9 +44,32 @@ Why routed rather than a true L2 bridge:
 | `TAP_ANCHOR` | `amix-lan-up.sh` | a host-side `/32` on the TAP, any address unused on your LAN (`192.0.2.17`) |
 | `ETH`, `TAP`, `TAP_OWNER` | `amix-lan-up.sh` | LAN uplink (autodetected from the default route), TAP name (`tap0`), TAP owner (the invoking user) |
 | `AMIX_HOST`, `AMIX_PORT`, `AMIX_USER`, `AMIX_PASS` | `amixsh.py`, `amixput.py`, `amixsync.py` | the guest to talk to (`192.0.2.38`), FTP port, login (`root` / a placeholder password) |
+| `AMIX_TIMEOUT` | `amixsh.py` | seconds to wait for each command (`60`) |
 
 For example: `GUEST_IP=192.0.2.50 TAP_ANCHOR=192.0.2.250 ETH=eth0 sudo -E sh amix-lan-up.sh`,
 then `AMIX_HOST=192.0.2.50 python3 amixsh.py 'uname -a'`.
+
+## `amixsh.py`: limits and exit status
+
+| Exit | Meaning |
+|---|---|
+| `0` | every command's end marker arrived with status 0 |
+| any other | the first non-zero status a command returned, which may also be `2` or `124` |
+| `2`, with a message on stderr | a line over 237 bytes was refused, and nothing was sent |
+| `124`, with a message on stderr | a command's end marker did not arrive within `AMIX_TIMEOUT`; later commands are not sent |
+
+- **Line length.** A canonical tty line holds 256 bytes, and past that the tty discards the overrun
+  and the newline. Measured on a 68030 box, a 229-byte line answers, while a 269-byte line answers
+  nothing and neither does anything later in that login ✅. `amixsh.py` refuses a line over 237
+  bytes before it logs in. Split a long line into several arguments: they run in the same login.
+- **`124` means the marker did not arrive, not that the command stopped.** It may still be running
+  on the box, or the connection may have dropped. For a long job, raise `AMIX_TIMEOUT` or start it
+  in the background and poll its log.
+- **Commands that read standard input.** The marker line follows the command straight away, so a
+  foreground command that reads input takes the marker as its input, and the result is a `124`.
+- **Filtering the output.** The marker prints as `DONE_<status>_<nonce>`, with a new nonce each run,
+  so text in a command or its output cannot pass for it. Each command's output in `amixsh.py`'s
+  stdout still holds the echoed `echo D''ONE_$?_<nonce>` line, the shell's prompt and the marker.
 
 ## Quick start
 
